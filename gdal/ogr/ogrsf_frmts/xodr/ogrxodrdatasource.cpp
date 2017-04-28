@@ -1,12 +1,26 @@
 /******************************************************************************
- * $Id:  $
+ * $Id$
  *
- * Project:   OpenGIS Simple Features for OpenDRIVE format
- * Purpose:   Implements OGRXODRDriver class.
- * Authors:   Ana Maria Orozco  ana dot orozco at tum dot de
- *			  Michael Scholz    michael dot scholz at dlr dot de
- *            Deutsches Zentrum f�r Luft- und Raumfahrt, DLR
- ******************************************************************************/
+ * Project:  OpenGIS Simple Features for OpenDRIVE
+ * Purpose:  Implementation of OGRXODRDataSource.
+ * Author:   Michael Scholz, michael.scholz@dlr.de, German Aerospace Center (DLR)
+ *			 Ana Maria Orozco, ana.orozco.net@gmail.com
+ *
+ ******************************************************************************
+ * Copyright 2017 German Aerospace Center (DLR), Institute of Transportation Systems 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ****************************************************************************/
 
 #include "ogr_xodr.h"
 #include "ogr_api.h"
