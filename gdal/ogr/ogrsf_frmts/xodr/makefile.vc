@@ -1,0 +1,30 @@
+OBJ	= ogrxodrdriver.obj ogrxodrdatasource.obj ogrxodrlayer.obj xodr.obj
+
+GDAL_ROOT	=	..\..\..
+
+PLUGIN_DLL = ogr_XODR.dll
+
+!INCLUDE $(GDAL_ROOT)\nmake.opt
+!INCLUDE XODRmake.opt
+
+EXTRAFLAGS = -I.. -I..\generic -I..\.. $(ODRSPIRAL_INCLUDE) $(XSD_INCLUDE) $(XERCES_INCLUDE) $(XODR_INCLUDE)
+
+default:	$(OBJ)
+
+$(OBJ):	ogr_xodr.h
+
+clean:
+	-del *.lib
+	-del *.obj *.pdb *.exp
+	-del *.dll
+	-del *.manifest	
+
+plugin: $(PLUGIN_DLL)
+
+$(PLUGIN_DLL):	$(OBJ)
+	link /dll $(LDEBUG) /out:$(PLUGIN_DLL) $(OBJ) $(GDALLIB) $(XERCES_LIB) $(ODRSPIRAL_LIB) $(XODR_LIB)
+	if exist $(PLUGIN_DLL).manifest mt -manifest $(PLUGIN_DLL).manifest -outputresource:$(PLUGIN_DLL);2
+
+plugin-install: plugin
+	-mkdir $(PLUGINDIR)
+	$(INSTALL) $(PLUGIN_DLL) $(PLUGINDIR)

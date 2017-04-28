@@ -1,0 +1,25 @@
+## Unix
+
+## Win64
+# XSD
+XSD_INCLUDE=-ID:\Tools\xsd-4.0.0-i686-windows\libxsd
+# Xerces
+XERCES_DIR = D:\Tools\xerces-c-3.1.1-x86_64-windows-vc-10.0
+XERCES_INCLUDE = -I$(XERCES_DIR)\include  -I$(XERCES_DIR)\include\xercesc
+!IFNDEF DEBUG
+XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3.lib
+XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1.dll
+!ELSE
+XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3D.lib
+XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1D.dll
+!ENDIF
+
+#ODRSPIRAL
+ODRSPIRAL_DIR = D:\dev\odrSpiral
+ODRSPIRAL_INCLUDE=-I$(ODRSPIRAL_DIR)\include
+ODRSPIRAL_LIB = $(ODRSPIRAL_DIR)\lib\Release\libOdrSpiral.lib
+
+#xodr
+XODR_DIR = D:\dev\xodr
+XODR_INCLUDE=-I$(XODR_DIR)\include
+XODR_LIB = $(XODR_DIR)\lib\Release\libXodr.lib
