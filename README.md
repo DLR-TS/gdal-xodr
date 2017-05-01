@@ -101,6 +101,7 @@ ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr
 ## 4 To-Dos
 - [ ] Catch invalid XODR file path ("terminate called after throwing an instance of 'xsd::cxx::tree::parsing<char>'")
 - [ ] [Insure proper resource deallocation](https://trac.osgeo.org/gdal/wiki/FAQMiscellaneous#HowshouldIdeallocateresourcesacquaintedfromGDALonWindows)
+- [ ] Specify point sampling distance for mathematical geometries as layer creation option
   				
 ## 5 General Development Notes
 To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](http://www.gdal.org/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [FileGDB Building Notes](http://www.gdal.org/drv_filegdb.html).
