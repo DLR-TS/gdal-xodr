@@ -1,58 +1,46 @@
 <html>
 <head>
-<title>XODR - Opendrive</title>
+<title>OpenDRIVE (XODR)</title>
 </head>
-
 <body bgcolor="#ffffff">
+<h1>OpenDRIVE (XODR)</h1>
+<p>The OpenDRIVE driver provides read access for OpenDRIVE XML documents in version 1.4. The implemented schema is backwards-compatible but support for versions lower than 1.4 is not guaranteed.</p>
 
-<h1>XODR - Opendrive</h1>
-
-<p>Info.  DRAFT::: CHANGE ALL</p>
-
-
-
-<h3>XODR Reading</h3>
-<p>XODR reading is only available if GDAL/OGR is built with the Expat XML Parser, otherwise only XODR writing will be supported.</p>
-
-<p>  Supported geometry types are <code>Point</code>, <code>Linestring</code>, <code>Polygon</code>, <code>MultiPoint</code>,
-<code>MultiLineString</code>, <code>MultiPolygon</code> and <code>MultiGeometry</code>. There are limitations,
-for example: the nested nature of folders in a source XODR file is lost; folder <code>&lt;description&gt;</code> tags will
-not carry through to ouput. Since GDAL 1.6.1, folders containing multiple geometry types, like POINT and POLYGON, are supported.</p>
-
-<p>The XODR Driver will rename some layers, or source XODR folder names, into new names
-it considers valid, for example '<code>Layer #0</code>', the default name of the first unnamed
-Layer, becomes <code>'Layer__0'</code>.</p>
-
-
-<p> DATA.</p>
-<p> DATA</p>
-
-<h3>Encoding issues</h3>
-
-Expat library supports reading the following built-in encodings  DATA DATA TADA:
+<h2>Functionality</h2>
+<p>As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now one <code>MultiLineString</code> layer is created containing just the road reference lines. OpenDRIVE road geometries which are supported
 <ul>
-<li>US-ASCII</li>
-<li>UTF-8</li>
-<li>UTF-16</li>
-<li>ISO-8859-1</li>
+	<li><code>[x] line</code></li>
+	<li><code>[x] arc</code></li>
+	<li><code>[x] spiral</code></li>
+	<li><code>[ ] poly3</code></li>
+	<li><code>[ ] paramPoly3</code></li>
 </ul>
 
-OGR 1.8.0 adds supports for Windows-1252 encoding (for previous versions, altering the encoding
-mentionned in the XML header to ISO-8859-1 might work in some cases).<p>
+</p>
 
-The content returned by OGR will be encoded in UTF-8, after the conversion from the
-encoding mentionned in the file header is.<p>
+<h2>Requirements</h2>
+<p>
+	<ul>
+		<li><a href="https://github.com/DLR-TS/xodr">xodr</a></li>
+		<li><a href="https://github.com/DLR-TS/odrSpiral">odrSpiral</a></li>
+		<li>Xerces-c 3.1</li>
+        <li>GDAL >= 2.x</li>
+	</ul>
+</p>
 
+<h2>Dataset Creation Options</h2>
 
-When writing a XODR file, the driver expects UTF-8 content to be passed in.<p>
+<p>None.</p>
+<h2>Layer Creation Options</h2>
+<p>None.</p>
 
+<h2>Building Notes</h2>
+Detailed instruction on how to build the OpenDRIVE driver is provided in the repository's <a href="https://github.com/DLR-TS/gdal/blob/ogr/xodr/README.md">README</a>.
 
-
-<h2>See Also</h2>
+<h2>Links</h2>
 <ul>
-<li> <a href="http://www.opendrive.org/">OpenDRIVE </a></li>
-<li> <a href="http://www.opendrive.org/download.html">OpenDRIVE XODR Format Specification</a>
-</li>
+	<li> <a href="http://www.opendrive.org/">OpenDRIVE </a></li>
+	<li> <a href="http://www.opendrive.org/download.html">OpenDRIVE XODR Format Specification</a></li>
 </ul>
 
 </body>
