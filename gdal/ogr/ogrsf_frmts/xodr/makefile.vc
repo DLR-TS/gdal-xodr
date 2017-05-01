@@ -5,9 +5,9 @@ GDAL_ROOT	=	..\..\..
 PLUGIN_DLL = ogr_XODR.dll
 
 !INCLUDE $(GDAL_ROOT)\nmake.opt
-!INCLUDE XODRmake.opt
+!INCLUDE XODRnmake.opt
 
-EXTRAFLAGS = -I.. -I..\generic -I..\.. $(ODRSPIRAL_INCLUDE) $(XSD_INCLUDE) $(XERCES_INCLUDE) $(XODR_INCLUDE)
+EXTRAFLAGS = -I.. -I..\generic -I..\.. $(XSD_INCLUDE) $(XERCES_INCLUDE) $(ODRSPIRAL_INCLUDE) $(XODR_INCLUDE)
 
 default:	$(OBJ)
 
@@ -28,3 +28,4 @@ $(PLUGIN_DLL):	$(OBJ)
 plugin-install: plugin
 	-mkdir $(PLUGINDIR)
 	$(INSTALL) $(PLUGIN_DLL) $(PLUGINDIR)
+	$(INSTALL) $(XERCES_DLL) $(BINDIR)

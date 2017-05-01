@@ -1,10 +1,9 @@
 include ../../../GDALmake.opt
 include XODRmake.opt
 
-OBJ = odrSpiral.o xodr.o ogrxodrdriver.o ogrxodrdatasource.o ogrxodrlayer.o OpenDRIVE_1.4H.o
+OBJ = xodr.o ogrxodrdriver.o ogrxodrdatasource.o ogrxodrlayer.o
 
-#CPPFLAGS	:=	-I.. -I../.. $(XSD_INC) $(CPPFLAGS)
-CPPFLAGS	:=	$(GDAL_INCLUDE) $(XSD_INCLUDE) $(CPPFLAGS)
+CPPFLAGS	:=	$(GDAL_INCLUDE) $(XSD_INCLUDE) $(ODRSPIRAL_INCLUDE) $(XODR_INCLUDE) $(CPPFLAGS)
 
 default:	$(O_OBJ:.o=.$(OBJ_EXT))
 
@@ -18,7 +17,7 @@ PLUGIN_SO	= ogr_XODR.$(SO_EXT)
 plugin:		$(PLUGIN_SO)
 
 $(PLUGIN_SO):	$(OBJ)
-		$(LD_SHARED) $(LNK_FLAGS) $(OBJ) $(CONFIG_LIBS_INS) $(LIBS) \
+		$(LD_SHARED) $(LNK_FLAGS) $(OBJ) $(CONFIG_LIBS_INS) $(LIBS) $(ODRSPIRAL_LIB) $(XODR_LIB) \
 		-o $(PLUGIN_SO)
 	
 plugin-install: plugin

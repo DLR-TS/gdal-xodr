@@ -23,7 +23,7 @@
  ****************************************************************************/
  
 extern "C" {
-#include "odrSpiral.h"
+#include <odrSpiral.h>
 }
 #include "xodr.h"
 #include "ogr_geometry.h"
