@@ -1,30 +1,107 @@
-GDAL - Geospatial Data Abstraction Library
-====
+# OpenDRIVE driver for OGR
+By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. 
 
-| Environment              | Status        |
-| ------------------------ |:-------------:|
-| Ubuntu 12.04 64 bit      | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=precise_clang&label=precise_clang)](https://travis-ci.org/OSGeo/gdal) |
-| Ubuntu 12.04 32 bit      | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=precise_32bit&label=precise_32bit)](https://travis-ci.org/OSGeo/gdal) |
-| Ubuntu 14.04 64 bit      | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=trusty_clang&label=trusty_clang)](https://travis-ci.org/OSGeo/gdal) |
-| Ubuntu 16.04 64 / CL 3.9 | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=ubuntu_1604&label=ubuntu_1604)](https://travis-ci.org/OSGeo/gdal) |
-| Python 3                 | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=python3&label=python3)](https://travis-ci.org/OSGeo/gdal) |
-| MacOS X                  | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=osx&label=osx)](https://travis-ci.org/OSGeo/gdal) |
-| MSVC 2008                | [![Build status](https://ci.appveyor.com/api/projects/status/tn5oj0ipp5lmexjh/branch/trunk_vc9?svg=true)](https://ci.appveyor.com/project/rouault/gdal-coverage) |
-| MSVC 2013 32 & 64 bit    | [![Build status](https://ci.appveyor.com/api/projects/status/jtwx0pcr0y01i17p/branch/trunk?svg=true)](https://ci.appveyor.com/project/OSGeo/gdal) |
-| MSVC 2015 32 & 64 bit    | [![Build status](https://ci.appveyor.com/api/projects/status/tn5oj0ipp5lmexjh/branch/trunk_vc13?svg=true)](https://ci.appveyor.com/project/rouault/gdal-coverage) |
-| MinGW                    | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=mingw&label=mingw)](https://travis-ci.org/OSGeo/gdal) |
-| MinGW_W64                | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=mingw_w64&label=mingw_w64)](https://travis-ci.org/OSGeo/gdal) |
-| Android                  | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=android&label=android)](https://travis-ci.org/OSGeo/gdal) |
-| Big endian host          | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=big_endian&label=big_endian)](https://travis-ci.org/OSGeo/gdal) |
-| GCC 4.8 C++11            | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=gcc48_stdcpp11&label=gcc48_stdcpp11)](https://travis-ci.org/OSGeo/gdal) |
-| GCC 5.2 C++14 -fsanitize | [![Build Status](http://badges.herokuapp.com/travis/OSGeo/gdal?branch=trunk&env=BUILD_NAME=gcc52_stdcpp14_sanitize&label=gcc52_stdcpp14_sanitize)](https://travis-ci.org/OSGeo/gdal) |
-| Clang Static Analyzer    | [![Build Status](https://travis-ci.org/rouault/gdal_coverage.svg?branch=trunk_clang_static_analyzer)](https://travis-ci.org/rouault/gdal_coverage) |
-| Coverity Scan            | [![Build Status](https://scan.coverity.com/projects/749/badge.svg?flat=1)](https://scan.coverity.com/projects/gdal) |
+This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library (OGR). Currently, the still prototypical OpenDRIVE driver is not yet integrated into GDAL but can be built as shared library against GDAL to privide a pluggable extension. For the development of our driver the original GDAL repository has been forked for easier integration into GDAL later.
 
-GDAL is an open source X/MIT licensed translator library for raster and vector geospatial data formats. This is a mirror of the GDAL Subversion repository.
+## 0 Dependencies
+For now, the driver works only for GDAL 2.x. and does not support GDAL 1.x. The OpenDRIVE driver depends on
 
-* Main site: http://www.gdal.org - Developer and user docs, links to other resources
-* SVN repository: http://svn.osgeo.org/gdal
-* Download: http://download.osgeo.org/gdal
-* Wiki: http://trac.osgeo.org/gdal - Bug tracking, various user and developer contributed documentation and hints
-* Mailing list: http://lists.osgeo.org/mailman/listinfo/gdal-dev
+- [odrSpiral](https://github.com/DLR-TS/odrSpiral)
+- [xodr](https://github.com/DLR-TS/xodr)
+- [CodeSynthesis XSD](http://codesynthesis.com/products/xsd/)
+- [Xerces-C++](https://xerces.apache.org/xerces-c/)
+
+and building it is divided into
+
+- building the original GDAL base library which we link our shared extension against, followed by
+- building the actual OpenDRIVE driver as shared library extension of GDAL/OGR.
+
+We tested on Ubuntu Linux 16.04 x64 and Windows 7 x64. Get started by cloning the [ogr/xodr](https://github.com/DLR-TS/gdal/tree/ogr/xodr) branch of GDAL:
+```bash
+git clone https://github.com/DLR-TS/gdal.git -b ogr/xodr --single-branch <gdal>
+```
+If needed, substitute `<gdal>` with the desired path name to clone into. 
+
+## 1 Building on Linux
+### 1.1 GDAL Base on Linux
+We basically follow the official [GDAL building instructions for Unix](https://trac.osgeo.org/gdal/wiki/BuildingOnUnix).
+
+Configure GDAL to support creation of shared libraries. At least for our Ubuntu 16.04 test environment we also had to disable libtool because it caused problems during later linking of the driver shared library:
+```bash
+cd <gdal>/gdal/
+./configure --prefix ~/dev/gdal/gdal/build -enable-shared --without-libtool
+```
+
+Build with
+```bash
+make
+```
+followed by a 
+```bash
+make install
+```
+
+which copies the resulting GDAL binaries and library  into the abovely specified CMake `--prefix` directory.
+
+### 1.2 OpenDRIVE Driver as Shared Library on Linux
+Navigate into the OpenDRIVE OGR driver directory
+```bash
+cd <gdal>/gdal/ogr/ogrsf_frmts/xodr/
+```
+Configure the paths for all required Unix dependencies in `XODRmake.opt`. Then
+```bash
+make -f GNUmakefile plugin-install
+```
+This will build a shared library of the plugin and automatically copy it into GDAL's plugin directory relative to the CMake `--prefix` directory specified in the previous section.
+
+## 2 Building on Windows
+### 2.1 GDAL Base on Windows
+We basically follow the official [GDAL building instructions for Windows](https://trac.osgeo.org/gdal/wiki/BuildingOnWindows). Things have gotten easier starting from GDAL 2.3.x. where GDAL provides a comfortable script `generate_vcxproj.bat` to generate project definitions for recent Microsoft's Visual Studio editions. An exemplary project for Visual Studio 2015 x64 can be generated from the "VS2015 x64 Native Tools Command Prompt" as follows:
+```bash
+generate_vcxproj.bat 14.0 64 gdal_vs2015
+```
+Open the generated `.vcxproj` in Visual Studio and build GDAL for the desired configuration (e.g. Release or Debug). Alternatively, for a Release build use `nmake` from command line:
+```bash
+cd <gdal>/gdal/
+nmake -f makefile.vc MSVC_VER=1900 WIN64=1
+```
+Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` in a lokal configuration file `nmake.lokal` 
+```bash
+echo GDAL_HOME="C:\dev\gdal\gdal\build" > nmake.lokal
+```
+and run `nmake install` afterwards
+```bash
+nmake -f makefile.vc MSVC_VER=1900 WIN64=1 install
+```
+
+### 2.2 OpenDRIVE Driver as Shared Library on Windows
+Navigate into the OpenDRIVE OGR driver directory
+```bash
+cd <gdal>/gdal/ogr/ogrsf_frmts/xodr/
+```
+Configure the paths for all required Windows dependencies in `XODRnmake.opt`. Then
+```bash
+nmake -f makefile.vc MSVC_VER=1900 WIN64=1 plugin-install
+```
+This also copies the required Xerces DLL into GDAL's binary install directory!
+
+## 3 Testing the OGR OpenDRIVE Driver
+If everything went right the built GDAL/OGR is extended by our OpenDRIVE driver and can be tested by running one of the utility programs. Running `ogrinfo` for the above examples would look like
+
+| Linux  							| Windows 						  	|
+| --------------------------------- | --------------------------------	|
+| `cd <gdal>/gdal/build/lib/`  		| `cd <gdal>/gdal/build/bin/`  		|
+| `../bin/ogrinfo --formats` 		| `ogrinfo.exe --formats`			|
+
+This should yield the an OGR driver list extended by the new **OpenDRIVE** driver. To convert an OpenDRIVE XML file into, e.g., an ESRI Shapefile, use the provided utility `ogr2ogr`:
+```bash
+ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr
+```
+
+## 4 To-Dos
+- [ ] Catch invalid XODR file path ("terminate called after throwing an instance of 'xsd::cxx::tree::parsing<char>'")
+- [ ] [Insure proper resource deallocation](https://trac.osgeo.org/gdal/wiki/FAQMiscellaneous#HowshouldIdeallocateresourcesacquaintedfromGDALonWindows)
+  				
+## 5 General Development Notes
+To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](http://www.gdal.org/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [FileGDB Building Notes](http://www.gdal.org/drv_filegdb.html).
+
