@@ -44,7 +44,17 @@ public:
     ~XODR();
     int getMinorRevision();
     const OpenDRIVE::road_sequence& getXODRRoads() const;
-    void integrateGeometryParts(OGRMultiLineString* ogrRoad) const;
+    
+    /**
+     * Closes small gaps between road geometry parts in 2D. Roads as MultiLineStrings may consist of multiple individually 
+     * sampled geometry parts which are not necessarily topologically touching. This can be replaced by proper snapping
+     * later.
+     * @param ogrRoad
+     * @param tolerance
+     */
+    // TODO Move distance tolerance out into layer creation option
+    void integrateGeometryParts(OGRMultiLineString* ogrRoad, const double tolerance) const;
+    
     std::auto_ptr<OGRLineString> lineToLinestring(const geometry &geoParam) const;
     std::auto_ptr<OGRLineString> arcToLinestring(const geometry &geoParam) const;
     std::auto_ptr<OGRLineString> spiralToLinestring(const geometry &geoParam) const;
@@ -60,6 +70,7 @@ public:
      * @param lineString The LineString to create from the sample points.
      * @return Tangent direction at sampled end point in radians. This is useful for rotations.
      */
+    // TODO Move sampleDistance out into layer creation option
     double sampleDefaultSpiral(const double length, const double endCurvature, const double sampleDistance,
             OGRLineString* lineString) const;
     

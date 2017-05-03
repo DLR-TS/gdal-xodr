@@ -79,11 +79,11 @@ OGRMultiLineString XODR::toOGRGeometry(const planView& planView) const {
             ogrRoad.addGeometry(ogrGeometry.get());
         }
     }
-    //    integrateGeometryParts(&ogrRoad);
+    integrateGeometryParts(&ogrRoad, 0.001);
     return ogrRoad;
 }
 
-void XODR::integrateGeometryParts(OGRMultiLineString* ogrRoad) const {
+void XODR::integrateGeometryParts(OGRMultiLineString* ogrRoad, const double tolerance) const {
     int numGeoms = ogrRoad->getNumGeometries();
     if (numGeoms > 1) {
         for (int g = 1; g < ogrRoad->getNumGeometries(); ++g) {
@@ -95,9 +95,14 @@ void XODR::integrateGeometryParts(OGRMultiLineString* ogrRoad) const {
             int numPts = pred->getNumPoints();
             OGRPoint* predEnd = new OGRPoint();
             pred->getPoint(numPts - 1, predEnd);
-            // Move distance tolerance out into external OGR format parameter
-            if (currentStart->Disjoint(predEnd) && currentStart->Distance(predEnd) < 0.001) {
-                pred->setPoint(numPts - 1, currentStart);
+            if (currentStart->Disjoint(predEnd)) {
+                if (currentStart->Distance(predEnd) < tolerance) {
+                    pred->setPoint(numPts - 1, currentStart);
+                } else {
+                    CPLError(CE_Warning, CPLE_AppDefined,
+                            "Road geometry parts are disjoint at point (%lf, %lf) and have a distance greater than %lf", 
+                            currentStart->getX(), currentStart->getY(), tolerance);
+                }
             }
         }
 
@@ -149,7 +154,7 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom) const {
     double yStart = geom.y().get();
     double heading = geom.hdg().get();
     double length = geom.length().get();
-    
+
     // Arc attributes
     const geometry::arc_optional& arc = geom.arc();
     double curvature = arc->curvature().get();
@@ -298,7 +303,7 @@ std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) cons
     MatrixTransformations::initMatrix(m);
     if (startCurvature == 0.0 && endCurvature != 0.0) {
         sampleDefaultSpiral(length, endCurvature, 0.5, lineString.get());
-        
+
         // T(geomStartPt) x R(geomHdg) x geometry
         MatrixTransformations::translate(m, xStart, yStart);
         MatrixTransformations::rotate(m, hdg);
@@ -309,12 +314,12 @@ std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) cons
         tangentDir += M_PI; // To comply with the line reversion
         OGRPoint lineStart;
         lineString->StartPoint(&lineStart);
-        
+
         // T(geomStartPt) x R(-(tangentDir - geomHdg)) x T(-lineStartPt) x reversedGeometry
         MatrixTransformations::translate(m, xStart, yStart);
         MatrixTransformations::rotate(m, -(tangentDir - hdg));
         MatrixTransformations::translate(m, -lineStart.getX(), -lineStart.getY());
-        transformLineString(lineString.get(), m);        
+        transformLineString(lineString.get(), m);
     } else if (startCurvature == 0.0 && endCurvature == 0.0) {
         return lineToLinestring(geom);
     } else {
@@ -330,14 +335,14 @@ double XODR::sampleDefaultSpiral(const double length, const double endCurvature,
     double x;
     double y;
     double t;
-    
+
     // First and all intermediate points
     for (double s = 0.0; s < length; s += sampleDistance) {
         odrSpiral(s, curvatureChange, &x, &y, &t);
         OGRPoint ptIntermediate(x, y);
         lineString->addPoint(&ptIntermediate);
     }
-    
+
     // End point
     odrSpiral(length, curvatureChange, &x, &y, &t);
     OGRPoint ptEnd(x, y);
