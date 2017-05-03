@@ -21,7 +21,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  ****************************************************************************/
- 
+
 extern "C" {
 #include <odrSpiral.h>
 }
@@ -34,16 +34,12 @@ extern "C" {
 #include <typeinfo>
 #include <vector>
 #include "cpl_conv.h"
-#include "OpenDRIVE_1.4H.h"
+#include <OpenDRIVE_1.4H.h>
 #include <sstream>
 
 using namespace std;
 using namespace xml_schema;
 
-/************************************************************************/
-/*                            XODR Class Constructor                    */
-
-/************************************************************************/
 XODR::XODR(const char * pszFilename) {
     op = OpenDRIVE_(pszFilename, flags::keep_dom | flags::dont_validate);
 }
@@ -51,10 +47,6 @@ XODR::XODR(const char * pszFilename) {
 XODR::~XODR() {
 }
 
-/************************************************************************/
-/*                       getMinorRevision                               */
-
-/************************************************************************/
 int XODR::getMinorRevision() {
 
     OpenDRIVE::header_type h = op->header();
@@ -121,63 +113,46 @@ std::auto_ptr<OGRLineString> XODR::toOGRGeometry(const geometry& xodrGeometry) c
     } else if (xodrGeometry.spiral().present()) {
         convertedGeom = spiralToLinestring(xodrGeometry);
     } else if (xodrGeometry.poly3().present()) {
+        CPLError(CE_Warning, CPLE_NotSupported, "Geometries of type poly3 not supported");
     } else if (xodrGeometry.paramPoly3().present()) {
+        CPLError(CE_Warning, CPLE_NotSupported, "Geometries of type paramPoly3 not supported");
     }
     return convertedGeom;
 }
 
-std::auto_ptr<OGRLineString> XODR::lineToLinestring(const geometry &geoParam) const {
-    // Arguments: Geometry and Line with the following values/[units]
-    // s [m], x [m], y [m], hdg [rad], length [m] 
-
-    double xStart = geoParam.x().get(); // initial coordinate x (X_init, Y_init)
-    double yStart = geoParam.y().get(); // initial coordinate y
-    double hdg = geoParam.hdg().get(); // heading (polar coordinate)
-    double length = geoParam.length().get(); // length
-
-    // Calculation of end coordinates (X_end, Y_end), from polar coord and lenght:
-    // Formula ( x + cos(hdg) * length, y + sin(hdg) * length)
-
-    double xEnd = xStart + (std::cos(hdg)) * length;
-    double yEnd = yStart + (std::sin(hdg)) * length;
+std::auto_ptr<OGRLineString> XODR::lineToLinestring(const geometry &geom) const {
+    // Basic geometry attributes    
+    double xStart = geom.x().get();
+    double yStart = geom.y().get();
+    double hdg = geom.hdg().get();
+    double length = geom.length().get();
 
     std::auto_ptr<OGRLineString> lineString(new OGRLineString());
-    OGRPoint ptStart(xStart, yStart);
+    OGRPoint ptStart(0.0, 0.0);
     lineString->addPoint(&ptStart);
-    OGRPoint ptEnd(xEnd, yEnd);
+    OGRPoint ptEnd(length, 0.0);
     lineString->addPoint(&ptEnd);
+
+    Matrix2D m;
+    MatrixTransformations::initMatrix(m);
+    // T(geomStartPt) x R(geomHdg) x geometry
+    MatrixTransformations::translate(m, xStart, yStart);
+    MatrixTransformations::rotate(m, hdg);
+    transformLineString(lineString.get(), m);
 
     return lineString;
 }
 
-std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geoParam) const {
-
-    // Arguments: Geometry and Arc with the following values/[units]
-    // s [m], x [m], y [m], hdg [rad], length [m], curvature [1/m] 
-
-    //From: <geometry> tag
-    //geometry::s_optional& s = geoParam.s();
-    const geometry::x_optional& x = geoParam.x();
-    const geometry::y_optional& y = geoParam.y();
-    const geometry::hdg_optional& hdg = geoParam.hdg();
-    const geometry::length_optional& length = geoParam.length();
-
-    // From: <arc> tag
-    const geometry::arc_optional& arc = geoParam.arc();
-    const arc::curvature_optional& curv = arc->curvature();
-
-    //double s_value = s.get(); // reference
-    double x_value = x.get(); // initial coordinate x (X_init, Y_init)
-    double y_value = y.get(); // initial coordinate y
-    double heading = hdg.get(); // heading (polar coordinate)
-    double length_value = length.get(); // length	
-    double curvature = curv.get();
-
-    /* Verification of variables (for testing)
-    printf("curvature [1/m]    :  %f \n ", curvature);
-    printf("length    [m]      :  %f \n ", length_value);
-    printf("heading   [rad ]   :  %f \n ", heading);
-     */
+std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom) const {
+    // Basic geometry attributes    
+    double xStart = geom.x().get();
+    double yStart = geom.y().get();
+    double heading = geom.hdg().get();
+    double length = geom.length().get();
+    
+    // Arc attributes
+    const geometry::arc_optional& arc = geom.arc();
+    double curvature = arc->curvature().get();
 
     // *********     Step 1 : Arc definition     ************
     // To find the points that define the arc (Xo,Yo), (Xm,Ym) and (Xe,Ye)
@@ -185,7 +160,7 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geoParam) con
     // for polar coordinates with center (0,0)
 
     double r = 1 / abs(curvature);
-    double alpha = length_value / r;
+    double alpha = length / r;
 
     double alpha_0 = 0;
     double xo = 0;
@@ -286,16 +261,16 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geoParam) con
     // coord_final (x_f, y_f) = polar + opendrive								*/
 
     // Translation: Initial point
-    double xo_f = xo + x_value;
-    double yo_f = xo + y_value;
+    double xo_f = xo + xStart;
+    double yo_f = xo + yStart;
 
     // Translation: Middle point
-    double xm_f = xm + x_value;
-    double ym_f = ym + y_value;
+    double xm_f = xm + xStart;
+    double ym_f = ym + yStart;
 
     // Translation: End point
-    double xe_f = xe + x_value;
-    double ye_f = ye + y_value;
+    double xe_f = xe + xStart;
+    double ye_f = ye + yStart;
 
 
     // *********  Step 5 : Create the geometry as OGRLineString *******
@@ -306,94 +281,82 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geoParam) con
     return arcLineString;
 }
 
-std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geoParam) const {
+std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) const {
     // Basic geometry attributes
-    double xStart = geoParam.x().get(); // initial coordinate x (X_init, Y_init)
-    double yStart = geoParam.y().get(); // initial coordinate y
-    double hdg = geoParam.hdg().get(); // heading (polar coordinate)
-    double length = geoParam.length().get(); // length
+    double xStart = geom.x().get();
+    double yStart = geom.y().get();
+    double hdg = geom.hdg().get();
+    double length = geom.length().get();
 
     // Spiral attributes
-    const geometry::spiral_optional& spiral = geoParam.spiral();
+    const geometry::spiral_optional& spiral = geom.spiral();
     double startCurvature = spiral->curvStart().get();
     double endCurvature = spiral->curvEnd().get();
 
     std::auto_ptr<OGRLineString> lineString(new OGRLineString());
-    if (startCurvature == 0.0) {
-        discretiseStandardSpiralPoints(xStart, yStart, hdg, length, endCurvature, lineString.get());
+    Matrix2D m;
+    MatrixTransformations::initMatrix(m);
+    if (startCurvature == 0.0 && endCurvature != 0.0) {
+        sampleDefaultSpiral(length, endCurvature, 0.5, lineString.get());
+        
+        // T(geomStartPt) x R(geomHdg) x geometry
+        MatrixTransformations::translate(m, xStart, yStart);
+        MatrixTransformations::rotate(m, hdg);
+        transformLineString(lineString.get(), m);
     } else if (startCurvature != 0.0 && endCurvature == 0.0) {
-        discretiseStandardSpiralPoints(xStart, yStart, hdg, length, startCurvature, lineString.get());
-        transformCase2(lineString.get());
+        double tangentDir = sampleDefaultSpiral(length, -startCurvature, 0.5, lineString.get());
+        lineString->reversePoints();
+        tangentDir += M_PI; // To comply with the line reversion
+        OGRPoint lineStart;
+        lineString->StartPoint(&lineStart);
+        
+        // T(geomStartPt) x R(-(tangentDir - geomHdg)) x T(-lineStartPt) x reversedGeometry
+        MatrixTransformations::translate(m, xStart, yStart);
+        MatrixTransformations::rotate(m, -(tangentDir - hdg));
+        MatrixTransformations::translate(m, -lineStart.getX(), -lineStart.getY());
+        transformLineString(lineString.get(), m);        
+    } else if (startCurvature == 0.0 && endCurvature == 0.0) {
+        return lineToLinestring(geom);
+    } else {
+        CPLError(CE_Warning, CPLE_NotSupported, "Spirals having both curvStart and curvEnd != 0.0 not supported");
     }
 
     return lineString;
 }
 
-void XODR::discretiseStandardSpiralPoints(double xStart, double yStart, double heading, double length,
-        double endCurvature, OGRLineString* lineString) const {
-    // Intermediate points
-    // http://math.stackexchange.com/questions/1785816/calculating-coordinates-along-a-clothoid-betwen-2-curves?newreg=5b5dce86ebc5450c9042f47aeb7a0163
+double XODR::sampleDefaultSpiral(const double length, const double endCurvature, const double sampleDistance,
+        OGRLineString* lineString) const {
     double curvatureChange = endCurvature / length;
     double x;
     double y;
     double t;
-    for (double s = 0.0; s < length; s += 0.5) {
+    
+    // First and all intermediate points
+    for (double s = 0.0; s < length; s += sampleDistance) {
         odrSpiral(s, curvatureChange, &x, &y, &t);
-        //        double xRot = x * cos(heading) - y * sin(heading);
-        //        double yRot = x * sin(heading) + y * cos(heading);
-        //        double xRotTrans = xRot + xStart;
-        //        double yRotTrans = yRot + yStart;
-        double xRotTrans = x + xStart;
-        double yRotTrans = y + yStart;
-        OGRPoint ptIntermediate(xRotTrans, yRotTrans);
+        OGRPoint ptIntermediate(x, y);
         lineString->addPoint(&ptIntermediate);
     }
-
+    
     // End point
     odrSpiral(length, curvatureChange, &x, &y, &t);
-    //    double xRot = x * cos(heading) - y * sin(heading);
-    //    double yRot = x * sin(heading) + y * cos(heading);
-    //    double xRotTrans = xRot + xStart;
-    //    double yRotTrans = yRot + yStart;
-    double xRotTrans = x + xStart;
-    double yRotTrans = y + yStart;
-    OGRPoint ptEnd(xRotTrans, yRotTrans);
+    OGRPoint ptEnd(x, y);
     lineString->addPoint(&ptEnd);
-}
-
-void XODR::transformCase2(OGRLineString* lineString) const {
-    OGRPoint* start = new OGRPoint();
-    lineString->getPoint(0, start);
-
-    int numPts = lineString->getNumPoints();
-    double x, y;
-    for (int p = 0; p < numPts; p++) {
-        OGRPoint* pt = new OGRPoint();
-        lineString->getPoint(p, pt);
-        x = pt->getX() - start->getX();
-        y = pt->getY() - start->getY();
-        double xFlip = x * 1 + y * 0;
-        double yFlip = x * 0 + y * -1;
-        pt->setX(xFlip);
-        pt->setY(yFlip);
-        lineString->setPoint(p, pt);
-    }
-//    lineString->getPoint(0, start);
-//    OGRPoint* end = new OGRPoint();
-//    lineString->getPoint(numPts, end);
-    for (int p = 0; p < numPts; p++) {
-        OGRPoint* pt = new OGRPoint();
-        lineString->getPoint(p, pt);
-        x = pt->getX();
-        y = pt->getY();
-        x += start->getX();
-        y += start->getY();
-        pt->setX(x);
-        pt->setY(y);
-        lineString->setPoint(p, pt);
-    }
+    return t;
 }
 
 int XODR::getNumberOfRoads() {
     return op->road().size();
+}
+
+void XODR::transformLineString(OGRLineString* geom, const Matrix2D& matrix) const {
+    int numPts = geom->getNumPoints();
+    for (int p = 0; p < numPts; ++p) {
+        Vector2D pt;
+        pt.x = geom->getX(p);
+        pt.y = geom->getY(p);
+        pt.w = 1.0;
+        MatrixTransformations::transform(pt, matrix);
+        geom->setPoint(p, pt.x, pt.y);
+    }
 }

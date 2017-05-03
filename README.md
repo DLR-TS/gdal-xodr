@@ -56,14 +56,13 @@ Configure GDAL to support creation of shared libraries. At least for our Ubuntu 
 cd <gdal>/gdal/
 ./configure --prefix ~/dev/gdal/gdal/build -enable-shared --without-libtool
 ```
-
-Build with
+For Debug configuration append `--enable-debug` to `./configure`. Build with
 ```bash
-make
+make -f GNUmakefile
 ```
 followed by a 
 ```bash
-make install
+make -f GNUmakefile install
 ```
 
 which copies the resulting GDAL binaries and library  into the abovely specified CMake `--prefix` directory.
@@ -113,16 +112,16 @@ This also copies the required Xerces DLL into GDAL's binary install directory!
 ### 3 Testing the OGR OpenDRIVE Driver
 If everything went right the built GDAL/OGR is extended by our OpenDRIVE driver and can be tested by running one of the utility programs. Running `ogrinfo` for the above examples would look like
 
-| Linux  							| Windows 						  	|
-| --------------------------------- | --------------------------------	|
-| `cd <gdal>/gdal/build/lib/`  		| `cd <gdal>/gdal/build/bin/`  		|
-| `../bin/ogrinfo --formats` 		| `ogrinfo.exe --formats`			|
+| Linux  		      | Windows                      |
+| --------------------------- | ---------------------------- |
+| `cd <gdal>/gdal/build/lib/` | `cd <gdal>/gdal/build/bin/`  |
+| `../bin/ogrinfo --formats`  | `ogrinfo.exe --formats`	     |
 
 This should yield the an OGR driver list extended by the new **OpenDRIVE** driver. To convert an OpenDRIVE XML file into, e.g., an ESRI Shapefile, use the provided utility `ogr2ogr`:
 ```bash
 ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr
 ```
-OpenDRIVE datasets for testing can be found in the official [Download section](http://opendrive.org/download.html).
+OpenDRIVE datasets for testing can be found in the official [Download section](http://opendrive.org/download.html). For advanced debug console output of those utility programs and the implemented drivers add `CPL_DEBUG=ON` to your running environment.
   				
 ## General Development Notes
 To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](http://www.gdal.org/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [FileGDB Building Notes](http://www.gdal.org/drv_filegdb.html).

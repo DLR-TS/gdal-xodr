@@ -34,12 +34,7 @@
 #include <string>
 #include <typeinfo>
 #include <vector>
-
-
-/************************************************************************/
-/*                               XODR                                   */
-
-/************************************************************************/
+#include "MatrixTransformations2D.h"
 
 class XODR {
     std::auto_ptr<OpenDRIVE> op;
@@ -55,10 +50,27 @@ public:
     std::auto_ptr<OGRLineString> spiralToLinestring(const geometry &geoParam) const;
     std::auto_ptr<OGRLineString> toOGRGeometry(const geometry& xodrGeometry) const;
     OGRMultiLineString toOGRGeometry(const planView& planView) const;
-    void discretiseStandardSpiralPoints(double xStart, double yStart, double heading, double length,
-        double endCurvature, OGRLineString* lineString) const;
-    void transformCase2(OGRLineString* lineString) const;
+    
+    /**
+     * Samples a "default" Euler spiral, i.e. a spiral with start curvature 0.0. The sample points are created
+     * relative to the coordinate system origin (0, 0).
+     * @param length Length of the spiral.
+     * @param endCurvature End curvature of the Euler spiral.
+     * @param sampleDistance Point sample distance in coordinate system units (usually metres).
+     * @param lineString The LineString to create from the sample points.
+     * @return Tangent direction at sampled end point in radians. This is useful for rotations.
+     */
+    double sampleDefaultSpiral(const double length, const double endCurvature, const double sampleDistance,
+            OGRLineString* lineString) const;
+    
     int getNumberOfRoads();
     std::string getGeoReferenceString();
+    
+    /**
+     * Performs a 2D affine geometry transformation with the help of a transformation matrix.
+     * @param geom The geometry to transform.
+     * @param matrix The 2D affine transformation matrix.
+     */
+    void transformLineString(OGRLineString* geom, const Matrix2D& matrix) const;
 };
 #endif /* ndef _XODR_H_INCLUDED */

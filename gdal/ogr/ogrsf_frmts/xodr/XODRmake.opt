@@ -1,13 +1,13 @@
 ## Inlcude and linking dependencies for Unix
 #xsd
-XSD_INCLUDE = -I/home/michi/coding/xsd-4.0.0-x86_64-linux-gnu/libxsd
+XSD_INCLUDE = -I/usr/include
 
 #odrSpiral
-ODRSPIRAL_DIR = /home/michi/coding/odrSpiral
+ODRSPIRAL_DIR = /home/michael/dev/odrSpiral
 ODRSPIRAL_INCLUDE = -I$(ODRSPIRAL_DIR)/include
 ODRSPIRAL_LIB = $(ODRSPIRAL_DIR)/lib/libodrSpiral.a
 
 #xodr
-XODR_DIR = /home/michi/coding/xodr
+XODR_DIR = /home/michael/dev/xodr
 XODR_INCLUDE = -I$(XODR_DIR)/include
 XODR_LIB = $(XODR_DIR)/lib/libxodr.a
