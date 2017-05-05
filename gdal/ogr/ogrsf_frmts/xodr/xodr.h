@@ -22,7 +22,6 @@
  * limitations under the License.
  ****************************************************************************/
 
-
 #ifndef _XODR_H_INCLUDED
 #define _XODR_H_INCLUDED
 
@@ -58,8 +57,12 @@ public:
     std::auto_ptr<OGRLineString> lineToLinestring(const geometry &geoParam) const;
     std::auto_ptr<OGRLineString> arcToLinestring(const geometry &geoParam) const;
     std::auto_ptr<OGRLineString> spiralToLinestring(const geometry &geoParam) const;
+    std::auto_ptr<OGRLineString> poly3ToLinestring(const geometry &geoParam) const;
     std::auto_ptr<OGRLineString> toOGRGeometry(const geometry& xodrGeometry) const;
     OGRMultiLineString toOGRGeometry(const planView& planView) const;
+    
+    OGRLineString* sampleArc(const double length, const double curvature,
+            const double angleStepSizeDegrees) const;
     
     /**
      * Samples a "default" Euler spiral, i.e. a spiral with start curvature 0.0. The sample points are created
@@ -73,6 +76,9 @@ public:
     // TODO Move sampleDistance out into layer creation option
     double sampleDefaultSpiral(const double length, const double endCurvature, const double sampleDistance,
             OGRLineString* lineString) const;
+    
+    void samplePoly3(const double length, const double a, const double b, const double c, const double d,
+            const double sampleDistance, OGRLineString* lineString) const;
     
     int getNumberOfRoads();
     std::string getGeoReferenceString();

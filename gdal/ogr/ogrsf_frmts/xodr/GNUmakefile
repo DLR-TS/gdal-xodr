@@ -1,7 +1,7 @@
 include ../../../GDALmake.opt
 include XODRmake.opt
 
-OBJ = xodr.o ogrxodrdriver.o ogrxodrdatasource.o ogrxodrlayer.o MatrixTransformations2D.o
+OBJ = xodr.o ogrxodrdriver.o ogrxodrdatasource.o ogrxodrlayer.o MatrixTransformations2D.o CubicPolynomials.o
 
 CPPFLAGS	:=	$(GDAL_INCLUDE) $(XSD_INCLUDE) $(ODRSPIRAL_INCLUDE) $(XODR_INCLUDE) $(CPPFLAGS)
 

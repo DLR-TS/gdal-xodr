@@ -9,7 +9,7 @@ As of OpenDRIVE version 1.4 the specified coordinate reference system, given as 
 - [x] `arc`
 - [x] `spiral`, with one of `curvStart` or `curvEnd` `!= 0` and the other respectively `== 0`
 - [ ] `spiral`, with both `curvStart` and `curvEnd` `!= 0`
-- [ ] `poly3`
+- [x] `poly3`
 - [ ] `paramPoly3`
 
 ## Further To-Dos

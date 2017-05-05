@@ -23,10 +23,8 @@
  ****************************************************************************/
 
 extern "C" {
-#include <odrSpiral.h>
+    #include <odrSpiral.h>
 }
-#include "xodr.h"
-#include "ogr_geometry.h"
 #include <cmath>
 #include <iostream>
 #include <memory>   
@@ -36,6 +34,9 @@ extern "C" {
 #include "cpl_conv.h"
 #include <OpenDRIVE_1.4H.h>
 #include <sstream>
+#include "xodr.h"
+#include "ogr_geometry.h"
+#include "CubicPolynomials.h"
 
 using namespace std;
 using namespace xml_schema;
@@ -100,7 +101,7 @@ void XODR::integrateGeometryParts(OGRMultiLineString* ogrRoad, const double tole
                     pred->setPoint(numPts - 1, currentStart);
                 } else {
                     CPLError(CE_Warning, CPLE_AppDefined,
-                            "Road geometry parts are disjoint at point (%lf, %lf) and have a distance greater than %lf", 
+                            "Road geometry parts are disjoint at point (%lf, %lf) and have a distance greater than %lf",
                             currentStart->getX(), currentStart->getY(), tolerance);
                 }
             }
@@ -118,7 +119,7 @@ std::auto_ptr<OGRLineString> XODR::toOGRGeometry(const geometry& xodrGeometry) c
     } else if (xodrGeometry.spiral().present()) {
         convertedGeom = spiralToLinestring(xodrGeometry);
     } else if (xodrGeometry.poly3().present()) {
-        CPLError(CE_Warning, CPLE_NotSupported, "Geometries of type poly3 not supported");
+        convertedGeom = poly3ToLinestring(xodrGeometry);
     } else if (xodrGeometry.paramPoly3().present()) {
         CPLError(CE_Warning, CPLE_NotSupported, "Geometries of type paramPoly3 not supported");
     }
@@ -152,138 +153,23 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom) const {
     // Basic geometry attributes    
     double xStart = geom.x().get();
     double yStart = geom.y().get();
-    double heading = geom.hdg().get();
+    double hdg = geom.hdg().get();
     double length = geom.length().get();
 
     // Arc attributes
     const geometry::arc_optional& arc = geom.arc();
     double curvature = arc->curvature().get();
 
-    // *********     Step 1 : Arc definition     ************
-    // To find the points that define the arc (Xo,Yo), (Xm,Ym) and (Xe,Ye)
-    // General formula for finding points
-    // for polar coordinates with center (0,0)
+    OGRLineString* arcGeom = sampleArc(length, curvature, 0);
 
-    double r = 1 / abs(curvature);
-    double alpha = length / r;
-
-    double alpha_0 = 0;
-    double xo = 0;
-    double yo = 0;
-    double xm = 0;
-    double ym = 0;
-    double xe = 0;
-    double ye = 0;
-
-    //   For negative curvature, the points are given by
-    //   x = r*sin  and  y = r*-cos 
-    if (curvature > 0) {
-
-        // Initial point: alpha = 0
-        alpha_0 = 0;
-        xo = r * sin(alpha_0);
-        yo = r * (-cos(alpha_0));
-
-        // Middle point: angle = alpha/2
-        xm = r * sin(alpha / 2);
-        ym = r * (-cos(alpha / 2));
-
-        // End point: angle = alpha
-        xe = r * sin(alpha);
-        ye = r * (-cos(alpha));
-
-    } else {
-        //  [!] For negative curvature, the points are given by
-        //   x = r*sin  and  y = r*cos 
-
-        // Initial point: alpha = 0
-        alpha_0 = 0;
-        xo = r * sin(alpha_0);
-        yo = r * (cos(alpha_0));
-
-        // Middle point: angle = alpha/2
-        xm = r * sin(alpha / 2);
-        ym = r * (cos(alpha / 2));
-
-        // End point: angle = alpha
-        xe = r * sin(alpha);
-        ye = r * (cos(alpha));
-    }
-
-    // *********  Step 2 : Arc Translation ************
-    // Tranlation of the points with the Translation matrix T 
-    // General formula for finding the points 
-    // XY_T = T + P    T = [0, r]
-
-    // Variables initialization 
-    double xt = 0;
-    double yt = 0;
-
-    // Translation matrix definition for positive curvature
-    if (curvature > 0) {
-        xt = 0;
-        yt = r;
-    } else {
-        xt = 0;
-        yt = -r;
-    }
-
-    // Translation: Initial point
-    double xo_t = xt + xo;
-    double yo_t = yt + yo;
-
-    // Translation: Middle point
-    double xm_t = xt + xm;
-    double ym_t = yt + ym;
-
-    // Translation: End point
-    double xe_t = xt + xe;
-    double ye_t = yt + ye;
-
-
-    /* *********  Step 3 : Arc Rotation  ************
-    // Rotation of the points with the heading
-    // General formula for finding the points 
-    // R =  cos  -sin
-    //      sin   cos								 */
-
-    // Rotation: Initial point
-    xo = xo_t * cos(heading) - yo_t * sin(heading);
-    yo = xo_t * sin(heading) + yo_t * cos(heading);
-
-    // Rotation: Middle point
-    xm = xm_t * cos(heading) - ym_t * sin(heading);
-    ym = xm_t * sin(heading) + ym_t * cos(heading);
-
-    // Rotation: End point
-    xe = xe_t * cos(heading) - ye_t * sin(heading);
-    ye = xe_t * sin(heading) + ye_t * cos(heading);
-
-
-    /* *********  Step 4 : Translation from polar to OpenDRIVE coordinates *******
-    // From origen (0,0) of the polar coordinates to the Openroad (x,y)  
-    // coordinates plane. 
-    // coord_final (x_f, y_f) = polar + opendrive								*/
-
-    // Translation: Initial point
-    double xo_f = xo + xStart;
-    double yo_f = xo + yStart;
-
-    // Translation: Middle point
-    double xm_f = xm + xStart;
-    double ym_f = ym + yStart;
-
-    // Translation: End point
-    double xe_f = xe + xStart;
-    double ye_f = ye + yStart;
-
-
-    // *********  Step 5 : Create the geometry as OGRLineString *******
-    // Sample rate, given by sampling angle: 15 grades
-    // Initial, middle and end points with translation (r), rotation(hdg) and plane translation
-
-    std::auto_ptr<OGRLineString> arcLineString(OGRGeometryFactory::curveToLineString(xo_f, yo_f, 0, xm_f, ym_f, 0, xe_f, ye_f, 0, false, 15, NULL));
-    return arcLineString;
+    Matrix2D m;
+    MatrixTransformations::initMatrix(m);
+    // T(geomStartPt) x R(geomHdg) x geometry
+    MatrixTransformations::translate(m, xStart, yStart);
+    MatrixTransformations::rotate(m, hdg);
+    transformLineString(arcGeom, m);
+    
+    return std::auto_ptr<OGRLineString>(arcGeom);
 }
 
 std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) const {
@@ -329,6 +215,94 @@ std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) cons
     return lineString;
 }
 
+std::auto_ptr<OGRLineString> XODR::poly3ToLinestring(const geometry &geom) const {
+    // Basic geometry attributes    
+    double xStart = geom.x().get();
+    double yStart = geom.y().get();
+    double hdg = geom.hdg().get();
+    double length = geom.length().get();
+
+    // Poly3 attributes
+    const geometry::poly3_optional poly3 = geom.poly3();
+    double a = poly3->a().get();
+    double b = poly3->b().get();
+    double c = poly3->c().get();
+    double d = poly3->d().get();
+
+    std::auto_ptr<OGRLineString> lineString(new OGRLineString());
+    samplePoly3(length, a, b, c, d, 0.5, lineString.get());
+
+    Matrix2D m;
+    MatrixTransformations::initMatrix(m);
+    // T(geomStartPt) x R(geomHdg) x geometry
+    MatrixTransformations::translate(m, xStart, yStart);
+    MatrixTransformations::rotate(m, hdg);
+    transformLineString(lineString.get(), m);
+
+    return lineString;
+}
+
+OGRLineString* XODR::sampleArc(const double length, const double curvature,
+            const double angleStepSizeDegrees) const {
+    
+    // *********     Step 1 : Arc definition     ************
+    // To find the points that define the arc (Xo,Yo), (Xm,Ym) and (Xe,Ye)
+    // General formula for finding points
+    // for polar coordinates with center (0,0)
+
+    double r = 1 / abs(curvature);
+    double alpha = length / r;
+
+    double xStart,  yStart;
+    double xMiddle, yMiddle;
+    double xEnd,    yEnd;
+
+    //   For positive curvature, the points are given by
+    //   x = r*sin  and  y = r*-cos 
+    if (curvature > 0) {
+
+        // Initial point: alpha = 0
+        xStart = r * sin(0.0);
+        yStart = r * (-cos(0.0));
+
+        // Middle point: angle = alpha/2
+        xMiddle = r * sin(alpha / 2);
+        yMiddle = r * (-cos(alpha / 2));
+
+        // End point: angle = alpha
+        xEnd = r * sin(alpha);
+        yEnd = r * (-cos(alpha));
+
+    } else {
+        //  [!] For negative curvature, the points are given by
+        //   x = r*sin  and  y = r*cos 
+
+        // Initial point: alpha = 0
+        xStart = r * sin(0.0);
+        yStart = r * (cos(0.0));
+
+        // Middle point: angle = alpha/2
+        xMiddle = r * sin(alpha / 2);
+        yMiddle = r * (cos(alpha / 2));
+
+        // End point: angle = alpha
+        xEnd = r * sin(alpha);
+        yEnd = r * (cos(alpha));
+    }
+    
+    OGRLineString* arc = OGRGeometryFactory::curveToLineString(xStart, yStart, 0, xMiddle, yMiddle, 0, xEnd, yEnd, 0, 
+            false, angleStepSizeDegrees, NULL);
+    
+    // Translate by radius to obtain arc's start point at the origin (0, 0)
+    // for later following transformation into road coordinate system
+    double yt = curvature > 0 ? r : -r;
+    Matrix2D m;
+    MatrixTransformations::initMatrix(m);
+    MatrixTransformations::translate(m, 0, yt);
+    transformLineString(arc, m);
+    return arc;
+}
+
 double XODR::sampleDefaultSpiral(const double length, const double endCurvature, const double sampleDistance,
         OGRLineString* lineString) const {
     double curvatureChange = endCurvature / length;
@@ -348,6 +322,27 @@ double XODR::sampleDefaultSpiral(const double length, const double endCurvature,
     OGRPoint ptEnd(x, y);
     lineString->addPoint(&ptEnd);
     return t;
+}
+
+void XODR::samplePoly3(const double length, const double a, const double b, const double c, const double d,
+        const double sampleDistance, OGRLineString* lineString) const {
+    double x;
+    double y;
+    CubicPolynomial poly3(a, b, c, d);
+    
+    // First and all intermediate points
+    for (double s = 0.0; s < length; s += sampleDistance) {
+        x = s;
+        y = poly3.value(x);
+        OGRPoint ptIntermediate(x, y);
+        lineString->addPoint(&ptIntermediate);
+    }
+    
+    // End point
+    x = length;
+    y = poly3.value(x);
+    OGRPoint ptEnd(x, y);
+    lineString->addPoint(&ptEnd);
 }
 
 int XODR::getNumberOfRoads() {

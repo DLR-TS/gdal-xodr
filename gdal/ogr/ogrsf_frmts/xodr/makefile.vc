@@ -1,4 +1,4 @@
-OBJ	= ogrxodrdriver.obj ogrxodrdatasource.obj ogrxodrlayer.obj xodr.obj MatrixTransformations2D.obj
+OBJ	= ogrxodrdriver.obj ogrxodrdatasource.obj ogrxodrlayer.obj xodr.obj MatrixTransformations2D.obj CubicPolynomials.obj
 
 GDAL_ROOT	=	..\..\..
 
