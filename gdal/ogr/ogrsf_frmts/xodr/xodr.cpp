@@ -23,7 +23,7 @@
  ****************************************************************************/
 
 extern "C" {
-    #include <odrSpiral.h>
+#include <odrSpiral.h>
 }
 #include <cmath>
 #include <iostream>
@@ -115,13 +115,13 @@ std::auto_ptr<OGRLineString> XODR::toOGRGeometry(const geometry& xodrGeometry) c
     if (xodrGeometry.line().present()) {
         convertedGeom = lineToLinestring(xodrGeometry);
     } else if (xodrGeometry.arc().present()) {
-        convertedGeom = arcToLinestring(xodrGeometry);
+        convertedGeom = arcToLinestring(xodrGeometry, 0); // default angle step size
     } else if (xodrGeometry.spiral().present()) {
-        convertedGeom = spiralToLinestring(xodrGeometry);
+        convertedGeom = spiralToLinestring(xodrGeometry, 0.5);
     } else if (xodrGeometry.poly3().present()) {
-        convertedGeom = poly3ToLinestring(xodrGeometry);
+        convertedGeom = poly3ToLinestring(xodrGeometry, 0.5);
     } else if (xodrGeometry.paramPoly3().present()) {
-        CPLError(CE_Warning, CPLE_NotSupported, "Geometries of type paramPoly3 not supported");
+        convertedGeom = paramPoly3ToLinestring(xodrGeometry, 0.5);
     }
     return convertedGeom;
 }
@@ -149,7 +149,7 @@ std::auto_ptr<OGRLineString> XODR::lineToLinestring(const geometry &geom) const 
     return lineString;
 }
 
-std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom) const {
+std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom, const double angleStepSize) const {
     // Basic geometry attributes    
     double xStart = geom.x().get();
     double yStart = geom.y().get();
@@ -160,7 +160,7 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom) const {
     const geometry::arc_optional& arc = geom.arc();
     double curvature = arc->curvature().get();
 
-    OGRLineString* arcGeom = sampleArc(length, curvature, 0);
+    OGRLineString* arcGeom = sampleArc(length, curvature, angleStepSize);
 
     Matrix2D m;
     MatrixTransformations::initMatrix(m);
@@ -168,11 +168,11 @@ std::auto_ptr<OGRLineString> XODR::arcToLinestring(const geometry &geom) const {
     MatrixTransformations::translate(m, xStart, yStart);
     MatrixTransformations::rotate(m, hdg);
     transformLineString(arcGeom, m);
-    
+
     return std::auto_ptr<OGRLineString>(arcGeom);
 }
 
-std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) const {
+std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom, const double sampleDistance) const {
     // Basic geometry attributes
     double xStart = geom.x().get();
     double yStart = geom.y().get();
@@ -188,14 +188,14 @@ std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) cons
     Matrix2D m;
     MatrixTransformations::initMatrix(m);
     if (startCurvature == 0.0 && endCurvature != 0.0) {
-        sampleDefaultSpiral(length, endCurvature, 0.5, lineString.get());
+        sampleDefaultSpiral(length, endCurvature, sampleDistance, lineString.get());
 
         // T(geomStartPt) x R(geomHdg) x geometry
         MatrixTransformations::translate(m, xStart, yStart);
         MatrixTransformations::rotate(m, hdg);
         transformLineString(lineString.get(), m);
     } else if (startCurvature != 0.0 && endCurvature == 0.0) {
-        double tangentDir = sampleDefaultSpiral(length, -startCurvature, 0.5, lineString.get());
+        double tangentDir = sampleDefaultSpiral(length, -startCurvature, sampleDistance, lineString.get());
         lineString->reversePoints();
         tangentDir += M_PI; // To comply with the line reversion
         OGRPoint lineStart;
@@ -215,7 +215,7 @@ std::auto_ptr<OGRLineString> XODR::spiralToLinestring(const geometry &geom) cons
     return lineString;
 }
 
-std::auto_ptr<OGRLineString> XODR::poly3ToLinestring(const geometry &geom) const {
+std::auto_ptr<OGRLineString> XODR::poly3ToLinestring(const geometry &geom, const double sampleDistance) const {
     // Basic geometry attributes    
     double xStart = geom.x().get();
     double yStart = geom.y().get();
@@ -230,7 +230,46 @@ std::auto_ptr<OGRLineString> XODR::poly3ToLinestring(const geometry &geom) const
     double d = poly3->d().get();
 
     std::auto_ptr<OGRLineString> lineString(new OGRLineString());
-    samplePoly3(length, a, b, c, d, 0.5, lineString.get());
+    samplePoly3(length, a, b, c, d, sampleDistance, lineString.get());
+
+    Matrix2D m;
+    MatrixTransformations::initMatrix(m);
+    // T(geomStartPt) x R(geomHdg) x geometry
+    MatrixTransformations::translate(m, xStart, yStart);
+    MatrixTransformations::rotate(m, hdg);
+    transformLineString(lineString.get(), m);
+
+    return lineString;
+}
+
+std::auto_ptr<OGRLineString> XODR::paramPoly3ToLinestring(const geometry &geom, const double sampleDistance) const {
+    // Basic geometry attributes    
+    double xStart = geom.x().get();
+    double yStart = geom.y().get();
+    double hdg = geom.hdg().get();
+    double length = geom.length().get();
+
+    // ParamPoly3 attributes
+    const geometry::paramPoly3_optional paramPoly3 = geom.paramPoly3();
+    double uA = paramPoly3->aU().get();
+    double uB = paramPoly3->bU().get();
+    double uC = paramPoly3->cU().get();
+    double uD = paramPoly3->dU().get();
+    double vA = paramPoly3->aV().get();
+    double vB = paramPoly3->bV().get();
+    double vC = paramPoly3->cV().get();
+    double vD = paramPoly3->dV().get();
+    pRange parameterRange = paramPoly3->pRange().get();
+
+    std::auto_ptr<OGRLineString> lineString(new OGRLineString());
+    switch (parameterRange) {
+        case pRange::value::arcLength: 
+            sampleParamPoly3(length, uA, uB, uC, uD, vA, vB, vC, vD, sampleDistance, lineString.get());
+            break;
+        case pRange::value::normalized: 
+            sampleParamPoly3(1.0, uA, uB, uC, uD, vA, vB, vC, vD, sampleDistance / length, lineString.get());
+            break;
+    }
 
     Matrix2D m;
     MatrixTransformations::initMatrix(m);
@@ -243,8 +282,8 @@ std::auto_ptr<OGRLineString> XODR::poly3ToLinestring(const geometry &geom) const
 }
 
 OGRLineString* XODR::sampleArc(const double length, const double curvature,
-            const double angleStepSizeDegrees) const {
-    
+        const double angleStepSizeDegrees) const {
+
     // *********     Step 1 : Arc definition     ************
     // To find the points that define the arc (Xo,Yo), (Xm,Ym) and (Xe,Ye)
     // General formula for finding points
@@ -253,9 +292,9 @@ OGRLineString* XODR::sampleArc(const double length, const double curvature,
     double r = 1 / abs(curvature);
     double alpha = length / r;
 
-    double xStart,  yStart;
+    double xStart, yStart;
     double xMiddle, yMiddle;
-    double xEnd,    yEnd;
+    double xEnd, yEnd;
 
     //   For positive curvature, the points are given by
     //   x = r*sin  and  y = r*-cos 
@@ -289,10 +328,10 @@ OGRLineString* XODR::sampleArc(const double length, const double curvature,
         xEnd = r * sin(alpha);
         yEnd = r * (cos(alpha));
     }
-    
-    OGRLineString* arc = OGRGeometryFactory::curveToLineString(xStart, yStart, 0, xMiddle, yMiddle, 0, xEnd, yEnd, 0, 
+
+    OGRLineString* arc = OGRGeometryFactory::curveToLineString(xStart, yStart, 0, xMiddle, yMiddle, 0, xEnd, yEnd, 0,
             false, angleStepSizeDegrees, NULL);
-    
+
     // Translate by radius to obtain arc's start point at the origin (0, 0)
     // for later following transformation into road coordinate system
     double yt = curvature > 0 ? r : -r;
@@ -329,7 +368,7 @@ void XODR::samplePoly3(const double length, const double a, const double b, cons
     double x;
     double y;
     CubicPolynomial poly3(a, b, c, d);
-    
+
     // First and all intermediate points
     for (double s = 0.0; s < length; s += sampleDistance) {
         x = s;
@@ -337,10 +376,32 @@ void XODR::samplePoly3(const double length, const double a, const double b, cons
         OGRPoint ptIntermediate(x, y);
         lineString->addPoint(&ptIntermediate);
     }
-    
+
     // End point
     x = length;
     y = poly3.value(x);
+    OGRPoint ptEnd(x, y);
+    lineString->addPoint(&ptEnd);
+}
+
+void XODR::sampleParamPoly3(const double range, const double uA, const double uB, const double uC, const double uD,
+        const double vA, const double vB, const double vC, const double vD,
+        const double stepSize, OGRLineString* lineString) const {
+    double x;
+    double y;
+    ParametricCubicPolynomial pramPoly3(uA, uB, uC, uD, vA, vB, vC, vD);
+
+    // First and all intermediate points
+    for (double p = 0.0; p < range; p += stepSize) {
+        x = pramPoly3.valueU(p);
+        y = pramPoly3.valueV(p);
+        OGRPoint ptIntermediate(x, y);
+        lineString->addPoint(&ptIntermediate);
+    }
+
+    // End point
+    x = pramPoly3.valueU(range);
+    y = pramPoly3.valueV(range);
     OGRPoint ptEnd(x, y);
     lineString->addPoint(&ptEnd);
 }

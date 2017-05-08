@@ -42,21 +42,14 @@ private:
 class ParametricCubicPolynomial {
 public:
     ParametricCubicPolynomial(const double coeffUA, const double coeffUB, const double coeffUC, const double coeffUD,
-            const double coeffVA, const double coeffVB, const double coeffVC, const double coeffVD, 
-            const std::string parameterRange);
+            const double coeffVA, const double coeffVB, const double coeffVC, const double coeffVD);
     ParametricCubicPolynomial(const ParametricCubicPolynomial& orig);
     virtual ~ParametricCubicPolynomial();
-    double value(const double parameter);
+    double valueU(const double parameter);
+    double valueV(const double parameter);
 private:
-    double uA;
-    double uB;
-    double uC;
-    double uD;
-    double vA;
-    double vB;
-    double vC;
-    double vD;
-    std::string parameterRange;
+    CubicPolynomial polyU;
+    CubicPolynomial polyV;
 };
 
 #endif /* CUBICPOLYNOMIALS_H */

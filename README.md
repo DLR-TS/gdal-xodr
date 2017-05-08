@@ -4,13 +4,7 @@ By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.
 This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library (OGR). Currently, the still prototypical OpenDRIVE driver is not yet integrated into GDAL but can be built as shared library against GDAL to provide a pluggable extension. For the development of our driver the original GDAL repository has been forked for easier integration into GDAL later.
 
 ## Current Functionality
-As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now one `MultiLineString` layer is created containing just the road reference lines converted from the following road geometry types:
-- [x] `line`
-- [x] `arc`
-- [x] `spiral`, with one of `curvStart` or `curvEnd` `!= 0` and the other respectively `== 0`
-- [ ] `spiral`, with both `curvStart` and `curvEnd` `!= 0`
-- [x] `poly3`
-- [ ] `paramPoly3`
+As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now one `MultiLineString` layer is created containing just the road reference line geometries.
 
 ## Further To-Dos
 Geometry:
@@ -22,6 +16,7 @@ Geometry:
   - [ ] driving lane boundaries
   - [ ] road marks
   - [ ] linear objects (e.g. guardrails, barriers)
+- [ ] Implement sampling of `spiral` geometries, with both `curvStart` and `curvEnd` `!= 0`
 
 Misc:
 - [ ] Catch invalid XODR file path ("terminate called after throwing an instance of 'xsd::cxx::tree::parsing<char>'")
@@ -35,6 +30,7 @@ The driver works only for GDAL 2.x. and does not support GDAL 1.x. It depends on
 - [xodr](https://github.com/DLR-TS/xodr)
 - [CodeSynthesis XSD](http://codesynthesis.com/products/xsd/)
 - [Xerces-C++](https://xerces.apache.org/xerces-c/)
+- [GEOS](https://trac.osgeo.org/geos/) support enabled in the GDAL base library
 
 and building it is divided into
 
@@ -54,7 +50,7 @@ We basically follow the official [GDAL building instructions for Unix](https://t
 Configure GDAL to support creation of shared libraries. At least for our Ubuntu 16.04 test environment we also had to disable libtool because it caused problems during later linking of the driver shared library:
 ```bash
 cd <gdal>/gdal/
-./configure --prefix ~/dev/gdal/gdal/build -enable-shared --without-libtool
+./configure --prefix ~/dev/gdal/gdal/build -enable-shared --without-libtool --with-geos=yes
 ```
 For Debug configuration append `--enable-debug` to `./configure`. Build with
 ```bash

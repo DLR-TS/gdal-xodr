@@ -25,14 +25,14 @@
 #include <cmath>
 
 CubicPolynomial::CubicPolynomial(const double coeffA, const double coeffB, const double coeffC, const double coeffD)
-    : a(coeffA), b(coeffB), c(coeffC), d(coeffD) {
+: a(coeffA), b(coeffB), c(coeffC), d(coeffD) {
 }
 
 CubicPolynomial::CubicPolynomial(const CubicPolynomial& orig) {
     a = orig.a;
     b = orig.b;
     c = orig.c;
-    d = orig.d; 
+    d = orig.d;
 }
 
 CubicPolynomial::~CubicPolynomial() {
@@ -40,4 +40,24 @@ CubicPolynomial::~CubicPolynomial() {
 
 double CubicPolynomial::value(const double x) {
     return a + b * x + c * pow(x, 2) + d * pow(x, 3);
+}
+
+ParametricCubicPolynomial::ParametricCubicPolynomial(const double coeffUA, const double coeffUB, const double coeffUC,
+        const double coeffUD, const double coeffVA, const double coeffVB, const double coeffVC, const double coeffVD)
+: polyU(coeffUA, coeffUB, coeffUC, coeffUD), polyV(coeffVA, coeffVB, coeffVC, coeffVD) {
+}
+
+ParametricCubicPolynomial::ParametricCubicPolynomial(const ParametricCubicPolynomial& orig) 
+: polyU(orig.polyU), polyV(orig.polyV) {
+}
+
+ParametricCubicPolynomial::~ParametricCubicPolynomial() {
+}
+
+double ParametricCubicPolynomial::valueU(const double parameter) {
+    return polyU.value(parameter);
+}
+
+double ParametricCubicPolynomial::valueV(const double parameter) {
+    return polyV.value(parameter);
 }

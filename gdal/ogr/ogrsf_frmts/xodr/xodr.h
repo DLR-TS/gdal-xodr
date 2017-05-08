@@ -43,7 +43,7 @@ public:
     ~XODR();
     int getMinorRevision();
     const OpenDRIVE::road_sequence& getXODRRoads() const;
-    
+
     /**
      * Closes small gaps between road geometry parts in 2D. Roads as MultiLineStrings may consist of multiple individually 
      * sampled geometry parts which are not necessarily topologically touching. This can be replaced by proper snapping
@@ -53,17 +53,29 @@ public:
      */
     // TODO Move distance tolerance out into layer creation option
     void integrateGeometryParts(OGRMultiLineString* ogrRoad, const double tolerance) const;
-    
+
     std::auto_ptr<OGRLineString> lineToLinestring(const geometry &geoParam) const;
-    std::auto_ptr<OGRLineString> arcToLinestring(const geometry &geoParam) const;
-    std::auto_ptr<OGRLineString> spiralToLinestring(const geometry &geoParam) const;
-    std::auto_ptr<OGRLineString> poly3ToLinestring(const geometry &geoParam) const;
+    // TODO Move angleStepSize out into layer creation option
+    std::auto_ptr<OGRLineString> arcToLinestring(const geometry &geoParam, const double angleStepSize = 0) const;
+    // TODO Move sampleDistance out into layer creation option
+    std::auto_ptr<OGRLineString> spiralToLinestring(const geometry &geoParam, const double sampleDistance) const;
+    // TODO Move sampleDistance out into layer creation option
+    std::auto_ptr<OGRLineString> poly3ToLinestring(const geometry &geoParam, const double sampleDistance) const;
+    // TODO Move sampleDistance out into layer creation option
+    std::auto_ptr<OGRLineString> paramPoly3ToLinestring(const geometry &geoParam, const double sampleDistance) const;
     std::auto_ptr<OGRLineString> toOGRGeometry(const geometry& xodrGeometry) const;
     OGRMultiLineString toOGRGeometry(const planView& planView) const;
-    
+
+    /**
+     * Samples an arc.
+     * @param length Arc length.
+     * @param curvature Arc curvature.
+     * @param angleStepSizeDegrees The arcs sampling angle step size in degrees.
+     * @return The sampled arc.
+     */
     OGRLineString* sampleArc(const double length, const double curvature,
             const double angleStepSizeDegrees) const;
-    
+
     /**
      * Samples a "default" Euler spiral, i.e. a spiral with start curvature 0.0. The sample points are created
      * relative to the coordinate system origin (0, 0).
@@ -73,16 +85,44 @@ public:
      * @param lineString The LineString to create from the sample points.
      * @return Tangent direction at sampled end point in radians. This is useful for rotations.
      */
-    // TODO Move sampleDistance out into layer creation option
     double sampleDefaultSpiral(const double length, const double endCurvature, const double sampleDistance,
             OGRLineString* lineString) const;
-    
+
+    /**
+     * Samples a cubic polynomial. The sample points are created relative to the coordinate system origin (0, 0).
+     * @param length Length of the polynomial.
+     * @param a Polynomial parameter a.
+     * @param b Polynomial parameter b.
+     * @param c Polynomial parameter c.
+     * @param d Polynomial parameter d.
+     * @param sampleDistance Point sample distance in coordinate system units (usually metres).
+     * @param lineString The LineString to create from the sample points.
+     */
     void samplePoly3(const double length, const double a, const double b, const double c, const double d,
             const double sampleDistance, OGRLineString* lineString) const;
-    
+
+    /**
+     * Samples a parametric cubic polynomial. The sample points are created relative to the coordinate system 
+     * origin (0, 0).
+     * @param range Either the length of the geometry (of this cubic polynomial) or 1.0 in case of a normalised range.
+     * @param uA Polynomial parameter uA.
+     * @param uB Polynomial parameter uB.
+     * @param uC Polynomial parameter uC.
+     * @param uD Polynomial parameter uD.
+     * @param vA Polynomial parameter vA.
+     * @param vB Polynomial parameter vB.
+     * @param vC Polynomial parameter vC.
+     * @param vD Polynomial parameter vD.
+     * @param stepSize The sample step size scaled appropriately to the range parameter.
+     * @param lineString The LineString to create from the sample points.
+     */
+    void sampleParamPoly3(const double range, const double uA, const double uB, const double uC, const double uD,
+            const double vA, const double vB, const double vC, const double vD,
+            const double stepSize, OGRLineString* lineString) const;
+
     int getNumberOfRoads();
     std::string getGeoReferenceString();
-    
+
     /**
      * Performs a 2D affine geometry transformation with the help of a transformation matrix.
      * @param geom The geometry to transform.
