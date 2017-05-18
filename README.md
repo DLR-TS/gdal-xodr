@@ -80,14 +80,20 @@ We basically follow the official [GDAL building instructions for Windows](https:
 ```bash
 generate_vcxproj.bat 14.0 64 gdal_vs2015
 ```
-Open the generated `.vcxproj` in Visual Studio and build GDAL for the desired configuration (e.g. Release or Debug). Alternatively, for a Release build use `nmake` from command line:
+Now configure your GEOS dependency by adding its include directory and library path into a _new_ lokal NMake configuration file `nmake.local`. It should contain the following (concider `nmake.opt` as a reference):
+```bash
+GEOS_DIR=D:\dev\geos\distro
+GEOS_CFLAGS = -I$(GEOS_DIR)/include -DHAVE_GEOS
+GEOS_LIB     = $(GEOS_DIR)/lib/geos_c.lib
+```
+Open the generated `.vcxproj` in Visual Studio and build GDAL for the desired configuration (e.g. Release or Debug). Alternatively, for an exemplary Release build use `nmake` from command line:
 ```bash
 cd <gdal>/gdal/
 nmake -f makefile.vc MSVC_VER=1900 WIN64=1
 ```
-Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` in a lokal configuration file `nmake.lokal` 
+Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` by adding the following in your lokal configuration file `nmake.lokal`
 ```bash
-echo GDAL_HOME="C:\dev\gdal\gdal\build" > nmake.lokal
+GDAL_HOME="C:\dev\gdal\gdal\build"
 ```
 and run `nmake install` afterwards
 ```bash
