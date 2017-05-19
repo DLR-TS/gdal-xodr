@@ -1447,19 +1447,19 @@ bool ENVIDataset::ProcessMapinfo( const char *pszMapinfo )
                 oSRS.SetWellKnownGeogCS("NAD27");
         }
         else if( STARTS_WITH_CI(papszFields[0], "State Plane (NAD 27)") &&
-                 nCount >= 7 )
+                 nCount > 7 )
         {
             oSRS.SetStatePlane(ITTVISToUSGSZone(atoi(papszFields[7])), FALSE);
         }
         else if( STARTS_WITH_CI(papszFields[0], "State Plane (NAD 83)") &&
-                 nCount >= 7 )
+                 nCount > 7 )
         {
             oSRS.SetStatePlane(ITTVISToUSGSZone(atoi(papszFields[7])), TRUE);
         }
         else if( STARTS_WITH_CI(papszFields[0], "Geographic Lat") &&
-                 nCount >= 8 )
+                 nCount > 7 )
         {
-            if( nCount >= 8 && strstr(papszFields[7], "=") == NULL )
+            if( strstr(papszFields[7], "=") == NULL )
                 SetENVIDatum(&oSRS, papszFields[7]);
             else
                 oSRS.SetWellKnownGeogCS("WGS84");

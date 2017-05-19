@@ -164,7 +164,15 @@ bool OGRPDSDataSource::LoadTable( const char* pszFilename,
     {
         osTableFilename = GetKeywordSub(osTableLink, 1, "");
         CPLString osStartRecord = GetKeywordSub(osTableLink, 2, "");
-        nStartBytes = (atoi(osStartRecord.c_str()) - 1) * nRecordSize;
+        nStartBytes = atoi(osStartRecord.c_str()) - 1;
+        if( nStartBytes < 0 ||
+            (( nRecordSize > 0 && nStartBytes > INT_MAX / nRecordSize )) )
+        {
+            CPLError(CE_Failure, CPLE_NotSupported,
+                     "Invalid StartBytes value");
+            return false;
+        }
+        nStartBytes *= nRecordSize;
         if (osTableFilename.empty() || osStartRecord.empty() ||
             nStartBytes < 0)
         {
@@ -183,8 +191,22 @@ bool OGRPDSDataSource::LoadTable( const char* pszFilename,
             osTableFilename[0] <= '9')
         {
             nStartBytes = atoi(osTableFilename.c_str()) - 1;
+            if( nStartBytes < 0)
+            {
+                CPLError(CE_Failure, CPLE_NotSupported,
+                        "Cannot parse %s line", osTableFilename.c_str());
+                return false;
+            }
             if (strstr(osTableFilename.c_str(), "<BYTES>") == NULL)
+            {
+                if( nRecordSize > 0 && nStartBytes > INT_MAX / nRecordSize )
+                {
+                    CPLError(CE_Failure, CPLE_NotSupported,
+                             "Too big StartBytes value");
+                    return false;
+                }
                 nStartBytes *= nRecordSize;
+            }
             osTableFilename = pszFilename;
         }
         else

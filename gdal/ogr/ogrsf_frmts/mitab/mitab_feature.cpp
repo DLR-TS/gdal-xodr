@@ -2038,6 +2038,13 @@ int TABPolyline::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
 
         GInt32 nCoordBlockPtr = poPLineHdr->m_nCoordBlockPtr;
         const GUInt32 nCoordDataSize = poPLineHdr->m_nCoordDataSize;
+        if( nCoordDataSize > 1024 * 1024 && 
+            nCoordDataSize > poMapFile->GetFileSize() )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too big nCoordDataSize = %u", nCoordDataSize);
+            return -1;
+        }
         // numLineSections = poPLineHdr->m_numLineSections; // Always 1
         m_bSmooth = poPLineHdr->m_bSmooth;
 
@@ -2145,6 +2152,23 @@ int TABPolyline::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
             poMapFile->ReadPenDef(m_nPenDefIndex, &m_sPenDef);
         }
 
+        const int nMinSizeOfSection = 24;
+        if( numLineSections > INT_MAX / nMinSizeOfSection )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many numLineSections");
+            return -1;
+        }
+        const GUInt32 nMinimumBytesForSections =
+                                nMinSizeOfSection * numLineSections;
+        if( nMinimumBytesForSections > 1024 * 1024 && 
+            nMinimumBytesForSections > poMapFile->GetFileSize() )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many numLineSections");
+            return -1;
+        }
+
         /*-------------------------------------------------------------
          * Read data from the coord. block
          *------------------------------------------------------------*/
@@ -2168,6 +2192,17 @@ int TABPolyline::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
             CPLError(CE_Failure, CPLE_FileIO,
                      "Failed reading coordinate data at offset %d",
                      nCoordBlockPtr);
+            CPLFree(pasSecHdrs);
+            return -1;
+        }
+
+        const GUInt32 nMinimumBytesForPoints =
+                        (bComprCoord ? 4 : 8) * numPointsTotal;
+        if( nMinimumBytesForPoints > 1024 * 1024 && 
+            nMinimumBytesForPoints > poMapFile->GetFileSize() )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many numPointsTotal");
             CPLFree(pasSecHdrs);
             return -1;
         }
@@ -3086,6 +3121,7 @@ int TABRegion::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
                 poPolygon = NULL;  // We'll alloc a new polygon next loop.
             }
         }
+        delete poPolygon; // should only trigger on corrupted files
 
         CPLFree(pasSecHdrs);
         CPLFree(panXY);
@@ -4880,6 +4916,14 @@ int TABArc::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
             (540.0-m_dStartAngle);
         m_dEndAngle   = (m_dEndAngle<=180.0) ? (180.0-m_dEndAngle):
             (540.0-m_dEndAngle);
+    }
+
+    if( fabs(m_dEndAngle - m_dStartAngle) >= 721 )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Wrong start and end angles: %f %f",
+                 m_dStartAngle, m_dEndAngle);
+        return -1;
     }
 
     if (poMapFile->GetHeaderBlock()->m_nCoordOriginQuadrant==3 ||

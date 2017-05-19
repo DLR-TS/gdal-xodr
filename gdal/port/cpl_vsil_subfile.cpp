@@ -157,7 +157,10 @@ int VSISubFileHandle::Seek( vsi_l_offset nOffset, int nWhence )
 vsi_l_offset VSISubFileHandle::Tell()
 
 {
-    return VSIFTellL( fp ) - nSubregionOffset;
+    vsi_l_offset nBasePos = VSIFTellL( fp );
+    if( nBasePos >= nSubregionOffset )
+        return nBasePos - nSubregionOffset;
+    return 0;
 }
 
 /************************************************************************/
@@ -332,6 +335,9 @@ VSISubFileFilesystemHandler::Open( const char *pszFilename,
                                    bool /* bSetError */ )
 
 {
+    if( !STARTS_WITH_CI(pszFilename, "/vsisubfile/") )
+        return NULL;
+
     CPLString osSubFilePath;
     vsi_l_offset nOff = 0;
     vsi_l_offset nSize = 0;
@@ -339,6 +345,10 @@ VSISubFileFilesystemHandler::Open( const char *pszFilename,
     if( !DecomposePath( pszFilename, osSubFilePath, nOff, nSize ) )
     {
         errno = ENOENT;
+        return NULL;
+    }
+    if( nOff + nSize < nOff )
+    {
         return NULL;
     }
 
@@ -366,8 +376,33 @@ VSISubFileFilesystemHandler::Open( const char *pszFilename,
     poHandle->nSubregionOffset = nOff;
     poHandle->nSubregionSize = nSize;
 
+    // In read-only mode validate (offset, size) against underlying file size
+    if( strchr(pszAccess, 'r') != NULL && strchr(pszAccess, '+') == NULL )
+    {
+        if( VSIFSeekL( fp, 0, SEEK_END ) != 0 )
+        {
+            poHandle->Close();
+            delete poHandle;
+            return NULL;
+        }
+        vsi_l_offset nFpSize = VSIFTellL(fp);
+        // For a directory, the size will be max(vsi_l_offset) / 2
+        if( nFpSize == ~((vsi_l_offset)(0)) / 2 || nOff > nFpSize )
+        {
+            poHandle->Close();
+            delete poHandle;
+            return NULL;
+        }
+        if( nOff + nSize > nFpSize )
+        {
+            nSize = nFpSize - nOff;
+            poHandle->nSubregionSize = nSize;
+        }
+    }
+
     if( VSIFSeekL( fp, nOff, SEEK_SET ) != 0 )
     {
+        poHandle->Close();
         delete poHandle;
         poHandle = NULL;
     }
@@ -384,6 +419,9 @@ int VSISubFileFilesystemHandler::Stat( const char * pszFilename,
                                        int nFlags )
 
 {
+    if( !STARTS_WITH_CI(pszFilename, "/vsisubfile/") )
+        return -1;
+
     CPLString osSubFilePath;
     vsi_l_offset nOff = 0;
     vsi_l_offset nSize = 0;

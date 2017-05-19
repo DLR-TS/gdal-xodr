@@ -61,10 +61,13 @@ typedef enum {
     /*! Sixteen bit signed integer */           GDT_Int16 = 3,
     /*! Thirty two bit unsigned integer */      GDT_UInt32 = 4,
     /*! Thirty two bit signed integer */        GDT_Int32 = 5,
+    /* TODO?(#6879): GDT_UInt64 */
+    /* TODO?(#6879): GDT_Int64 */
     /*! Thirty two bit floating point */        GDT_Float32 = 6,
     /*! Sixty four bit floating point */        GDT_Float64 = 7,
     /*! Complex Int16 */                        GDT_CInt16 = 8,
     /*! Complex Int32 */                        GDT_CInt32 = 9,
+    /* TODO?(#6879): GDT_CInt64 */
     /*! Complex Float32 */                      GDT_CFloat32 = 10,
     /*! Complex Float64 */                      GDT_CFloat64 = 11,
     GDT_TypeCount = 12          /* maximum type # + 1 */
@@ -74,9 +77,14 @@ int CPL_DLL CPL_STDCALL GDALGetDataTypeSize( GDALDataType );  // Deprecated.
 int CPL_DLL CPL_STDCALL GDALGetDataTypeSizeBits( GDALDataType eDataType );
 int CPL_DLL CPL_STDCALL GDALGetDataTypeSizeBytes( GDALDataType );
 int CPL_DLL CPL_STDCALL GDALDataTypeIsComplex( GDALDataType );
+int CPL_DLL CPL_STDCALL GDALDataTypeIsFloating( GDALDataType );
+int CPL_DLL CPL_STDCALL GDALDataTypeIsSigned( GDALDataType );
 const char CPL_DLL * CPL_STDCALL GDALGetDataTypeName( GDALDataType );
 GDALDataType CPL_DLL CPL_STDCALL GDALGetDataTypeByName( const char * );
 GDALDataType CPL_DLL CPL_STDCALL GDALDataTypeUnion( GDALDataType, GDALDataType );
+GDALDataType CPL_DLL CPL_STDCALL GDALDataTypeUnionWithValue( GDALDataType eDT, double dValue, int bComplex );
+GDALDataType CPL_DLL CPL_STDCALL GDALFindDataType( int nBits, int bSigned, int bFloating, int bComplex );
+GDALDataType CPL_DLL CPL_STDCALL GDALFindDataTypeForValue( double dValue, int bComplex );
 double CPL_DLL GDALAdjustValueToDataType( GDALDataType eDT, double dfValue, int* pbClamped, int* pbRounded );
 GDALDataType CPL_STDCALL GDALGetNonComplexDataType( GDALDataType );
 
@@ -307,10 +315,24 @@ typedef GIntBig GSpacing;
 /** Capability set by a driver that implements the Open() API. */
 #define GDAL_DCAP_OPEN       "DCAP_OPEN"
 
-/** Capability set by a driver that implements the Create() API. */
+/** Capability set by a driver that implements the Create() API.
+ * 
+ * If GDAL_DCAP_CREATE is set, but GDAL_DCAP_CREATECOPY not, a generic
+ * CreateCopy() implementation is available and will use the Create() API of
+ * the driver.
+ * So to test if some CreateCopy() implementation is available, generic or
+ * specialize, test for both GDAL_DCAP_CREATE and GDAL_DCAP_CREATECOPY.
+ */
 #define GDAL_DCAP_CREATE     "DCAP_CREATE"
 
-/** Capability set by a driver that implements the CreateCopy() API. */
+/** Capability set by a driver that implements the CreateCopy() API. 
+ * 
+ * If GDAL_DCAP_CREATECOPY is not defined, but GDAL_DCAP_CREATE is set, a generic
+ * CreateCopy() implementation is available and will use the Create() API of
+ * the driver.
+ * So to test if some CreateCopy() implementation is available, generic or
+ * specialize, test for both GDAL_DCAP_CREATE and GDAL_DCAP_CREATECOPY.
+ */
 #define GDAL_DCAP_CREATECOPY "DCAP_CREATECOPY"
 
 /** Capability set by a driver that can read/create datasets through the VSI*L API. */

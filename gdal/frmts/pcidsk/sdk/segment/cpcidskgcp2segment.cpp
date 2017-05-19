@@ -55,7 +55,16 @@ CPCIDSKGCP2Segment::CPCIDSKGCP2Segment(PCIDSKFile *fileIn, int segmentIn, const 
     pimpl_ = new PCIDSKGCP2SegInfo;
     pimpl_->gcps.clear();
     pimpl_->changed = false;
-    Load();
+    try
+    {
+        Load();
+    }
+    catch( const PCIDSKException& )
+    {
+        delete pimpl_;
+        pimpl_ = NULL;
+        throw;
+    }
 }
  
 CPCIDSKGCP2Segment::~CPCIDSKGCP2Segment()

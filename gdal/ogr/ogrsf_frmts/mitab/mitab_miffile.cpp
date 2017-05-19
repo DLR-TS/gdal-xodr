@@ -433,19 +433,23 @@ int MIFFile::ParseMIFHeader(int* pbIsEmpty)
            }
           CSLDestroy(papszToken);
         }
-        else if (STARTS_WITH_CI(pszLine, "UNIQUE"))
+        else if (m_pszUnique == NULL &&
+                 STARTS_WITH_CI(pszLine, "UNIQUE"))
         {
             bColumns = FALSE; bCoordSys = FALSE;
 
             m_pszUnique = CPLStrdup(pszLine + 6);
         }
-        else if (STARTS_WITH_CI(pszLine, "INDEX"))
+        else if (m_pszIndex == NULL &&
+                 STARTS_WITH_CI(pszLine, "INDEX"))
         {
             bColumns = FALSE; bCoordSys = FALSE;
 
             m_pszIndex = CPLStrdup(pszLine + 5);
         }
-        else if (STARTS_WITH_CI(pszLine, "COORDSYS") )
+        else if (m_pszCoordSys == NULL &&
+                 STARTS_WITH_CI(pszLine, "COORDSYS") &&
+                 CPLStrnlen(pszLine, 9) >= 9)
         {
             bCoordSys = TRUE;
             m_pszCoordSys = CPLStrdup(pszLine + 9);
@@ -1061,6 +1065,9 @@ int MIFFile::Close()
 
     CPLFree(m_pszDelimiter);
     m_pszDelimiter = NULL;
+
+    CPLFree(m_pszUnique);
+    m_pszUnique = NULL;
 
     CPLFree(m_pszFname);
     m_pszFname = NULL;

@@ -234,6 +234,13 @@ static int ReadVarUInt(GByte*& pabyIter, GByte* pabyEnd, OutType& nOutVal)
             return TRUE;
         }
         nShift += 7;
+        // To avoid undefined behaviour later when doing << nShift
+        if( nShift >= static_cast<int>(sizeof(OutType)) * 8 )
+        {
+            pabyIter = pabyLocalIter;
+            nOutVal = nVal;
+            returnError();
+        }
     }
 }
 
@@ -488,7 +495,7 @@ int FileGDBTable::GuessFeatureLocations()
             return FALSE;
         int nSize = GetInt32(abyBuffer, 0);
         int nVersion = GetInt32(abyBuffer + 4, 0);
-        if( nSize < 0 && -nSize < 1024 * 1024 &&
+        if( nSize < 0 && nSize > -1024 * 1024 &&
             (nVersion == 3 || nVersion == 4) &&
             IS_VALID_LAYER_GEOM_TYPE(abyBuffer[8]) &&
             abyBuffer[9] == 3 && abyBuffer[10] == 0 && abyBuffer[11] == 0 )

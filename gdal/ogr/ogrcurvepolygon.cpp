@@ -445,11 +445,13 @@ OGRErr OGRCurvePolygon::addCurveDirectlyFromWkb( OGRGeometry* poSelf,
 /*      format.                                                         */
 /************************************************************************/
 
-OGRErr OGRCurvePolygon::importFromWkb( unsigned char * pabyData,
+OGRErr OGRCurvePolygon::importFromWkb( const unsigned char * pabyData,
                                        int nSize,
-                                       OGRwkbVariant eWkbVariant )
+                                       OGRwkbVariant eWkbVariant,
+                                       int& nBytesConsumedOut )
 
 {
+    nBytesConsumedOut = -1;
     OGRwkbByteOrder eByteOrder;
     int nDataOffset = 0;
     // coverity[tainted_data]
@@ -458,10 +460,14 @@ OGRErr OGRCurvePolygon::importFromWkb( unsigned char * pabyData,
     if( eErr != OGRERR_NONE )
         return eErr;
 
-    return oCC.importBodyFromWkb(this, pabyData, nSize, nDataOffset,
+    eErr = oCC.importBodyFromWkb(this, pabyData + nDataOffset, nSize,
                                  TRUE,  // bAcceptCompoundCurve
                                  addCurveDirectlyFromWkb,
-                                 eWkbVariant);
+                                 eWkbVariant,
+                                 nBytesConsumedOut );
+    if( eErr == OGRERR_NONE )
+        nBytesConsumedOut += nDataOffset;
+    return eErr;
 }
 
 /************************************************************************/
@@ -838,17 +844,31 @@ OGRPolygon* OGRCurvePolygon::CastToPolygon(OGRCurvePolygon* poCP)
 /*                      GetCasterToPolygon()                            */
 /************************************************************************/
 
+OGRPolygon* OGRCurvePolygon::CasterToPolygon(OGRSurface* poSurface)
+{
+    OGRCurvePolygon* poCurvePoly = dynamic_cast<OGRCurvePolygon*>(poSurface);
+    CPLAssert(poCurvePoly);
+    return OGRCurvePolygon::CastToPolygon(poCurvePoly);
+}
+
 OGRSurfaceCasterToPolygon OGRCurvePolygon::GetCasterToPolygon() const
 {
-    return (OGRSurfaceCasterToPolygon) OGRCurvePolygon::CastToPolygon;
+    return OGRCurvePolygon::CasterToPolygon;
 }
 
 /************************************************************************/
 /*                      GetCasterToCurvePolygon()                       */
 /************************************************************************/
 
+static OGRCurvePolygon* CasterToCurvePolygon(OGRSurface* poSurface)
+{
+    OGRCurvePolygon* poCurvePoly = dynamic_cast<OGRCurvePolygon*>(poSurface);
+    CPLAssert(poCurvePoly);
+    return poCurvePoly;
+}
+
 OGRSurfaceCasterToCurvePolygon OGRCurvePolygon::GetCasterToCurvePolygon() const
 {
-    return (OGRSurfaceCasterToCurvePolygon) OGRGeometry::CastToIdentity;
+    return ::CasterToCurvePolygon;
 }
 //! @endcond

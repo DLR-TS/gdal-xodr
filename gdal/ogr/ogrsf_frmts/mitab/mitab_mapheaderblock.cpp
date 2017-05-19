@@ -43,7 +43,7 @@
 
 CPL_CVSID("$Id$");
 
-#ifdef WIN32
+#if defined(WIN32) && _MSC_VER < 1800
 inline double round(double r) {
     return (r > 0.0) ? floor(r + 0.5) : ceil(r - 0.5);
 }
@@ -283,6 +283,14 @@ int     TABMAPHeaderBlock::InitBlockFromData(GByte *pabyBuf,
     m_sProj.nUnitsId = ReadByte();
     m_XScale = ReadDouble();
     m_YScale = ReadDouble();
+    if( m_XScale == 0.0 || m_YScale == 0.0 )
+    {
+        CPLError(CE_Failure, CPLE_FileIO,
+              "ReadFromFile(): Null xscale and/or yscale");
+        CPLFree(m_pabyBuf);
+        m_pabyBuf = NULL;
+        return -1;
+    }
     m_XDispl = ReadDouble();
     m_YDispl = ReadDouble();
 

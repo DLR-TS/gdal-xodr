@@ -2137,6 +2137,7 @@ OGRErr OGRSpatialReference::SetFromUserInput( const char * pszDefinition )
 /* -------------------------------------------------------------------- */
 /*      Try to open it as a file.                                       */
 /* -------------------------------------------------------------------- */
+    CPLConfigOptionSetter oSetter("CPL_ALLOW_VSISTDIN", "NO", true);
     VSILFILE * const fp = VSIFOpenL( pszDefinition, "rt" );
     if( fp == NULL )
         return OGRERR_CORRUPT_DATA;
@@ -2568,6 +2569,12 @@ OGRErr OGRSpatialReference::importFromCRSURL( const char *pszURL )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
                   "URL %s not a supported format.", pszURL );
+        return OGRERR_FAILURE;
+    }
+
+    if( *pszCur == '\0' )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "URL %s malformed.", pszURL);
         return OGRERR_FAILURE;
     }
 

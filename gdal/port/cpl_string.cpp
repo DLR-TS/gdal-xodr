@@ -2288,18 +2288,23 @@ char *CPLUnescapeString( const char *pszInput, int *pnLength, int nScheme )
                 wchar_t anVal[2] = {0 , 0};
                 iIn += 3;
 
+                unsigned int nVal = 0;
                 while( true )
                 {
                     ch = pszInput[iIn++];
                     if( ch >= 'a' && ch <= 'f' )
-                        anVal[0] = anVal[0] * 16 + ch - 'a' + 10;
+                        nVal = nVal * 16U +
+                                static_cast<unsigned int>(ch - 'a' + 10);
                     else if( ch >= 'A' && ch <= 'F' )
-                        anVal[0] = anVal[0] * 16 + ch - 'A' + 10;
+                        nVal = nVal * 16U +
+                                static_cast<unsigned int>(ch - 'A' + 10);
                     else if( ch >= '0' && ch <= '9' )
-                        anVal[0] = anVal[0] * 16 + ch - '0';
+                        nVal = nVal * 16U +
+                                static_cast<unsigned int>(ch - '0');
                     else
                         break;
                 }
+                anVal[0] = static_cast<wchar_t>(nVal);
                 if( ch != ';' )
                     break;
                 iIn--;
@@ -2316,14 +2321,16 @@ char *CPLUnescapeString( const char *pszInput, int *pnLength, int nScheme )
                 wchar_t anVal[2] = { 0, 0 };
                 iIn += 2;
 
+                unsigned int nVal = 0;
                 while( true )
                 {
                     ch = pszInput[iIn++];
                     if( ch >= '0' && ch <= '9' )
-                        anVal[0] = anVal[0] * 10 + ch - '0';
+                        nVal = nVal * 10U + static_cast<unsigned int>(ch - '0');
                     else
                         break;
                 }
+                anVal[0] = static_cast<wchar_t>(nVal);
                 if( ch != ';' )
                     break;
                 iIn--;
@@ -2497,14 +2504,15 @@ static const unsigned char hex2char[256] = {
 
 GByte *CPLHexToBinary( const char *pszHex, int *pnBytes )
 {
+    const GByte* pabyHex = reinterpret_cast<const GByte*>(pszHex);
     const size_t nHexLen = strlen(pszHex);
 
     GByte *pabyWKB = static_cast<GByte *>( CPLMalloc(nHexLen / 2 + 2) );
 
     for( size_t i = 0; i < nHexLen/2; ++i )
     {
-        const unsigned char h1 = hex2char[static_cast<int>( pszHex[2*i] )];
-        const unsigned char h2 = hex2char[static_cast<int>( pszHex[2*i+1] )];
+        const unsigned char h1 = hex2char[pabyHex[2*i]];
+        const unsigned char h2 = hex2char[pabyHex[2*i+1]];
 
         // First character is high bits, second is low bits.
         pabyWKB[i] = static_cast<GByte>( (h1 << 4) | h2 );

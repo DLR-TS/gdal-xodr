@@ -486,6 +486,26 @@ MrSIDRasterBand::MrSIDRasterBand( MrSIDDataset *poDSIn, int nBandIn )
             eBandInterp = GCI_GrayIndex;
             break;
 
+#if defined(LTI_SDK_MAJOR) && LTI_SDK_MAJOR >= 8
+        case LTI_COLORSPACE_GRAYSCALEA:
+            if( nBand == 1 )
+                eBandInterp = GCI_GrayIndex;
+            else if( nBand == 2 )
+                eBandInterp = GCI_AlphaBand;
+            else
+                eBandInterp = GCI_Undefined;
+            break;
+
+        case LTI_COLORSPACE_GRAYSCALEA_PM:
+            if( nBand == 1 )
+                eBandInterp = GCI_GrayIndex;
+            else if( nBand == 2 )
+                eBandInterp = GCI_AlphaBand;
+            else
+                eBandInterp = GCI_Undefined;
+            break;
+#endif
+
         default:
             eBandInterp = GCI_Undefined;
             break;

@@ -268,8 +268,7 @@ void * CPLRealloc( void * pData, size_t nNewSize )
  *
  * This function is similar to the C library strdup() function, but if
  * the memory allocation fails it will issue a CE_Fatal error with
- * CPLError() instead of returning NULL.  It uses VSIStrdup(), so any
- * hooking of that function will apply to CPLStrdup() as well.  Memory
+ * CPLError() instead of returning NULL. Memory
  * allocated with CPLStrdup() can be freed with CPLFree() or VSIFree().
  *
  * It is also safe to pass a NULL string into CPLStrdup().  CPLStrdup()
@@ -287,16 +286,10 @@ char *CPLStrdup( const char * pszString )
     if( pszString == NULL )
         pszString = "";
 
-    char *pszReturn = static_cast<char *>(CPLMalloc(strlen(pszString) + 1));
-    if( pszReturn == NULL )
-    {
-        CPLError(CE_Fatal, CPLE_OutOfMemory,
-                 "CPLStrdup(): Out of memory allocating %ld bytes.",
-                 static_cast<long>(strlen(pszString)));
-    }
-
-    strcpy(pszReturn, pszString);
-    return pszReturn;
+    const size_t nLen = strlen(pszString);
+    char* pszReturn = static_cast<char *>(CPLMalloc(nLen+1));
+    memcpy( pszReturn, pszString, nLen+1 );
+    return( pszReturn );
 }
 
 /************************************************************************/
@@ -2977,3 +2970,46 @@ void *CPLZLibInflate( const void *, size_t, void *, size_t, size_t *pnOutBytes )
 }
 
 #endif /* !defined(HAVE_LIBZ) */
+
+/************************************************************************/
+/* ==================================================================== */
+/*                          CPLConfigOptionSetter                       */
+/* ==================================================================== */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+/************************************************************************/
+/*                         CPLConfigOptionSetter()                      */
+/************************************************************************/
+
+CPLConfigOptionSetter::CPLConfigOptionSetter(
+                        const char* pszKey, const char* pszValue,
+                        bool bSetOnlyIfUndefined ) :
+    m_pszKey(CPLStrdup(pszKey)),
+    m_pszOldValue(NULL),
+    m_bRestoreOldValue(false)
+{
+    const char* pszOldValue = CPLGetConfigOption(pszKey, NULL);
+    if( (bSetOnlyIfUndefined && pszOldValue == NULL) || !bSetOnlyIfUndefined )
+    {
+        m_bRestoreOldValue = true;
+        if( pszOldValue )
+            m_pszOldValue = CPLStrdup(pszOldValue);
+        CPLSetThreadLocalConfigOption(pszKey, pszValue);
+    }
+}
+
+/************************************************************************/
+/*                        ~CPLConfigOptionSetter()                      */
+/************************************************************************/
+
+CPLConfigOptionSetter::~CPLConfigOptionSetter()
+{
+    if( m_bRestoreOldValue )
+    {
+        CPLSetThreadLocalConfigOption(m_pszKey, m_pszOldValue);
+        CPLFree(m_pszOldValue);
+    }
+    CPLFree(m_pszKey);
+}
+//! @endcond

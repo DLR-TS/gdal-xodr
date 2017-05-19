@@ -70,12 +70,12 @@ bool KML::open(const char * pszFilename)
     return pKMLFile_ != NULL;
 }
 
-void KML::parse()
+bool KML::parse()
 {
     if( NULL == pKMLFile_ )
     {
         sError_ = "No file given";
-        return;
+        return false;
     }
 
     if(poTrunk_ != NULL) {
@@ -115,20 +115,50 @@ void KML::parse()
                       static_cast<int>(XML_GetCurrentColumnNumber(oParser)));
             XML_ParserFree(oParser);
             VSIRewindL(pKMLFile_);
-            return;
+
+            if( poCurrent_ != NULL )
+            {
+                while( poCurrent_ )
+                {
+                    KMLNode* poTemp = poCurrent_->getParent();
+                    delete poCurrent_;
+                    poCurrent_ = poTemp;
+                }
+                // No need to destroy poTrunk_ : it has been destroyed in
+                // the last iteration
+            }
+            else
+            {
+                // Case of invalid content after closing element matching
+                // first <kml> element
+                delete poTrunk_;
+            }
+            poTrunk_ = NULL;
+
+            return false;
         }
         nWithoutEventCounter ++;
     } while (!nDone && nLen > 0 && nWithoutEventCounter < 10);
 
     XML_ParserFree(oParser);
     VSIRewindL(pKMLFile_);
-    poCurrent_ = NULL;
 
     if (nWithoutEventCounter == 10)
     {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "Too much data inside one element. File probably corrupted");
+        while( poCurrent_ )
+        {
+            KMLNode* poTemp = poCurrent_->getParent();
+            delete poCurrent_;
+            poCurrent_ = poTemp;
+        }
+        poTrunk_ = NULL;
+        return false;
     }
+
+    poCurrent_ = NULL;
+    return true;
 }
 
 void KML::checkValidity()
@@ -213,7 +243,8 @@ void XMLCALL KML::startElement( void* pUserData, const char* pszName,
     poKML->nWithoutEventCounter = 0;
 
     if(poKML->poTrunk_ == NULL
-    || (poKML->poCurrent_->getName()).compare("description") != 0)
+    || (poKML->poCurrent_ != NULL &&
+        poKML->poCurrent_->getName().compare("description") != 0))
     {
         if (poKML->nDepth_ == 1024)
         {
@@ -244,7 +275,7 @@ void XMLCALL KML::startElement( void* pUserData, const char* pszName,
 
         poKML->nDepth_++;
     }
-    else
+    else if( poKML->poCurrent_ != NULL )
     {
         std::string sNewContent = "<";
         sNewContent += pszName;
@@ -635,11 +666,11 @@ void KML::unregisterLayerIfMatchingThisNode(KMLNode* poNode)
         {
             if( i < nNumLayers_ - 1 )
             {
-                memcpy( papoLayers_ + i, papoLayers_ + i + 1,
+                memmove( papoLayers_ + i, papoLayers_ + i + 1,
                         (nNumLayers_ - 1 - i) * sizeof(KMLNode*) );
             }
             nNumLayers_ --;
-            continue;
+            break;
         }
         i++;
     }

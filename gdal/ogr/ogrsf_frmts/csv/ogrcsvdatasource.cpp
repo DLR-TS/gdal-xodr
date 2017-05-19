@@ -63,7 +63,7 @@ class OGRCSVEditableLayerSynchronizer : public IOGREditableLayerSynchronizer
                                     char **papszOpenOptions) :
         m_poCSVLayer(poCSVLayer),
         m_papszOpenOptions(CSLDuplicate(papszOpenOptions)) {}
-    virtual ~OGRCSVEditableLayerSynchronizer() override;
+    virtual ~OGRCSVEditableLayerSynchronizer() GDAL_OVERRIDE;
 
     virtual OGRErr EditableSyncToDisk(OGRLayer *poEditableLayer,
                                       OGRLayer **ppoDecoratedLayer) override;
@@ -912,10 +912,7 @@ OGRCSVDataSource::ICreateLayer( const char *pszLayerName,
     {
         bUseCRLF = true;
     }
-    else if( EQUAL(pszCRLFFormat, "LF") )
-    {
-    }
-    else
+    else if( !EQUAL(pszCRLFFormat, "LF") )
     {
         CPLError(CE_Warning, CPLE_AppDefined,
                  "LINEFORMAT=%s not understood, use one of CRLF or LF.",

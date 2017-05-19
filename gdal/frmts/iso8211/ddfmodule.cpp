@@ -249,9 +249,9 @@ int DDFModule::Open( const char * pszFilename, int bFailQuietly )
         _sizeFieldPos                 = DDFScanInt(achLeader+21,1);
         _sizeFieldTag                 = DDFScanInt(achLeader+23,1);
 
-        if( _recLength < nLeaderSize || _fieldControlLength == 0
-            || _fieldAreaStart < 24 || _sizeFieldLength == 0
-            || _sizeFieldPos == 0 || _sizeFieldTag == 0 )
+        if( _recLength < nLeaderSize || _fieldControlLength <= 0
+            || _fieldAreaStart < 24 || _sizeFieldLength <= 0
+            || _sizeFieldPos <= 0 || _sizeFieldTag <= 0 )
         {
             bValid = FALSE;
         }
@@ -288,6 +288,7 @@ int DDFModule::Open( const char * pszFilename, int bFailQuietly )
                       "Header record is short on DDF file `%s'.",
                       pszFilename );
 
+        CPLFree( pachRecord );
         return FALSE;
     }
 
@@ -298,7 +299,7 @@ int DDFModule::Open( const char * pszFilename, int bFailQuietly )
 
     nFieldEntryWidth = _sizeFieldLength + _sizeFieldPos + _sizeFieldTag;
 
-    for( i = nLeaderSize; i < _recLength; i += nFieldEntryWidth )
+    for( i = nLeaderSize; i + nFieldEntryWidth <= _recLength; i += nFieldEntryWidth )
     {
         if( pachRecord[i] == DDF_FIELD_TERMINATOR )
             break;
@@ -324,7 +325,9 @@ int DDFModule::Open( const char * pszFilename, int bFailQuietly )
         nEntryOffset += _sizeFieldLength;
         nFieldPos = DDFScanInt( pachRecord+nEntryOffset, _sizeFieldPos );
 
-        if (_fieldAreaStart+nFieldPos < 0 ||
+        if (nFieldPos < 0 ||
+            nFieldPos > INT_MAX - _fieldAreaStart ||
+            nFieldLength < 2 || // DDFFieldDefn::Initialize() assumes at least 2 bytes
             _recLength - (_fieldAreaStart+nFieldPos) < nFieldLength)
         {
             if( !bFailQuietly )
@@ -561,7 +564,7 @@ DDFFieldDefn *DDFModule::FindFieldDefn( const char *pszFieldName )
     {
         const char *pszThisName = papoFieldDefns[i]->GetName();
 
-        if( *pszThisName == *pszFieldName
+        if( *pszThisName == *pszFieldName && *pszFieldName != '\0'
             && strcmp( pszFieldName+1, pszThisName+1) == 0 )
             return papoFieldDefns[i];
     }

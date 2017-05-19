@@ -316,11 +316,13 @@ int OGRPolygon::WkbSize() const
 /*      format.                                                         */
 /************************************************************************/
 
-OGRErr OGRPolygon::importFromWkb( unsigned char * pabyData,
+OGRErr OGRPolygon::importFromWkb( const unsigned char * pabyData,
                                   int nSize,
-                                  OGRwkbVariant eWkbVariant )
+                                  OGRwkbVariant eWkbVariant,
+                                  int& nBytesConsumedOut )
 
 {
+    nBytesConsumedOut = -1;
     OGRwkbByteOrder eByteOrder = wkbNDR;
     int nDataOffset = 0;
     // coverity[tainted_data]
@@ -336,9 +338,11 @@ OGRErr OGRPolygon::importFromWkb( unsigned char * pabyData,
     {
         OGRLinearRing* poLR = new OGRLinearRing();
         oCC.papoCurves[iRing] = poLR;
+        int nBytesConsumedRing = -1;
         eErr = poLR->_importFromWkb( eByteOrder, flags,
-                                                 pabyData + nDataOffset,
-                                                 nSize );
+                                     pabyData + nDataOffset,
+                                     nSize,
+                                     nBytesConsumedRing );
         if( eErr != OGRERR_NONE )
         {
             delete oCC.papoCurves[iRing];
@@ -346,11 +350,16 @@ OGRErr OGRPolygon::importFromWkb( unsigned char * pabyData,
             return eErr;
         }
 
+        CPLAssert( nBytesConsumedRing > 0 );
         if( nSize != -1 )
-            nSize -= poLR->_WkbSize( flags );
+        {
+            CPLAssert( nSize >= nBytesConsumedRing );
+            nSize -= nBytesConsumedRing;
+        }
 
-        nDataOffset += poLR->_WkbSize( flags );
+        nDataOffset += nBytesConsumedRing;
     }
+    nBytesConsumedOut = nDataOffset;
 
     return OGRERR_NONE;
 }
@@ -542,6 +551,7 @@ OGRErr OGRPolygon::importFromWKTListOnly( char ** ppszInput,
                                       &nMaxPoints, &nPoints );
         if( pszInput == NULL || nPoints == 0 )
         {
+            CPLFree(padfM);
             return OGRERR_CORRUPT_DATA;
         }
         if( (flagsFromInput & OGR_G_3D) && !(flags & OGR_G_3D) )
@@ -892,17 +902,31 @@ OGRCurvePolygon* OGRPolygon::CastToCurvePolygon( OGRPolygon* poPoly )
 /*                      GetCasterToPolygon()                            */
 /************************************************************************/
 
+static OGRPolygon* CasterToPolygon(OGRSurface* poSurface)
+{
+    OGRPolygon* poPoly = dynamic_cast<OGRPolygon*>(poSurface);
+    CPLAssert(poPoly);
+    return poPoly;
+}
+
 OGRSurfaceCasterToPolygon OGRPolygon::GetCasterToPolygon() const
 {
-    return (OGRSurfaceCasterToPolygon) OGRGeometry::CastToIdentity;
+    return ::CasterToPolygon;
 }
 
 /************************************************************************/
 /*                      OGRSurfaceCasterToCurvePolygon()                */
 /************************************************************************/
 
+OGRCurvePolygon* OGRPolygon::CasterToCurvePolygon(OGRSurface* poSurface)
+{
+    OGRPolygon* poPoly = dynamic_cast<OGRPolygon*>(poSurface);
+    CPLAssert(poPoly);
+    return OGRPolygon::CastToCurvePolygon(poPoly);
+}
+
 OGRSurfaceCasterToCurvePolygon OGRPolygon::GetCasterToCurvePolygon() const
 {
-    return (OGRSurfaceCasterToCurvePolygon) OGRPolygon::CastToCurvePolygon;
+    return OGRPolygon::CasterToCurvePolygon;
 }
 /*! @endcond */

@@ -346,12 +346,20 @@ CPLErr HFABand::LoadBlockInfo()
         return CE_Failure;
     }
 
+    if( sizeof(vsi_l_offset) + 2 * sizeof(int) >
+                    (~(size_t)0) / static_cast<unsigned int>(nBlocks) )
+    {
+        CPLError(CE_Failure, CPLE_OutOfMemory, "Too many blocks");
+        return CE_Failure;
+    }
+    const int MAX_INITIAL_BLOCKS = 1000 * 1000;
+    const int nInitBlocks = std::min(nBlocks, MAX_INITIAL_BLOCKS);
     panBlockStart = static_cast<vsi_l_offset *>(
-        VSI_MALLOC2_VERBOSE(sizeof(vsi_l_offset), nBlocks));
+        VSI_MALLOC2_VERBOSE(sizeof(vsi_l_offset), nInitBlocks));
     panBlockSize =
-        static_cast<int *>(VSI_MALLOC2_VERBOSE(sizeof(int), nBlocks));
+        static_cast<int *>(VSI_MALLOC2_VERBOSE(sizeof(int), nInitBlocks));
     panBlockFlag =
-        static_cast<int *>(VSI_MALLOC2_VERBOSE(sizeof(int), nBlocks));
+        static_cast<int *>(VSI_MALLOC2_VERBOSE(sizeof(int), nInitBlocks));
 
     if( panBlockStart == NULL || panBlockSize == NULL || panBlockFlag == NULL )
     {
@@ -367,6 +375,54 @@ CPLErr HFABand::LoadBlockInfo()
     for( int iBlock = 0; iBlock < nBlocks; iBlock++ )
     {
         CPLErr eErr = CE_None;
+
+        if( iBlock == MAX_INITIAL_BLOCKS )
+        {
+            vsi_l_offset* panBlockStartNew = static_cast<vsi_l_offset *>(
+                VSI_REALLOC_VERBOSE(panBlockStart,
+                                    sizeof(vsi_l_offset) * nBlocks));
+            if( panBlockStartNew == NULL )
+            {
+                CPLFree(panBlockStart);
+                CPLFree(panBlockSize);
+                CPLFree(panBlockFlag);
+                panBlockStart = NULL;
+                panBlockSize = NULL;
+                panBlockFlag = NULL;
+                return CE_Failure;
+            }
+            panBlockStart = panBlockStartNew;
+
+            int* panBlockSizeNew = static_cast<int *>(
+                VSI_REALLOC_VERBOSE(panBlockSize,
+                                    sizeof(int) * nBlocks));
+            if( panBlockSizeNew == NULL )
+            {
+                CPLFree(panBlockStart);
+                CPLFree(panBlockSize);
+                CPLFree(panBlockFlag);
+                panBlockStart = NULL;
+                panBlockSize = NULL;
+                panBlockFlag = NULL;
+                return CE_Failure;
+            }
+            panBlockSize = panBlockSizeNew;
+
+            int* panBlockFlagNew = static_cast<int *>(
+                VSI_REALLOC_VERBOSE(panBlockFlag,
+                                    sizeof(int) * nBlocks));
+            if( panBlockFlagNew == NULL )
+            {
+                CPLFree(panBlockStart);
+                CPLFree(panBlockSize);
+                CPLFree(panBlockFlag);
+                panBlockStart = NULL;
+                panBlockSize = NULL;
+                panBlockFlag = NULL;
+                return CE_Failure;
+            }
+            panBlockFlag = panBlockFlagNew;
+        }
 
         char szVarName[64] = {};
         snprintf(szVarName, sizeof(szVarName), "blockinfo[%d].offset", iBlock);
@@ -656,27 +712,31 @@ static CPLErr UncompressBlock( GByte *pabyCData, int nSrcBytes,
             }
             else if( eDataType == EPT_u2 )
             {
+                // nDataValue & 0x3 is just to avoid UBSAN warning on shifting
+                // negative values
                 if( (nPixelsOutput & 0x3) == 0 )
                     pabyDest[nPixelsOutput >> 2] =
                         static_cast<GByte>(nDataValue);
                 else if( (nPixelsOutput & 0x3) == 1 )
                     pabyDest[nPixelsOutput >> 2] |=
-                        static_cast<GByte>(nDataValue << 2);
+                        static_cast<GByte>((nDataValue & 0x3) << 2);
                 else if( (nPixelsOutput & 0x3) == 2 )
                     pabyDest[nPixelsOutput >> 2] |=
-                        static_cast<GByte>(nDataValue << 4);
+                        static_cast<GByte>((nDataValue & 0x3) << 4);
                 else
                     pabyDest[nPixelsOutput >> 2] |=
-                        static_cast<GByte>(nDataValue << 6);
+                        static_cast<GByte>((nDataValue & 0x3) << 6);
             }
             else if( eDataType == EPT_u4 )
             {
+                // nDataValue & 0xF is just to avoid UBSAN warning on shifting
+                // negative values
                 if( (nPixelsOutput & 0x1) == 0)
                     pabyDest[nPixelsOutput >> 1] =
                         static_cast<GByte>(nDataValue);
                 else
                     pabyDest[nPixelsOutput >> 1] |=
-                        static_cast<GByte>(nDataValue << 4);
+                        static_cast<GByte>((nDataValue & 0xF) << 4);
             }
             else if( eDataType == EPT_s8 )
             {
@@ -964,13 +1024,13 @@ static CPLErr UncompressBlock( GByte *pabyCData, int nSrcBytes,
                         static_cast<GByte>(nDataValue);
                 else if( (nPixelsOutput & 0x3) == 1 )
                     pabyDest[nPixelsOutput >> 2] |=
-                        static_cast<GByte>(nDataValue << 2);
+                        static_cast<GByte>((nDataValue & 0x3) << 2);
                 else if( (nPixelsOutput & 0x3) == 2 )
                     pabyDest[nPixelsOutput >> 2] |=
-                        static_cast<GByte>(nDataValue << 4);
+                        static_cast<GByte>((nDataValue & 0x3) << 4);
                 else
                     pabyDest[nPixelsOutput >> 2] |=
-                        static_cast<GByte>(nDataValue << 6);
+                        static_cast<GByte>((nDataValue & 0x3) << 6);
                 nPixelsOutput++;
             }
         }
@@ -986,7 +1046,7 @@ static CPLErr UncompressBlock( GByte *pabyCData, int nSrcBytes,
                         static_cast<GByte>(nDataValue);
                 else
                     pabyDest[nPixelsOutput >> 1] |=
-                        static_cast<GByte>(nDataValue << 4);
+                        static_cast<GByte>((nDataValue & 0xF) << 4);
 
                 nPixelsOutput++;
             }
@@ -1152,6 +1212,8 @@ CPLErr HFABand::GetRasterBlock( int nXBlock, int nYBlock,
         return CE_Failure;
 
     const int iBlock = nXBlock + nYBlock * nBlocksPerRow;
+    const int nDataTypeSizeBytes = std::max(1, HFAGetDataTypeBits(eDataType) / 8);
+    const int nGDALBlockSize = nDataTypeSizeBytes * nBlockXSize * nBlockYSize;
 
     // If the block isn't valid, we just return all zeros, and an
     // indication of success.
@@ -1186,8 +1248,7 @@ CPLErr HFABand::GetRasterBlock( int nXBlock, int nYBlock,
         // in update state and data for this block will be available later.
         if( psInfo->eAccess == HFA_Update )
         {
-            memset(pData, 0, HFAGetDataTypeBits(eDataType) * nBlockXSize *
-                                 nBlockYSize / 8);
+            memset(pData, 0, nGDALBlockSize);
             return CE_None;
         }
         else
@@ -1220,8 +1281,7 @@ CPLErr HFABand::GetRasterBlock( int nXBlock, int nYBlock,
             // XXX: Suppose that file in update state
             if( psInfo->eAccess == HFA_Update )
             {
-                memset(pData, 0, HFAGetDataTypeBits(eDataType) * nBlockXSize *
-                                     nBlockYSize / 8);
+                memset(pData, 0, nGDALBlockSize);
                 return CE_None;
             }
             else
@@ -1256,8 +1316,7 @@ CPLErr HFABand::GetRasterBlock( int nXBlock, int nYBlock,
 
     if( VSIFReadL(pData, static_cast<size_t>(nBlockSize), 1, fpData) != 1 )
     {
-        memset(pData, 0,
-               HFAGetDataTypeBits(eDataType) * nBlockXSize * nBlockYSize / 8);
+        memset(pData, 0, nGDALBlockSize);
 
         if( fpData != fpExternal )
             CPLDebug("HFABand", "Read of %x:%08x bytes at %d on %p failed.\n%s",
@@ -1402,8 +1461,9 @@ CPLErr HFABand::SetRasterBlock( int nXBlock, int nYBlock, void * pData )
     if( panBlockFlag[iBlock] & BFLG_COMPRESSED )
     {
         // Write compressed data.
-        int nInBlockSize =
-            (nBlockXSize * nBlockYSize * HFAGetDataTypeBits(eDataType) + 7) / 8;
+        int nInBlockSize = static_cast<int>(
+            (nBlockXSize * nBlockYSize *
+                static_cast<GIntBig>(HFAGetDataTypeBits(eDataType)) + 7) / 8);
 
         // Create the compressor object.
         HFACompress compress(pData, nInBlockSize, eDataType);
@@ -1807,8 +1867,14 @@ CPLErr HFABand::GetPCT( int * pnColors,
         if( poColumnEntry == NULL )
             return CE_Failure;
 
-        // TODO(schwehr): Check that nPCTColors is not too big.
         nPCTColors = poColumnEntry->GetIntField("numRows");
+        if( nPCTColors < 0 || nPCTColors > 65536 )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Invalid number of colors: %d", nPCTColors);
+            return CE_Failure;
+        }
+
         for( int iColumn = 0; iColumn < 4; iColumn++ )
         {
             apadfPCT[iColumn] = static_cast<double *>(

@@ -151,9 +151,10 @@ int OGRLinearRing::WkbSize() const
 /*      Disable method for this class.                                  */
 /************************************************************************/
 
-OGRErr OGRLinearRing::importFromWkb( CPL_UNUSED unsigned char *pabyData,
-                                     CPL_UNUSED int nSize,
-                                     CPL_UNUSED OGRwkbVariant eWkbVariant )
+OGRErr OGRLinearRing::importFromWkb( const unsigned char * /*pabyData*/,
+                                     int /*nSize*/,
+                                     OGRwkbVariant /*eWkbVariant*/,
+                                     int& /* nBytesConsumedOut */ )
 
 {
     return OGRERR_UNSUPPORTED_OPERATION;
@@ -182,10 +183,12 @@ OGRErr OGRLinearRing::exportToWkb( CPL_UNUSED OGRwkbByteOrder eByteOrder,
 
 //! @cond Doxygen_Suppress
 OGRErr OGRLinearRing::_importFromWkb( OGRwkbByteOrder eByteOrder, int _flags,
-                                      unsigned char * pabyData,
-                                      int nBytesAvailable )
+                                      const unsigned char * pabyData,
+                                      int nBytesAvailable,
+                                      int& nBytesConsumedOut )
 
 {
+    nBytesConsumedOut = -1;
     if( nBytesAvailable < 4 && nBytesAvailable != -1 )
         return OGRERR_NOT_ENOUGH_DATA;
 
@@ -232,6 +235,9 @@ OGRErr OGRLinearRing::_importFromWkb( OGRwkbByteOrder eByteOrder, int _flags,
         AddM();
     else
         RemoveM();
+
+
+    nBytesConsumedOut =  4 + nPointCount * nPointSize;
 
 /* -------------------------------------------------------------------- */
 /*      Get the vertices                                                */
@@ -777,17 +783,31 @@ OGRLineString* OGRLinearRing::CastToLineString( OGRLinearRing* poLR )
 /*                     GetCasterToLineString()                          */
 /************************************************************************/
 
+OGRLineString* OGRLinearRing::CasterToLineString( OGRCurve* poCurve )
+{
+    OGRLinearRing* poLR = dynamic_cast<OGRLinearRing*>(poCurve);
+    CPLAssert(poLR);
+    return OGRLinearRing::CastToLineString(poLR);
+}
+
 OGRCurveCasterToLineString OGRLinearRing::GetCasterToLineString() const
 {
-    return (OGRCurveCasterToLineString) OGRLinearRing::CastToLineString;
+    return OGRLinearRing::CasterToLineString;
 }
 
 /************************************************************************/
 /*                        GetCasterToLinearRing()                       */
 /************************************************************************/
 
+static OGRLinearRing* CasterToLinearRing(OGRCurve* poCurve)
+{
+    OGRLinearRing* poLR = dynamic_cast<OGRLinearRing*>(poCurve);
+    CPLAssert(poLR);
+    return poLR;
+}
+
 OGRCurveCasterToLinearRing OGRLinearRing::GetCasterToLinearRing() const
 {
-    return (OGRCurveCasterToLinearRing) OGRGeometry::CastToIdentity;
+    return ::CasterToLinearRing;
 }
 //! @endcond

@@ -137,12 +137,15 @@ const char * OGRCircularString::getGeometryName() const
 /*      format.                                                         */
 /************************************************************************/
 
-OGRErr OGRCircularString::importFromWkb( unsigned char * pabyData,
+OGRErr OGRCircularString::importFromWkb( const unsigned char * pabyData,
                                          int nSize,
-                                         OGRwkbVariant eWkbVariant )
+                                         OGRwkbVariant eWkbVariant,
+                                         int& nBytesConsumedOut )
 
 {
-    OGRErr eErr = OGRSimpleCurve::importFromWkb(pabyData, nSize, eWkbVariant);
+    OGRErr eErr = OGRSimpleCurve::importFromWkb(pabyData, nSize,
+                                                eWkbVariant,
+                                                nBytesConsumedOut);
     if( eErr == OGRERR_NONE )
     {
         if( !IsValidFast() )
@@ -693,16 +696,32 @@ OGRCircularString::getLinearGeometry( double dfMaxAngleStepSizeDegrees,
 /*                     GetCasterToLineString()                          */
 /************************************************************************/
 
+static OGRLineString* CasterToLineString(OGRCurve* poGeom)
+{
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "%s found. Conversion impossible", poGeom->getGeometryName());
+    delete poGeom;
+    return NULL;
+}
+
 OGRCurveCasterToLineString OGRCircularString::GetCasterToLineString() const {
-    return (OGRCurveCasterToLineString) OGRGeometry::CastToError;
+    return ::CasterToLineString;
 }
 
 /************************************************************************/
 /*                        GetCasterToLinearRing()                       */
 /************************************************************************/
 
+static OGRLinearRing* CasterToLinearRing(OGRCurve* poGeom)
+{
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "%s found. Conversion impossible", poGeom->getGeometryName());
+    delete poGeom;
+    return NULL;
+}
+
 OGRCurveCasterToLinearRing OGRCircularString::GetCasterToLinearRing() const {
-    return (OGRCurveCasterToLinearRing) OGRGeometry::CastToError;
+    return ::CasterToLinearRing;
 }
 //! @endcond
 

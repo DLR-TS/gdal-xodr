@@ -220,6 +220,7 @@ OGRErr GDALGeoPackageDataset::PragmaCheck(
         CPLError( CE_Failure, CPLE_AppDefined,
                   "bad result for PRAGMA %s, got %d rows, expected %d",
                   pszPragma, nRowCount, nRowsExpected );
+        sqlite3_free_table(papszResult);
         return OGRERR_FAILURE;
     }
 
@@ -228,6 +229,7 @@ OGRErr GDALGeoPackageDataset::PragmaCheck(
         CPLError( CE_Failure, CPLE_AppDefined,
                   "invalid %s (expected '%s', got '%s')",
                   pszPragma, pszExpected, papszResult[1]);
+        sqlite3_free_table(papszResult);
         return OGRERR_FAILURE;
     }
 
@@ -4318,6 +4320,8 @@ OGRLayer* GDALGeoPackageDataset::ICreateLayer( const char * pszLayerName,
     if (pszFIDColumnName == NULL)
         pszFIDColumnName = "fid";
 
+    if( CPLTestBool(CPLGetConfigOption("GPKG_NAME_CHECK", "YES")) )
+    {
     if ( strspn(pszFIDColumnName, "`~!@#$%^&*()+-={}|[]\\:\";'<>?,./") > 0 )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
@@ -4341,6 +4345,7 @@ OGRLayer* GDALGeoPackageDataset::ICreateLayer( const char * pszLayerName,
         CPLError(CE_Failure, CPLE_AppDefined,
                  "The layer name may not contain special characters or spaces");
         return NULL;
+    }
     }
 
     /* Check for any existing layers that already use this name */

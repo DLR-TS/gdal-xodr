@@ -293,6 +293,7 @@ int VFKReader::ReadDataRecords(IVFKDataBlock *poDataBlock)
                     CPLFree(pszLine);
 
                     while ((pszLine = ReadLine()) != NULL &&
+                           pszLine[0] != '\0' &&
                            pszLine[strlen(pszLine) - 1] == '\244') {
                         /* append line */
                         osMultiLine += pszLine;
@@ -330,6 +331,7 @@ int VFKReader::ReadDataRecords(IVFKDataBlock *poDataBlock)
                 }
                 if (!poDataBlockCurrent) {
                     CPLFree(pszBlockName);
+                    CPLFree(pszLine);
                     continue; // assert ?
                 }
 

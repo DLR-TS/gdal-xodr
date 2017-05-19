@@ -1190,7 +1190,27 @@ def vrt_read_26():
 
     return 'success'
 
+###############################################################################
+# Test fix for https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=1553
 
+def vrt_read_27():
+
+    gdal.Open('data/empty_gcplist.vrt')
+
+    return 'success'
+
+###############################################################################
+# Test fix for https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=1551
+
+def vrt_read_28():
+
+    with gdaltest.error_handler():
+        ds = gdal.Open('<VRTDataset rasterXSize="1 "rasterYSize="1"><VRTRasterBand band="-2147483648"><SimpleSource></SimpleSource></VRTRasterBand></VRTDataset>')
+    if ds is not None:
+        return 'fail'
+
+    return 'success'
+    
 for item in init_list:
     ut = gdaltest.GDALTest( 'VRT', item[0], item[1], item[2] )
     if ut is None:
@@ -1224,6 +1244,8 @@ gdaltest_list.append( vrt_read_23 )
 gdaltest_list.append( vrt_read_24 )
 gdaltest_list.append( vrt_read_25 )
 gdaltest_list.append( vrt_read_26 )
+gdaltest_list.append( vrt_read_27 )
+gdaltest_list.append( vrt_read_28 )
 
 if __name__ == '__main__':
 

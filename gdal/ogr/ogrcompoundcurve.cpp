@@ -148,9 +148,10 @@ OGRErr OGRCompoundCurve::addCurveDirectlyFromWkb( OGRGeometry* poSelf,
 /*                           importFromWkb()                            */
 /************************************************************************/
 
-OGRErr OGRCompoundCurve::importFromWkb( unsigned char * pabyData,
+OGRErr OGRCompoundCurve::importFromWkb( const unsigned char * pabyData,
                                         int nSize,
-                                        OGRwkbVariant eWkbVariant )
+                                        OGRwkbVariant eWkbVariant,
+                                       int& nBytesConsumedOut )
 {
     OGRwkbByteOrder eByteOrder = wkbNDR;
     int nDataOffset = 0;
@@ -160,10 +161,14 @@ OGRErr OGRCompoundCurve::importFromWkb( unsigned char * pabyData,
     if( eErr != OGRERR_NONE )
         return eErr;
 
-    return oCC.importBodyFromWkb(this, pabyData, nSize, nDataOffset,
+    eErr =  oCC.importBodyFromWkb(this, pabyData + nDataOffset, nSize,
                                  FALSE,  // bAcceptCompoundCurve
                                  addCurveDirectlyFromWkb,
-                                 eWkbVariant);
+                                 eWkbVariant,
+                                 nBytesConsumedOut);
+    if( eErr == OGRERR_NONE )
+        nBytesConsumedOut += nDataOffset;
+    return eErr;
 }
 
 /************************************************************************/
@@ -810,16 +815,30 @@ OGRLinearRing* OGRCompoundCurve::CastToLinearRing( OGRCompoundCurve* poCC )
 /*                     GetCasterToLineString()                          */
 /************************************************************************/
 
+OGRLineString* OGRCompoundCurve::CasterToLineString( OGRCurve* poCurve )
+{
+    OGRCompoundCurve* poCC = dynamic_cast<OGRCompoundCurve*>(poCurve);
+    CPLAssert(poCC);
+    return OGRCompoundCurve::CastToLineString(poCC);
+}
+
 OGRCurveCasterToLineString OGRCompoundCurve::GetCasterToLineString() const {
-    return (OGRCurveCasterToLineString) OGRCompoundCurve::CastToLineString;
+    return OGRCompoundCurve::CasterToLineString;
 }
 
 /************************************************************************/
 /*                        GetCasterToLinearRing()                       */
 /************************************************************************/
 
+OGRLinearRing* OGRCompoundCurve::CasterToLinearRing( OGRCurve* poCurve )
+{
+    OGRCompoundCurve* poCC = dynamic_cast<OGRCompoundCurve*>(poCurve);
+    CPLAssert(poCC);
+    return OGRCompoundCurve::CastToLinearRing(poCC);
+}
+
 OGRCurveCasterToLinearRing OGRCompoundCurve::GetCasterToLinearRing() const {
-    return (OGRCurveCasterToLinearRing) OGRCompoundCurve::CastToLinearRing;
+    return OGRCompoundCurve::CasterToLinearRing;
 }
 //! @endcond
 

@@ -265,6 +265,10 @@ class GTiffDataset CPL_FINAL : public GDALPamDataset
 
     TIFF       *hTIFF;
     VSILFILE   *fpL;
+#if defined(INTERNAL_LIBTIFF) && defined(DEFER_STRILE_LOAD)
+    uint32      nStripArrayAlloc;
+#endif
+
     bool        bStreamingIn;
 
     bool        bStreamingOut;
@@ -5716,12 +5720,23 @@ GTiffOddBitsBand::GTiffOddBitsBand( GTiffDataset *poGDSIn, int nBandIn )
         : GTiffRasterBand( poGDSIn, nBandIn )
 
 {
-    eDataType = GDT_Byte;
-    if( poGDS->nSampleFormat == SAMPLEFORMAT_IEEEFP )
+    eDataType = GDT_Unknown;
+    if( (poGDS->nBitsPerSample == 16 || poGDS->nBitsPerSample == 24) &&
+        poGDS->nSampleFormat == SAMPLEFORMAT_IEEEFP )
         eDataType = GDT_Float32;
-    else if( poGDS->nBitsPerSample > 8 && poGDS->nBitsPerSample < 16 )
+    // FIXME ? in autotest we currently open gcore/data/int24.tif
+    // which is declared as signed, but we consider it as unsigned
+    else if( (poGDS->nSampleFormat == SAMPLEFORMAT_UINT ||
+              poGDS->nSampleFormat == SAMPLEFORMAT_INT) &&
+             poGDS->nBitsPerSample < 8 )
+        eDataType = GDT_Byte;
+    else if( (poGDS->nSampleFormat == SAMPLEFORMAT_UINT ||
+              poGDS->nSampleFormat == SAMPLEFORMAT_INT) &&
+             poGDS->nBitsPerSample > 8 && poGDS->nBitsPerSample < 16 )
         eDataType = GDT_UInt16;
-    else if( poGDS->nBitsPerSample > 16 )
+    else if( (poGDS->nSampleFormat == SAMPLEFORMAT_UINT ||
+              poGDS->nSampleFormat == SAMPLEFORMAT_INT) &&
+             poGDS->nBitsPerSample > 16 && poGDS->nBitsPerSample < 32 )
         eDataType = GDT_UInt32;
 }
 
@@ -5850,7 +5865,7 @@ CPLErr GTiffOddBitsBand::IWriteBlock( int nBlockXOff, int nBlockYOff,
             return eErr;
     }
 
-    const GUInt32 nMaxVal = (1 << poGDS->nBitsPerSample) - 1;
+    const GUInt32 nMaxVal = (1U << poGDS->nBitsPerSample) - 1;
 
 /* -------------------------------------------------------------------- */
 /*      Handle case of "separate" images or single band images where    */
@@ -6556,7 +6571,7 @@ CPLErr GTiffOddBitsBand::IReadBlock( int nBlockXOff, int nBlockYOff,
         }
 
         // Bits per line rounds up to next byte boundary.
-        int nBitsPerLine = nBlockXSize * iPixelBitSkip;
+        GIntBig nBitsPerLine = static_cast<GIntBig>(nBlockXSize) * iPixelBitSkip;
         if( (nBitsPerLine & 7) != 0 )
             nBitsPerLine = (nBitsPerLine + 7) & (~7);
 
@@ -6566,7 +6581,7 @@ CPLErr GTiffOddBitsBand::IReadBlock( int nBlockXOff, int nBlockYOff,
 
         for( int iY = 0; iY < nBlockYSize; ++iY )
         {
-            int iBitOffset = iBandBitOffset + iY * nBitsPerLine;
+            GIntBig iBitOffset = iBandBitOffset + iY * nBitsPerLine;
 
             for( int iX = 0; iX < nBlockXSize; ++iX )
             {
@@ -6711,6 +6726,7 @@ GDALColorTable *GTiffBitmapBand::GetColorTable()
 class GTiffSplitBitmapBand CPL_FINAL : public GTiffBitmapBand
 {
     friend class GTiffDataset;
+    int nLastLineValid;
 
   public:
 
@@ -6727,6 +6743,7 @@ class GTiffSplitBitmapBand CPL_FINAL : public GTiffBitmapBand
 
 GTiffSplitBitmapBand::GTiffSplitBitmapBand( GTiffDataset *poDSIn, int nBandIn )
         : GTiffBitmapBand( poDSIn, nBandIn )
+        , nLastLineValid( -1 )
 
 {
     nBlockXSize = poDS->GetRasterXSize();
@@ -6739,6 +6756,34 @@ GTiffSplitBitmapBand::GTiffSplitBitmapBand( GTiffDataset *poDSIn, int nBandIn )
 
 GTiffSplitBitmapBand::~GTiffSplitBitmapBand() {}
 
+
+/************************************************************************/
+/*                            GTIFFErrorHandler()                       */
+/************************************************************************/
+
+namespace {
+class GTIFFErrorStruct CPL_FINAL
+{
+  public:
+    CPLErr type;
+    CPLErrorNum no;
+    CPLString msg;
+
+    GTIFFErrorStruct() : type(CE_None), no(CPLE_None) {}
+    GTIFFErrorStruct(CPLErr eErrIn, CPLErrorNum noIn, const char* msgIn) :
+        type(eErrIn), no(noIn), msg(msgIn) {}
+};
+}
+
+static void CPL_STDCALL GTIFFErrorHandler( CPLErr eErr, CPLErrorNum no,
+                                           const char* msg )
+{
+    std::vector<GTIFFErrorStruct>* paoErrors =
+        static_cast<std::vector<GTIFFErrorStruct> *>(
+            CPLGetErrorHandlerUserData());
+    paoErrors->push_back(GTIFFErrorStruct(eErr, no, msg));
+}
+
 /************************************************************************/
 /*                             IReadBlock()                             */
 /************************************************************************/
@@ -6747,6 +6792,9 @@ CPLErr GTiffSplitBitmapBand::IReadBlock( int /* nBlockXOff */, int nBlockYOff,
                                          void * pImage )
 
 {
+    if( nLastLineValid >= 0 && nBlockYOff > nLastLineValid )
+        return CE_Failure;
+
     if( !poGDS->SetDirectory() )
         return CE_Failure;
 
@@ -6770,8 +6818,32 @@ CPLErr GTiffSplitBitmapBand::IReadBlock( int /* nBlockXOff */, int nBlockYOff,
     while( poGDS->nLastLineRead < nBlockYOff )
     {
         ++poGDS->nLastLineRead;
-        if( TIFFReadScanline( poGDS->hTIFF, poGDS->pabyBlockBuf,
-                              poGDS->nLastLineRead, 0 ) == -1
+
+        std::vector<GTIFFErrorStruct> aoErrors;
+        CPLPushErrorHandlerEx(GTIFFErrorHandler, &aoErrors);
+        int nRet = TIFFReadScanline( poGDS->hTIFF, poGDS->pabyBlockBuf,
+                                     poGDS->nLastLineRead, 0 );
+        CPLPopErrorHandler();
+
+        for( size_t iError = 0; iError < aoErrors.size(); ++iError )
+        {
+            CPLError( aoErrors[iError].type,
+                      aoErrors[iError].no,
+                      "%s",
+                      aoErrors[iError].msg.c_str() );
+            // FAX decoding only handles EOF condition as a warning, so
+            // catch it so as to turn on error when attempting to read
+            // following lines, to avoid performance issues.
+            if(  !poGDS->bIgnoreReadErrors &&
+                    aoErrors[iError].msg.find("Premature EOF") !=
+                                                    std::string::npos )
+            {
+                nLastLineValid = nBlockYOff;
+                nRet = -1;
+            }
+        }
+
+        if( nRet == -1
             && !poGDS->bIgnoreReadErrors )
         {
             CPLError( CE_Failure, CPLE_AppDefined,
@@ -6825,6 +6897,9 @@ CPLErr GTiffSplitBitmapBand::IWriteBlock( int /* nBlockXOff */,
 GTiffDataset::GTiffDataset() :
     hTIFF(NULL),
     fpL(NULL),
+#if defined(INTERNAL_LIBTIFF) && defined(DEFER_STRILE_LOAD)
+    nStripArrayAlloc(0),
+#endif
     bStreamingIn(false),
     bStreamingOut(false),
     fpToWrite(NULL),
@@ -8835,8 +8910,7 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
                                      vsi_l_offset* pnSize )
 
 {
-#ifdef INTERNAL_LIBTIFF
-#ifdef DEFER_STRILE_LOAD
+#if defined(INTERNAL_LIBTIFF) && defined(DEFER_STRILE_LOAD)
     // Optimization to avoid fetching the whole Strip/TileCounts and
     // Strip/TileOffsets arrays.
     if( eAccess == GA_ReadOnly &&
@@ -8850,26 +8924,64 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
     {
         if( hTIFF->tif_dir.td_stripoffset == NULL )
         {
-            hTIFF->tif_dir.td_stripoffset =
-                static_cast<uint64 *>( _TIFFmalloc(
-                    sizeof(uint64) * hTIFF->tif_dir.td_nstrips ) );
-            hTIFF->tif_dir.td_stripbytecount =
-                static_cast<uint64 *>( _TIFFmalloc(
-                    sizeof(uint64) * hTIFF->tif_dir.td_nstrips ) );
-            if( hTIFF->tif_dir.td_stripoffset &&
-                hTIFF->tif_dir.td_stripbytecount )
+            nStripArrayAlloc = 0;
+        }
+        if( static_cast<uint32>(nBlockId) >= nStripArrayAlloc )
+        {
+            uint32 nStripArrayAllocBefore = nStripArrayAlloc;
+            uint32 nStripArrayAllocNew;
+            if( nStripArrayAlloc == 0 &&
+                hTIFF->tif_dir.td_nstrips < 1024 * 1024 )
             {
-                memset(hTIFF->tif_dir.td_stripoffset, 0xFF,
-                       sizeof(uint64) * hTIFF->tif_dir.td_nstrips );
-                memset(hTIFF->tif_dir.td_stripbytecount, 0xFF,
-                       sizeof(uint64) * hTIFF->tif_dir.td_nstrips );
+                nStripArrayAllocNew = hTIFF->tif_dir.td_nstrips;
             }
             else
             {
+                nStripArrayAllocNew = std::max(
+                    static_cast<uint32>(nBlockId) + 1, 1024U * 512U );
+                if( nStripArrayAllocNew < 0xFFFFFFFFU / 2  )
+                    nStripArrayAllocNew *= 2;
+                nStripArrayAllocNew = std::min(
+                    nStripArrayAllocNew, hTIFF->tif_dir.td_nstrips);
+            }
+            const uint64 nArraySize64 =
+                static_cast<uint64>(sizeof(uint64)) * nStripArrayAllocNew;
+            const size_t nArraySize = static_cast<size_t>(nArraySize64);
+#if SIZEOF_VOIDP == 4
+            if( nArraySize != nArraySize64 )
+            {
+                CPLError(CE_Failure, CPLE_OutOfMemory,
+                         "Cannot allocate strip offet and bytecount arrays");
+                return false;
+            }
+#endif
+            uint64* offsetArray = static_cast<uint64 *>(
+                _TIFFrealloc( hTIFF->tif_dir.td_stripoffset, nArraySize ) );
+            uint64* bytecountArray = static_cast<uint64 *>(
+                _TIFFrealloc( hTIFF->tif_dir.td_stripbytecount, nArraySize ) );
+            if( offsetArray )
+                hTIFF->tif_dir.td_stripoffset = offsetArray;
+            if( bytecountArray )
+                hTIFF->tif_dir.td_stripbytecount = bytecountArray;
+            if( offsetArray && bytecountArray )
+            {
+                nStripArrayAlloc = nStripArrayAllocNew;
+                memset(hTIFF->tif_dir.td_stripoffset + nStripArrayAllocBefore,
+                    0xFF,
+                    (nStripArrayAlloc - nStripArrayAllocBefore) * sizeof(uint64) );
+                memset(hTIFF->tif_dir.td_stripbytecount + nStripArrayAllocBefore,
+                    0xFF,
+                    (nStripArrayAlloc - nStripArrayAllocBefore) * sizeof(uint64) );
+            }
+            else
+            {
+                CPLError(CE_Failure, CPLE_OutOfMemory,
+                         "Cannot allocate strip offet and bytecount arrays");
                 _TIFFfree(hTIFF->tif_dir.td_stripoffset);
                 hTIFF->tif_dir.td_stripoffset = NULL;
                 _TIFFfree(hTIFF->tif_dir.td_stripbytecount);
                 hTIFF->tif_dir.td_stripbytecount = NULL;
+                nStripArrayAlloc = 0;
             }
         }
         if( hTIFF->tif_dir.td_stripbytecount == NULL )
@@ -8896,7 +9008,7 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
                     GTiffCacheOffsetOrCount(fp,
                                             l_nDirOffset,
                                             nBlockId,
-                                            hTIFF->tif_dir.td_nstrips,
+                                            nStripArrayAlloc,
                                             hTIFF->tif_dir.td_stripoffset,
                                             sizeof(uint32));
                 }
@@ -8905,7 +9017,7 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
                     GTiffCacheOffsetOrCount(fp,
                                             l_nDirOffset,
                                             nBlockId,
-                                            hTIFF->tif_dir.td_nstrips,
+                                            nStripArrayAlloc,
                                             hTIFF->tif_dir.td_stripoffset,
                                             sizeof(uint64));
                 }
@@ -8929,7 +9041,7 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
                     GTiffCacheOffsetOrCount(fp,
                                             l_nDirOffset,
                                             nBlockId,
-                                            hTIFF->tif_dir.td_nstrips,
+                                            nStripArrayAlloc,
                                             hTIFF->tif_dir.td_stripbytecount,
                                             sizeof(uint32));
                 }
@@ -8938,7 +9050,7 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
                     GTiffCacheOffsetOrCount(fp,
                                             l_nDirOffset,
                                             nBlockId,
-                                            hTIFF->tif_dir.td_nstrips,
+                                            nStripArrayAlloc,
                                             hTIFF->tif_dir.td_stripbytecount,
                                             sizeof(uint64));
                 }
@@ -8959,8 +9071,7 @@ bool GTiffDataset::IsBlockAvailable( int nBlockId,
             *pnSize = hTIFF->tif_dir.td_stripbytecount[nBlockId];
         return hTIFF->tif_dir.td_stripbytecount[nBlockId] != 0;
     }
-#endif  // DEFER_STRILE_LOAD
-#endif  // INTERNAL_LIBTIFF
+#endif  // defined(INTERNAL_LIBTIFF) && defined(DEFER_STRILE_LOAD)
     toff_t *panByteCounts = NULL;
     toff_t *panOffsets = NULL;
 
@@ -11127,33 +11238,6 @@ int GTiffDataset::Identify( GDALOpenInfo *poOpenInfo )
 }
 
 /************************************************************************/
-/*                            GTIFFErrorHandler()                       */
-/************************************************************************/
-
-namespace {
-class GTIFFErrorStruct CPL_FINAL
-{
-  public:
-    CPLErr type;
-    CPLErrorNum no;
-    CPLString msg;
-
-    GTIFFErrorStruct() : type(CE_None), no(CPLE_None) {}
-    GTIFFErrorStruct(CPLErr eErrIn, CPLErrorNum noIn, const char* msgIn) :
-        type(eErrIn), no(noIn), msg(msgIn) {}
-};
-}
-
-static void CPL_STDCALL GTIFFErrorHandler( CPLErr eErr, CPLErrorNum no,
-                                           const char* msg )
-{
-    std::vector<GTIFFErrorStruct>* paoErrors =
-        static_cast<std::vector<GTIFFErrorStruct> *>(
-            CPLGetErrorHandlerUserData());
-    paoErrors->push_back(GTIFFErrorStruct(eErr, no, msg));
-}
-
-/************************************************************************/
 /*                          GTIFFExtendMemoryFile()                     */
 /************************************************************************/
 
@@ -11472,6 +11556,7 @@ GDALDataset *GTiffDataset::Open( GDALOpenInfo * poOpenInfo )
     std::vector<GTIFFErrorStruct> aoErrors;
     CPLPushErrorHandlerEx(GTIFFErrorHandler, &aoErrors);
     CPLSetCurrentErrorHandlerCatchDebug( FALSE );
+    // Open and disable "strip chopping" (c option)
     TIFF *l_hTIFF =
         VSI_TIFFOpen( pszFilename,
                       poOpenInfo->eAccess == GA_ReadOnly ? "rc" : "r+c",
@@ -11545,7 +11630,7 @@ GDALDataset *GTiffDataset::Open( GDALOpenInfo * poOpenInfo )
         l_nPlanarConfig == PLANARCONFIG_CONTIG )
     {
         bool bReopenWithStripChop = true;
-        if( nYSize > 128 * 1024 * 1024 )
+        if( nYSize > 10 * 1024 * 1024 )
         {
             uint16 l_nSamplesPerPixel = 0;
             if( !TIFFGetField( l_hTIFF, TIFFTAG_SAMPLESPERPIXEL,
@@ -11566,7 +11651,7 @@ GDALDataset *GTiffDataset::Open( GDALOpenInfo * poOpenInfo )
 
             // There is a risk of DoS due to huge amount of memory allocated in
             // ChopUpSingleUncompressedStrip() in libtiff.
-            if( nStrips > 128 * 1024 * 1024 &&
+            if( nStrips > 10 * 1024 * 1024 &&
                 !CPLTestBool(
                     CPLGetConfigOption("GTIFF_FORCE_STRIP_CHOP", "NO")) )
             {
@@ -12082,8 +12167,11 @@ GDALDataset *GTiffDataset::OpenDir( GDALOpenInfo * poOpenInfo )
         pszFilename += strlen("GTIFF_RAW:");
     }
 
-    if( !STARTS_WITH_CI(pszFilename, "GTIFF_DIR:") )
+    if( !STARTS_WITH_CI(pszFilename, "GTIFF_DIR:") ||
+        pszFilename[strlen("GTIFF_DIR:")] == '\0' )
+    {
         return NULL;
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Split out filename, and dir#/offset.                            */
@@ -12777,9 +12865,16 @@ CPLErr GTiffDataset::OpenOffset( TIFF *hTIFFIn,
         nBlockYSize = nRowsPerStrip;
     }
 
-    nBlocksPerBand =
-        DIV_ROUND_UP(nRasterYSize, nBlockYSize) *
-        DIV_ROUND_UP(nRasterXSize, nBlockXSize);
+    const int l_nBlocksPerColumn = DIV_ROUND_UP(nRasterYSize, nBlockYSize);
+    const int l_nBlocksPerRow = DIV_ROUND_UP(nRasterXSize, nBlockXSize);
+    if( l_nBlocksPerColumn > INT_MAX / l_nBlocksPerRow )
+    {
+        CPLError( CE_Failure, CPLE_AppDefined,
+                  "Too many blocks: %d x %d",
+                  l_nBlocksPerRow, l_nBlocksPerColumn );
+        return CE_Failure;
+    }
+    nBlocksPerBand = l_nBlocksPerColumn * l_nBlocksPerRow;
 
 /* -------------------------------------------------------------------- */
 /*      Should we handle this using the GTiffBitmapBand?                */
@@ -12866,6 +12961,25 @@ CPLErr GTiffDataset::OpenOffset( TIFF *hTIFFIn,
                  "Old-JPEG compression only supported through RGBA interface, "
                  "which cannot be used probably because the file is corrupted");
         return CE_Failure;
+    }
+
+    // If photometric is YCbCr, scanline/strip/tile interfaces assumes that
+    // we are ready with downsampled data. And we are not.
+    if( nCompression != COMPRESSION_JPEG &&
+        nCompression != COMPRESSION_OJPEG &&
+        nPhotometric == PHOTOMETRIC_YCBCR &&
+        nPlanarConfig == PLANARCONFIG_CONTIG &&
+        !bTreatAsRGBA )
+    {
+        uint16 nF1, nF2;
+        TIFFGetFieldDefaulted(hTIFF,TIFFTAG_YCBCRSUBSAMPLING,&nF1,&nF2);
+        if( nF1 != 1 || nF2 != 1 )
+        {
+            CPLError( CE_Failure, CPLE_AppDefined,
+                      "Cannot open TIFF file with YCbCr, subsampling and "
+                      "BitsPerSample > 8 that is not JPEG compressed" );
+            return CE_Failure;
+        }
     }
 
 /* -------------------------------------------------------------------- */
@@ -13072,8 +13186,11 @@ CPLErr GTiffDataset::OpenOffset( TIFF *hTIFFIn,
 
     if( GetRasterBand(1)->GetRasterDataType() == GDT_Unknown )
     {
-        CPLError( CE_Failure, CPLE_NotSupported,
-                  "Unsupported TIFF configuration." );
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "Unsupported TIFF configuration: BitsPerSample(=%d) and "
+                 "SampleType(=%d)",
+                 nBitsPerSample,
+                 nSampleFormat);
         return CE_Failure;
     }
 
@@ -16109,7 +16226,7 @@ GTiffDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
     /*      imagery to force the jpegtables to get created.  This is,       */
     /*      likely only needed with libtiff >= 3.9.3 (#3633)                */
     /* -------------------------------------------------------------------- */
-    else if( nCompression == COMPRESSION_JPEG
+    else if( l_nCompression == COMPRESSION_JPEG
             && strstr(TIFFLIB_VERSION_STR, "Version 3.9") != NULL )
     {
         CPLDebug( "GDAL",

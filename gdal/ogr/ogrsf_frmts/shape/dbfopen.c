@@ -623,6 +623,7 @@ DBFOpenLL( const char * pszFilename, const char * pszAccess, SAHooks *psHooks )
         psDBF->sHooks.FClose( psDBF->fp );
         free( pabyBuf );
         free( psDBF->pszCurrentRecord );
+        free( psDBF->pszCodePage );
         free( psDBF );
         return NULL;
     }
@@ -669,6 +670,15 @@ DBFOpenLL( const char * pszFilename, const char * pszAccess, SAHooks *psHooks )
 	else
 	    psDBF->panFieldOffset[iField] =
 	      psDBF->panFieldOffset[iField-1] + psDBF->panFieldSize[iField-1];
+    }
+
+    /* Check that the total width of fields does not exceed the record width */
+    if( psDBF->nFields > 0 &&
+        psDBF->panFieldOffset[psDBF->nFields-1] +
+            psDBF->panFieldSize[psDBF->nFields-1] > psDBF->nRecordLength )
+    {
+        DBFClose( psDBF );
+        return NULL;
     }
 
     DBFSetWriteEndOfFileChar( psDBF, TRUE );

@@ -190,11 +190,13 @@ bool OGRTriangle::quickValidityCheck() const
 /*                           importFromWkb()                            */
 /************************************************************************/
 
-OGRErr OGRTriangle::importFromWkb( unsigned char *pabyData,
-                                  int nSize,
-                                  OGRwkbVariant eWkbVariant )
+OGRErr OGRTriangle::importFromWkb( const unsigned char *pabyData,
+                                   int nSize,
+                                   OGRwkbVariant eWkbVariant,
+                                   int& nBytesConsumedOut )
 {
-    OGRErr eErr = OGRPolygon::importFromWkb( pabyData, nSize, eWkbVariant );
+    OGRErr eErr = OGRPolygon::importFromWkb( pabyData, nSize, eWkbVariant,
+                                             nBytesConsumedOut );
     if( eErr != OGRERR_NONE )
         return eErr;
 
@@ -259,8 +261,17 @@ OGRErr OGRTriangle::addRingDirectly( OGRCurve * poNewRing )
 /*                      GetCasterToPolygon()                            */
 /************************************************************************/
 
+OGRPolygon* OGRTriangle::CasterToPolygon(OGRSurface* poSurface)
+{
+    OGRTriangle* poTriangle = dynamic_cast<OGRTriangle*>(poSurface);
+    CPLAssert(poTriangle);
+    OGRPolygon* poRet = new OGRPolygon( *poTriangle );
+    delete poTriangle;
+    return poRet;
+}
+
 OGRSurfaceCasterToPolygon OGRTriangle::GetCasterToPolygon() const {
-    return (OGRSurfaceCasterToPolygon) OGRTriangle::CastToPolygon;
+    return OGRTriangle::CasterToPolygon;
 }
 
 /************************************************************************/
