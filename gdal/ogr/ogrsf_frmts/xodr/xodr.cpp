@@ -80,7 +80,7 @@ OGRMultiLineString XODR::toOGRGeometry(const planView& planView) const {
             ogrRoad.addGeometry(ogrGeometry.get());
         }
     }
-    integrateGeometryParts(&ogrRoad, 0.001);
+    integrateGeometryParts(&ogrRoad, 0.01);
     return ogrRoad;
 }
 
@@ -101,7 +101,7 @@ void XODR::integrateGeometryParts(OGRMultiLineString* ogrRoad, const double tole
                     pred->setPoint(numPts - 1, currentStart);
                 } else {
                     CPLError(CE_Warning, CPLE_AppDefined,
-                            "Road geometry parts are disjoint at point (%lf, %lf) and have a distance greater than %lf",
+                            "Road geometry parts are disjoint at point (%lf, %lf) with a distance greater than %lf",
                             currentStart->getX(), currentStart->getY(), tolerance);
                 }
             }

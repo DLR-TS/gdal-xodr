@@ -38,7 +38,7 @@ typedef double Matrix2D[3][3];
 
 /**
  * Bundles transformation matrix functions commonly used in computer graphics applications. These functions allow 
- * easy concatenation of geometry transformations.
+ * easy concatenation of geometry transformations. Should be moved to GEOS one day.
  */
 class MatrixTransformations {
 private:

@@ -30,7 +30,7 @@ The driver works only for GDAL 2.x. and does not support GDAL 1.x. It depends on
 - [xodr](https://github.com/DLR-TS/xodr)
 - [CodeSynthesis XSD](http://codesynthesis.com/products/xsd/)
 - [Xerces-C++](https://xerces.apache.org/xerces-c/)
-- [GEOS](https://trac.osgeo.org/geos/) support enabled in the GDAL base library
+- [GEOS](https://trac.osgeo.org/geos/)
 
 and building it is divided into
 
@@ -52,7 +52,7 @@ Configure GDAL to support creation of shared libraries. At least for our Ubuntu 
 cd <gdal>/gdal/
 ./configure --prefix ~/dev/gdal/gdal/build -enable-shared --without-libtool --with-geos=yes
 ```
-For Debug configuration append `--enable-debug` to `./configure`. Build with
+Check the output for successful recognition of geos and xerces. For Debug configuration append `--enable-debug` to `./configure`. Build with
 ```bash
 make -f GNUmakefile
 ```
@@ -80,18 +80,30 @@ We basically follow the official [GDAL building instructions for Windows](https:
 ```bash
 generate_vcxproj.bat 14.0 64 gdal_vs2015
 ```
-Now configure your GEOS dependency by adding its include directory and library path into a _new_ lokal NMake configuration file `nmake.local`. It should contain the following (concider `nmake.opt` as a reference):
+Now configure your GEOS and Xerces dependencies by adding the corresponding include directory and library paths into a _new_ lokal NMake configuration file `nmake.local`. It should contain something like the following (consider `nmake.opt` as a reference):
 ```bash
-GEOS_DIR=D:\dev\geos\distro
+# GEOS
+GEOS_DIR    = D:\dev\geos\distro
 GEOS_CFLAGS = -I$(GEOS_DIR)/include -DHAVE_GEOS
-GEOS_LIB     = $(GEOS_DIR)/lib/geos_c.lib
+GEOS_LIB    = $(GEOS_DIR)/lib/geos_c.lib
+
+# Xerces
+XERCES_DIR     = D:\dev\xerces-c-3.1.1-x86_64-windows-vc-10.0
+XERCES_INCLUDE = -I$(XERCES_DIR)\include  -I$(XERCES_DIR)\include\xercesc
+!IFNDEF DEBUG
+XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3.lib
+XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1.dll
+!ELSE
+XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3D.lib
+XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1D.dll
+!ENDIF
 ```
 Open the generated `.vcxproj` in Visual Studio and build GDAL for the desired configuration (e.g. Release or Debug). Alternatively, for an exemplary Release build use `nmake` from command line:
 ```bash
 cd <gdal>/gdal/
 nmake -f makefile.vc MSVC_VER=1900 WIN64=1
 ```
-Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` by adding the following in your lokal configuration file `nmake.lokal`
+Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` by adding the following in your lokal configuration file `nmake.local`
 ```bash
 GDAL_HOME="C:\dev\gdal\gdal\build"
 ```
@@ -123,7 +135,7 @@ This should yield the an OGR driver list extended by the new **OpenDRIVE** drive
 ```bash
 ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr
 ```
-OpenDRIVE datasets for testing can be found in the official [Download section](http://opendrive.org/download.html). For advanced debug console output of those utility programs and the implemented drivers add `CPL_DEBUG=ON` to your running environment.
+OpenDRIVE datasets for testing can be found in the official [OpenDRIVE download section](http://opendrive.org/download.html). For advanced debug console output of those utility programs and the implemented drivers add `CPL_DEBUG=ON` to your running environment.
   				
 ## General Development Notes
 To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](http://www.gdal.org/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [FileGDB Building Notes](http://www.gdal.org/drv_filegdb.html).
