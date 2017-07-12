@@ -1,5 +1,5 @@
 # OpenDRIVE Driver for OGR
-By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is described in a scientific paper which has been submitted for the [Driving Simulation Conference 2017 Europe<sup>VR</sup>](http://dsc2017.org/) and will be published in September 2017.
+By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is based on the [master's thesis by Ana Orozco](http://elib.dlr.de/103827/) and further described in a scientific paper which has been submitted for the [Driving Simulation Conference 2017 Europe<sup>VR</sup>](http://dsc2017.org/), going to be published in September 2017.
 
 This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library (OGR). Currently, the still prototypical OpenDRIVE driver is not yet integrated into GDAL but can be built as shared library against GDAL to provide a pluggable extension. For the development of our driver the original GDAL repository has been forked for easier integration into GDAL later.
 
