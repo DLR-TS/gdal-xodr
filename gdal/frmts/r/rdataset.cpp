@@ -33,10 +33,14 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <string>
 #if HAVE_FCNTL_H
 #  include <fcntl.h>
 #endif
+
+#include <algorithm>
+#include <limits>
+#include <string>
+#include <utility>
 
 #include "cpl_conv.h"
 #include "cpl_error.h"
@@ -49,7 +53,7 @@
 #include "gdal_priv.h"
 #include "../raw/rawdataset.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // static const int R_NILSXP = 0;
 static const int R_LISTSXP = 2;
@@ -57,6 +61,47 @@ static const int R_CHARSXP = 9;
 static const int R_INTSXP = 13;
 static const int R_REALSXP = 14;
 static const int R_STRSXP = 16;
+
+namespace {
+
+// TODO(schwehr): Move this to port/? for general use.
+bool SafeMult(GIntBig a, GIntBig b, GIntBig *result) {
+    if (a == 0 || b == 0) {
+      *result = 0;
+      return true;
+    }
+
+    bool result_positive = (a >= 0 && b >= 0) || (a < 0 && b < 0);
+    if (result_positive) {
+        // Cannot convert min() to positive.
+        if (a == std::numeric_limits<GIntBig>::min() ||
+            b == std::numeric_limits<GIntBig>::min()) {
+            *result = 0;
+            return false;
+        }
+        if (a < 0) {
+            a = -a;
+            b = -b;
+        }
+        if (a > std::numeric_limits<GIntBig>::max() / b) {
+            *result = 0;
+            return false;
+        }
+        *result = a * b;
+        return true;
+    }
+
+    if (b < a) std::swap(a, b);
+    if (a < (std::numeric_limits<GIntBig>::min() + 1) / b) {
+        *result = 0;
+        return false;
+    }
+
+    *result = a * b;
+    return true;
+}
+
+}  // namespace
 
 /************************************************************************/
 /*                            RRasterBand()                             */
@@ -298,7 +343,10 @@ int RDataset::Identify( GDALOpenInfo *poOpenInfo )
 
 GDALDataset *RDataset::Open( GDALOpenInfo * poOpenInfo )
 {
-#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    if( poOpenInfo->pabyHeader == NULL )
+        return NULL;
+#else
     // During fuzzing, do not use Identify to reject crazy content.
     if( !Identify(poOpenInfo) )
         return NULL;
@@ -452,20 +500,29 @@ GDALDataset *RDataset::Open( GDALOpenInfo * poOpenInfo )
         else if( nObjCode % 256 == R_REALSXP )
         {
             int nCount = poDS->ReadInteger();
-            while( nCount-- > 0 && !VSIFEofL(poDS->fp) )
+            while( nCount > 0 && !VSIFEofL(poDS->fp) )
+            {
+                nCount --;
                 poDS->ReadFloat();
+            }
         }
         else if( nObjCode % 256 == R_INTSXP )
         {
             int nCount = poDS->ReadInteger();
-            while( nCount-- > 0 && !VSIFEofL(poDS->fp) )
+            while( nCount > 0 && !VSIFEofL(poDS->fp) )
+            {
+                nCount --;
                 poDS->ReadInteger();
+            }
         }
         else if( nObjCode % 256 == R_STRSXP )
         {
             int nCount = poDS->ReadInteger();
-            while( nCount-- > 0 && !VSIFEofL(poDS->fp) )
+            while( nCount > 0 && !VSIFEofL(poDS->fp) )
+            {
+                nCount --;
                 poDS->ReadString();
+            }
         }
         else if( nObjCode % 256 == R_CHARSXP )
         {
@@ -488,8 +545,11 @@ GDALDataset *RDataset::Open( GDALOpenInfo * poOpenInfo )
         return NULL;
     }
 
-    if( nValueCount < static_cast<GIntBig>(nBandCount) * poDS->nRasterXSize *
-                          poDS->nRasterYSize )
+    GIntBig result = 0;
+    bool ok = SafeMult(nBandCount, poDS->nRasterXSize, &result);
+    ok &= SafeMult(result, poDS->nRasterYSize, &result);
+
+    if( !ok || nValueCount <  result )
     {
         CPLError(CE_Failure, CPLE_AppDefined, "Not enough pixel data.");
         delete poDS;

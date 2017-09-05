@@ -56,7 +56,7 @@
 #define UNUSED_IF_NO_GEOS
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 //! @cond Doxygen_Suppress
 int OGRGeometry::bGenerate_DB2_V72_BYTE_ORDER = FALSE;
@@ -639,8 +639,17 @@ int OGR_G_Intersect( OGRGeometryH hGeom, OGRGeometryH hOtherGeom )
 OGRErr OGRGeometry::transformTo( OGRSpatialReference *poSR )
 
 {
-    if( getSpatialReference() == NULL || poSR == NULL )
+    if( getSpatialReference() == NULL )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "Geometry has no SRS");
         return OGRERR_FAILURE;
+    }
+
+    if( poSR == NULL )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "Target SRS is NULL");
+        return OGRERR_FAILURE;
+    }
 
     OGRCoordinateTransformation *poCT =
         OGRCreateCoordinateTransformation( getSpatialReference(), poSR );

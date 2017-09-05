@@ -32,7 +32,7 @@
 #include "ogrwarpedlayer.h"
 #include "ogr_p.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                      OGRUnionLayerGeomFieldDefn()                    */
@@ -1140,7 +1140,7 @@ OGRErr OGRUnionLayer::GetExtent(int iGeomField, OGREnvelope *psExtent, int bForc
     if( iGeomField >= 0 && iGeomField < nGeomFields &&
         papoGeomFields[iGeomField]->sStaticEnvelope.IsInit() )
     {
-        memcpy(psExtent, &papoGeomFields[iGeomField]->sStaticEnvelope, sizeof(OGREnvelope));
+        *psExtent = papoGeomFields[iGeomField]->sStaticEnvelope;
         return OGRERR_NONE;
     }
 
@@ -1227,7 +1227,7 @@ void OGRUnionLayer::SetSpatialFilter( int iGeomField, OGRGeometry *poGeom )
 
 OGRFeature* OGRUnionLayer::TranslateFromSrcLayer(OGRFeature* poSrcFeature)
 {
-    CPLAssert(panMap != NULL);
+    CPLAssert(poSrcFeature->GetFieldCount() == 0 || panMap != NULL);
     CPLAssert(iCurLayer >= 0 && iCurLayer < nSrcLayers);
 
     OGRFeature* poFeature = new OGRFeature(poFeatureDefn);

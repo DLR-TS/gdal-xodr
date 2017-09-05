@@ -45,7 +45,7 @@
 #include "gdal.h"
 #include "gdal_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*! @cond Doxygen_Suppress */
 
@@ -304,10 +304,11 @@ void VRTRawRasterBand::ClearRawLink()
 /************************************************************************/
 
 CPLErr VRTRawRasterBand::XMLInit( CPLXMLNode * psTree,
-                                  const char *pszVRTPath )
+                                  const char *pszVRTPath,
+                                  void* pUniqueHandle )
 
 {
-    const CPLErr eErr = VRTRasterBand::XMLInit( psTree, pszVRTPath );
+    const CPLErr eErr = VRTRasterBand::XMLInit( psTree, pszVRTPath, pUniqueHandle );
     if( eErr != CE_None )
         return eErr;
 

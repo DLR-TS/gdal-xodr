@@ -56,7 +56,7 @@
 #include <algorithm>
 #include <vector>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 using std::vector;
 using std::string;
@@ -82,6 +82,7 @@ GDALMRFDataset::GDALMRFDataset() :
     bCrystalized(TRUE), // Assume not in create mode
     spacing(0),
     no_errors(0),
+    missing(0),
     poSrcDS(NULL),
     level(-1),
     cds(NULL),
@@ -469,7 +470,7 @@ void GDALMRFDataset::SetMaxValue(const char *pszVal) {
 int GDALMRFDataset::Identify(GDALOpenInfo *poOpenInfo)
 
 {
-    if (STARTS_WITH("<MRF_META>", poOpenInfo->pszFilename))
+  if (STARTS_WITH(poOpenInfo->pszFilename, "<MRF_META>"))
         return TRUE;
 
     CPLString fn(poOpenInfo->pszFilename);
@@ -748,6 +749,7 @@ static CPLErr Init_Raster(ILImage &image, GDALMRFDataset *ds, CPLXMLNode *defima
 
     // Basic checks
     if (!node || image.size.x < 1 || image.size.y < 1 ||
+        image.size.z < 0 || image.size.c < 0 ||
         !GDALCheckBandCount(image.size.c, FALSE)) {
         CPLError(CE_Failure, CPLE_AppDefined, "Raster size missing or invalid");
         return CE_Failure;
@@ -862,6 +864,16 @@ static CPLErr Init_Raster(ILImage &image, GDALMRFDataset *ds, CPLXMLNode *defima
     }
 
     // Order of increment
+    if( image.pagesize.c != image.size.c && image.pagesize.c != 1 )
+    {
+        // Fixes heap buffer overflow in GDALMRFRasterBand::ReadInterleavedBlock()
+        // See https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=2884
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "GDAL MRF: image.pagesize.c = %d and image.size.c = %d",
+                 image.pagesize.c, image.size.c);
+        return CE_Failure;
+    }
+
     image.order = OrderToken(CPLGetXMLValue(defimage, "Order",
         (image.pagesize.c != image.size.c) ? "BAND" : "PIXEL"));
     if (image.order == IL_ERR_ORD) {
@@ -972,6 +984,10 @@ VSILFILE *GDALMRFDataset::IdxFP() {
     if (ifp.FP != NULL)
         return ifp.FP;
 
+    // If missing is set, we already checked, there is no index
+    if (missing)
+        return NULL;
+
     // If name starts with '(' it is not a real file name
     if (current.idxfname[0] == '(')
         return NULL;
@@ -985,6 +1001,12 @@ VSILFILE *GDALMRFDataset::IdxFP() {
     }
 
     ifp.FP = VSIFOpenL(current.idxfname, mode);
+
+    // If file didn't open for reading and no_errors is set, just return null and make a note
+    if (ifp.FP == NULL && eAccess == GA_ReadOnly && no_errors) {
+        missing = 1;
+        return NULL;
+    }
 
     // need to create the index file
     if (ifp.FP == NULL && !bCrystalized && (eAccess == GA_Update || !source.empty())) {
@@ -1126,7 +1148,7 @@ io_error:
     CPLError(CE_Failure, CPLE_FileIO,
         "GDAL MRF: %s : %s", strerror(errno), current.datfname.c_str());
     return NULL;
-};
+}
 
 // Builds an XML tree from the current MRF.  If written to a file it becomes an MRF
 CPLXMLNode * GDALMRFDataset::BuildConfig()
@@ -1592,31 +1614,34 @@ GDALDataset *GDALMRFDataset::CreateCopy(const char *pszFilename,
 
     CSLDestroy(options);
 
-    char **meta = poSrcDS->GetMetadata();
-    if (poDS && CSLCount(meta))
-        poDS->SetMetadata(meta);
+    if (!poDS)
+      return NULL;
 
-    // Copy input GCPs, PAM handles it
-    if (poSrcDS->GetGCPCount())
-        poDS->SetGCPs(poSrcDS->GetGCPCount(), poSrcDS->GetGCPs(), poSrcDS->GetGCPProjection());
+    char** papszFileList = poDS->GetFileList();
+    poDS->oOvManager.Initialize(poDS, poDS->GetPhysicalFilename(), papszFileList);
+    CSLDestroy(papszFileList);
 
-    meta = poSrcDS->GetMetadata("RPC");
-    if (poDS && CSLCount(meta))
-        poDS->SetMetadata(meta, "RPC");
+    CPLErr err = CE_None;
+    // Have PAM copy all, but skip the mask
+    int nCloneFlags = GCIF_PAM_DEFAULT & ~GCIF_MASK;
 
     // If copy is disabled, we're done, we just created an empty MRF
-    if (!poDS || on(CSLFetchNameValue(papszOptions, "NOCOPY")))
-        return poDS;
-
-    // Use the GDAL copy call
-    // Need to flag the dataset as compressed (COMPRESSED=TRUE) to force block writes
-    // This might not be what we want, if the input and out order is truly separate
-    char **papszCWROptions = NULL;
-    papszCWROptions = CSLAddNameValue(papszCWROptions, "COMPRESSED", "TRUE");
-    CPLErr err = GDALDatasetCopyWholeRaster((GDALDatasetH)poSrcDS,
+    if (!on(CSLFetchNameValue(papszOptions, "NOCOPY"))) {
+      // Use the GDAL copy call
+      // Need to flag the dataset as compressed (COMPRESSED=TRUE) to force block writes
+      // This might not be what we want, if the input and out order is truly separate
+      nCloneFlags |= GCIF_MASK; // We do copy the data, so copy the mask too if necessary
+      char **papszCWROptions = NULL;
+      papszCWROptions = CSLAddNameValue(papszCWROptions, "COMPRESSED", "TRUE");
+      err = GDALDatasetCopyWholeRaster((GDALDatasetH)poSrcDS,
         (GDALDatasetH)poDS, papszCWROptions, pfnProgress, pProgressData);
 
-    CSLDestroy(papszCWROptions);
+      CSLDestroy(papszCWROptions);
+    }
+
+
+    if (CE_None == err)
+      err = poDS->CloneInfo(poSrcDS, nCloneFlags);
 
     if (CE_Failure == err) {
         delete poDS;
@@ -1631,7 +1656,6 @@ GDALDataset *GDALMRFDataset::CreateCopy(const char *pszFilename,
 void GDALMRFDataset::ProcessOpenOptions(char **papszOptions)
 {
     CPLStringList opt(papszOptions, FALSE);
-
     no_errors = opt.FetchBoolean("NOERRORS", FALSE);
 }
 
@@ -2027,6 +2051,10 @@ CPLErr GDALMRFDataset::ReadTileIdx(ILIdx &tinfo, const ILSize &pos, const ILImag
 
 {
     VSILFILE *l_ifp = IdxFP();
+
+    // Initialize the tinfo structure, in case the files are missing
+    if (missing)
+      return CE_None;
 
     GIntBig offset = bias + IdxOffset(pos, img);
     if (l_ifp == NULL && img.comp == IL_NONE ) {

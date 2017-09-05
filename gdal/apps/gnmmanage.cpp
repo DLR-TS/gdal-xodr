@@ -37,7 +37,7 @@
 //#include "gnm.h"
 //#include "gnm_api.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 enum operation
 {
@@ -240,7 +240,7 @@ int main( int nArgc, char ** papszArgv )
             stOper = op_info;
         }
 
-        else if( EQUAL(papszArgv[iArg],"-f") )
+        else if( EQUAL(papszArgv[iArg],"-f") || EQUAL(papszArgv[iArg],"-of") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
             pszFormat = papszArgv[++iArg];
@@ -914,7 +914,7 @@ exit:
     CSLDestroy( papszLayers );
 
     if( poDS != NULL )
-        GDALClose( (GDALDatasetH)poDS );
+        GDALClose(poDS);
 
     GDALDestroyDriverManager();
 

@@ -497,8 +497,8 @@ Builds or rebuilds overview images.
 
 \verbatim
 gdaladdo [-r {nearest,average,gauss,cubic,cubicspline,lanczos,average_mp,average_magphase,mode}]
-         [-b band]*
-         [-ro] [-clean] [-oo NAME=VALUE]* [--help-general] filename levels
+         [-b band]* [-minsize val]
+         [-ro] [-clean] [-oo NAME=VALUE]* [--help-general] filename [levels]
 \endverbatim
 
 \section gdaladdo_description DESCRIPTION
@@ -517,8 +517,14 @@ to select a set of input bands to generate overviews.</dd>
 external overview (for GeoTIFF especially). </dd>
 <dt> <b>-clean</b></dt>:<dd> (available from GDAL 1.7.0) remove all overviews. </dd>
 <dt> <b>-oo</b> <em>NAME=VALUE</em>:</dt><dd>(starting with GDAL 2.0) Dataset open option (format specific)</dd>
+<dt> <b>-minsize</b> <i>val</i>:</dt><dd> (starting with GDAL 2.3) Maximum width or height of the
+smallest overview level. Only taken into account if explicit levels are not specified.
+Defaults to 256. </dd>
 <dt> <i>filename</i>:</dt><dd> The file to build overviews for (or whose overviews must be removed). </dd>
-<dt> <i>levels</i>:</dt><dd> A list of integral overview levels to build. Ignored with -clean option.</dd>
+<dt> <i>levels</i>:</dt><dd> A list of integral overview levels to build. Ignored with -clean option.
+Starting with GDAL 2.3, levels are no longer required to build overviews. In which case, appropriate
+overview power-of-two factors will be selected until the smallest overview is smaller than the
+value of the -minsize switch.</dd>
 </dl>
 
 <i>Mode</i> (available from GDAL 1.6.0) selects the value which appears most often of all the sampled points.
@@ -579,9 +585,9 @@ To produce the smallest possible JPEG-In-TIFF overviews, you should use :
 --config COMPRESS_OVERVIEW JPEG --config PHOTOMETRIC_OVERVIEW YCBCR --config INTERLEAVE_OVERVIEW PIXEL
 \endverbatim
 
-Starting with GDAL 1.7.0, external overviews can be created in the BigTIFF format by using
+External overviews can be created in the BigTIFF format by using
 the BIGTIFF_OVERVIEW configuration option : --config BIGTIFF_OVERVIEW {IF_NEEDED|IF_SAFER|YES|NO}.
-The default value is IF_NEEDED. The behaviour of this option is exactly the same as the BIGTIFF creation option
+The default value is IF_SAFER starting with GDAL 2.3.0 (previously was IF_NEEDED). The behaviour of this option is exactly the same as the BIGTIFF creation option
 documented in the GeoTIFF driver documentation.
 <ul>
     <li>YES forces BigTIFF.
@@ -602,6 +608,13 @@ Functionality of this utility can be done from C with GDALBuildOverviews().
 \htmlonly
 Example:
 \endhtmlonly
+
+Create overviews,embedded in the supplied TIFF file, with automatic computatino
+of levels (GDAL 2.3 or later)
+
+\verbatim
+gdaladdo -r average abc.tif
+\endverbatim
 
 Create overviews, embedded in the supplied TIFF file:
 
@@ -742,6 +755,7 @@ gdalbuildvrt [-tileindex field_name]
              [-te xmin ymin xmax ymax] [-tr xres yres] [-tap]
              [-separate] [-b band]* [-sd subdataset]
              [-allow_projection_difference] [-q]
+             [-optim {[AUTO]/VECTOR/RASTER}]
              [-addalpha] [-hidenodata]
              [-srcnodata "value [value...]"] [-vrtnodata "value [value...]"]
              [-a_srs srs_def]
@@ -861,6 +875,13 @@ required that all bands have the same datatype.
 When this option is specified, the utility will accept to make a VRT even if the input datasets have
 not the same projection. Note: this does not mean that they will be reprojected. Their projection will
 just be ignored.
+</dd>
+
+<dt> <b>-optim</b> {[AUTO]/VECTOR/RASTER}}:</dt><dd> (starting with GDAL 2.3)
+Force the algorithm used (results are identical). The raster mode is used in most cases and optimise
+read/write operations. The vector mode is usefull with a decent amount of input features and optimise
+the CPU use. That mode have to be used with tiled images to be efficient. The auto mode (the default)
+will chose the algorithm based on input and output properties.
 </dd>
 
 <dt> <b>-a_srs</b> <i>srs_def</i>:</dt><dd> (starting with GDAL 1.10)
@@ -1016,7 +1037,7 @@ Burns vector geometries into a raster.
 Usage: gdal_rasterize [-b band]* [-i] [-at]
        {[-burn value]* | [-a attribute_name] | [-3d]} [-add]
        [-l layername]* [-where expression] [-sql select_statement]
-       [-dialect dialect] [-of format] [-a_srs srs_def]
+       [-dialect dialect] [-of format] [-a_srs srs_def] [-to NAME=VALUE]*
        [-co "NAME=VALUE"]* [-a_nodata value] [-init value]*
        [-te xmin ymin xmax ymax] [-tr xres yres] [-tap] [-ts width height]
        [-ot {Byte/Int16/UInt16/UInt32/Int32/Float32/Float64/
@@ -1104,6 +1125,11 @@ the input vector file will be used if available. If incompatible projections
 between input and output files, no attempt will be made to reproject features.
 The <i>srs_def</i> may be any of the usual GDAL/OGR forms, complete WKT, PROJ.4,
 EPSG:n or a file containing the WKT. </dd>
+
+<dt> <b>-to</b> <em>NAME=VALUE</em>:</dt><dd> (GDAL >= 2.3.0) set a transformer
+option suitable to pass to GDALCreateGenImgProjTransformer2(). This is
+used when converting geometries coordinates to target raster pixel space. For
+example this can be used to specify RPC related transformer options.</dd>
 
 <dt> <b>-co</b> <i>"NAME=VALUE"</i>:</dt><dd> (GDAL >= 1.8.0)
 Passes a creation option to the output format driver.  Multiple <b>-co</b>

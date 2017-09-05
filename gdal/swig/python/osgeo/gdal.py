@@ -971,11 +971,12 @@ def RasterizeOptions(options = [], format = None,
          outputType = GDT_Unknown, 
          creationOptions = None, noData = None, initValues = None,
          outputBounds = None, outputSRS = None,
+         transformerOptions = None,
          width = None, height = None,
          xRes = None, yRes = None, targetAlignedPixels = False,
          bands = None, inverse = False, allTouched = False,
          burnValues = None, attribute = None, useZ = False, layers = None,
-         SQLStatement = None, SQLDialect = None, where = None,
+         SQLStatement = None, SQLDialect = None, where = None, optim = None,
          callback = None, callback_data = None):
     """ Create a RasterizeOptions() object that can be passed to gdal.Rasterize()
         Keyword arguments are :
@@ -985,6 +986,7 @@ def RasterizeOptions(options = [], format = None,
           creationOptions --- list of creation options
           outputBounds --- assigned output bounds: [minx, miny, maxx, maxy]
           outputSRS --- assigned output SRS
+          transformerOptions --- list of transformer options
           width --- width of the output raster in pixel
           height --- height of the output raster in pixel
           xRes, yRes --- output resolution in target SRS
@@ -1032,6 +1034,9 @@ def RasterizeOptions(options = [], format = None,
             new_options += ['-te', str(outputBounds[0]), str(outputBounds[1]), str(outputBounds[2]), str(outputBounds[3])]
         if outputSRS is not None:
             new_options += ['-a_srs', str(outputSRS) ]
+        if transformerOptions is not None:
+            for opt in transformerOptions:
+                new_options += ['-to', opt ]
         if width is not None and height is not None:
             new_options += ['-ts', str(width), str(height)]
         if xRes is not None and yRes is not None:
@@ -1066,6 +1071,8 @@ def RasterizeOptions(options = [], format = None,
             new_options += ['-dialect', str(SQLDialect) ]
         if where is not None:
             new_options += ['-where', str(where) ]
+        if optim is not None:
+            new_options += ['-optim', str(optim) ]
 
     return (GDALRasterizeOptions(new_options), callback, callback_data)
 
@@ -1268,6 +1275,10 @@ def GetLastErrorMsg(*args):
     """GetLastErrorMsg() -> char const *"""
     return _gdal.GetLastErrorMsg(*args)
 
+def GetErrorCounter(*args):
+    """GetErrorCounter() -> unsigned int"""
+    return _gdal.GetErrorCounter(*args)
+
 def VSIGetLastErrorNo(*args):
     """VSIGetLastErrorNo() -> int"""
     return _gdal.VSIGetLastErrorNo(*args)
@@ -1396,6 +1407,10 @@ def VSIFOpenExL(*args):
     """VSIFOpenExL(char const * utf8_path, char const * pszMode, int bSetError) -> VSILFILE *"""
     return _gdal.VSIFOpenExL(*args)
 
+def VSIFEofL(*args):
+    """VSIFEofL(VSILFILE * fp) -> int"""
+    return _gdal.VSIFEofL(*args)
+
 def VSIFCloseL(*args):
     """VSIFCloseL(VSILFILE * fp) -> VSI_RETVAL"""
     return _gdal.VSIFCloseL(*args)
@@ -1432,6 +1447,10 @@ def VSIFGetRangeStatusL(*args):
 def VSIFWriteL(*args):
     """VSIFWriteL(int nLen, int size, int memb, VSILFILE * fp) -> int"""
     return _gdal.VSIFWriteL(*args)
+
+def VSICurlClearCache(*args):
+    """VSICurlClearCache()"""
+    return _gdal.VSICurlClearCache(*args)
 
 def ParseCommandLine(*args):
     """ParseCommandLine(char const * utf8_path) -> char **"""
@@ -2487,17 +2506,21 @@ class Band(MajorObject):
 
 
 
-    def ComputeStatistics(self, approx_ok):
+    def ComputeStatistics(self, *args):
       """ComputeStatistics(Band self, bool approx_ok, GDALProgressFunc callback=0, void * callback_data=None) -> CPLErr"""
 
     # For backward compatibility. New SWIG has stricter typing and really
     # enforces bool
+      approx_ok = args[0]
       if approx_ok == 0:
           approx_ok = False
       elif approx_ok == 1:
           approx_ok = True
+      new_args = [ approx_ok ]
+      for arg in args[1:]:
+          new_args.append( arg )
 
-      return _gdal.Band_ComputeStatistics(self, approx_ok)
+      return _gdal.Band_ComputeStatistics(self, *new_args)
 
 
     def ReadRaster(self, xoff = 0, yoff = 0, xsize = None, ysize = None,

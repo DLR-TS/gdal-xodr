@@ -18,6 +18,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+
+#include <limits>
+
 #include "myassert.h"
 #include "myerror.h"
 #include "memendian.h"
@@ -376,7 +379,7 @@ static int FindSectLen2to7 (char *c_ipack, sInt4 gribLen, sInt4 ns[8],
 
    if ((sectNum == 2) || (sectNum == 3)) {
       /* Figure out the size of section 2 and 3. */
-      if (*curTot + 5 > gribLen) {
+      if (*curTot + 6 + 4 > gribLen) {
          errSprintf ("ERROR: Ran out of data in Section 2 or 3\n");
          return -1;
       }
@@ -386,7 +389,7 @@ static int FindSectLen2to7 (char *c_ipack, sInt4 gribLen, sInt4 ns[8],
          *curTot = *curTot + sectLen;
          if (ns[2] < sectLen)
             ns[2] = sectLen;
-         if (*curTot + 5 > gribLen) {
+         if (*curTot + 6 + 4 > gribLen) {
             errSprintf ("ERROR: Ran out of data in Section 3\n");
             return -1;
          }
@@ -432,7 +435,7 @@ static int FindSectLen2to7 (char *c_ipack, sInt4 gribLen, sInt4 ns[8],
 */
 
    /* Figure out the size of section 5. */
-   if (*curTot + 5 > gribLen) {
+   if (*curTot + 9 + 2 > gribLen) {
       errSprintf ("ERROR: Ran out of data in Section 5\n");
       return -1;
    }
@@ -564,6 +567,10 @@ static int FindSectLen (char *c_ipack, sInt4 gribLen, sInt4 ns[8],
       if ((ans = FindSectLen2to7 (c_ipack, gribLen, ns, sectNum, &curTot,
                                   nd2x3, table50)) != 0) {
          return ans;
+      }
+      if( curTot + 4 > gribLen ) {
+            errSprintf ("ERROR: Ran out of data in Section 1\n");
+            return -1;
       }
       /* Try to read section 8.  If it is "7777" == 926365495 regardless of
        * endian'ness then we have a simple message, otherwise it is complex,
@@ -910,11 +917,37 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
        * Make room for entire message, and read it in.
        */
       /* nd5 needs to be gribLen in (sInt4) units rounded up. */
+      if( gribLen > UINT_MAX - 3 )
+      {
+         errSprintf("Invalid value of gribLen");
+         free (buff);
+         return -1;
+      }
       nd5 = (gribLen + 3) / 4;
       if (nd5 > IS->ipackLen) {
+         if( gribLen > 100 * 1024 * 1024 )
+         {
+             long nCurPos = fp.DataSourceFtell();
+             fp.DataSourceFseek(0, SEEK_END);
+             long fileSize = fp.DataSourceFtell();
+             fp.DataSourceFseek(nCurPos, SEEK_SET);
+             if( (unsigned long)fileSize < (unsigned long)gribLen )
+             {
+                errSprintf("File too short");
+                free (buff);
+                return -1;
+             }
+         }
+         sInt4* ipackNew = (sInt4 *) realloc ((void *) (IS->ipack),
+                                              nd5 * sizeof (sInt4));
+         if( ipackNew == NULL )
+         {
+            errSprintf("Out of memory");
+            free (buff);
+            return -1;
+         }
          IS->ipackLen = nd5;
-         IS->ipack = (sInt4 *) realloc ((void *) (IS->ipack),
-                                        (IS->ipackLen) * sizeof (sInt4));
+         IS->ipack = ipackNew;
       }
       c_ipack = (char *) IS->ipack;
       /* Init last sInt4 to 0, to make sure that the padded bytes are 0. */
@@ -938,6 +971,12 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
        * that would make it much more confusing to find bytes in c_ipack. */
       if (FindSectLen (c_ipack, gribLen, local_ns, &nd2x3, &table50) < 0) {
          preErrSprintf ("Inside ReadGrib2Record.. Calling FindSectLen\n");
+         free (buff);
+         return -2;
+      }
+      if( nd2x3 < 0 || nd2x3 > INT_MAX / static_cast<int>(sizeof (sInt4)) )
+      {
+         preErrSprintf ("Invalid nd2x3\n");
          free (buff);
          return -2;
       }
@@ -979,6 +1018,21 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
       }
       /* Make sure we have room for the GRID part of the output. */
       if (nd2x3 > IS->nd2x3) {
+        if( nd2x3 > 100 * 1024 * 1024 )
+        {
+            long curPos = fp.DataSourceFtell();
+            fp.DataSourceFseek(0, SEEK_END);
+            long fileSize = fp.DataSourceFtell();
+            fp.DataSourceFseek(curPos, SEEK_SET);
+            // allow a compression ratio of 1:1000
+            if( nd2x3 / 1000 > fileSize )
+            {
+                preErrSprintf ("File too short\n");
+                free (buff);
+                return -2;
+            }
+        }
+
          IS->nd2x3 = nd2x3;
          IS->iain = (sInt4 *) realloc ((void *) IS->iain,
                                        IS->nd2x3 * sizeof (sInt4));
@@ -990,9 +1044,23 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
          if (nd5 < nd2x3) {
             nd5 = nd2x3;
             if (nd5 > IS->ipackLen) {
+               sInt4* ipackNew = (sInt4 *) realloc ((void *) (IS->ipack),
+                                                    nd5 * sizeof (sInt4));
+               if( ipackNew == NULL )
+               {
+                   errSprintf("Out of memory");
+                   free (buff);
+                   return -1;
+               }
+               // zero initialize to avoid later use of undefined values
+               // Not sure if it is strictly needed (perhaps some later
+               // steps should detect errors / data shortening), but
+               // cannot hurt.
+               // see https://trac.osgeo.org/gdal/ticket/6967
+               memset(ipackNew + IS->ipackLen, 0,
+                      (nd5 - IS->ipackLen) * sizeof(sInt4));
                IS->ipackLen = nd5;
-               IS->ipack = (sInt4 *) realloc ((void *) (IS->ipack),
-                                              IS->ipackLen * sizeof (sInt4));
+               IS->ipack = ipackNew;
             }
             /* Don't need to do the following, but we do in case code
              * changes. */
@@ -1134,6 +1202,12 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
       f_subGrid = 0;
    }
    */
+   if( meta->gds.Nx == 0 || meta->gds.Nx > INT_MAX ||
+       meta->gds.Ny == 0 || meta->gds.Ny > INT_MAX )
+   {
+      errSprintf ("Invalid grid dimension.\n");
+      return -3;
+   }
    Nx = meta->gds.Nx;
    Ny = meta->gds.Ny;
    x1 = 1;
@@ -1150,17 +1224,21 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
    }
 
    if (strcmp (meta->element, "Wx") != 0) {
-      ParseGrid (&(meta->gridAttrib), Grib_Data, grib_DataLen, Nx, Ny,
-                 meta->gds.scan, IS->iain, ibitmap, IS->ib, unitM, unitB, 0,
+      ParseGrid (fp, &(meta->gridAttrib), Grib_Data, grib_DataLen, Nx, Ny,
+                 meta->gds.scan, IS->nd2x3, IS->iain, ibitmap, IS->ib, unitM, unitB, 0,
                  NULL, f_subGrid, x1, y1, x2, y2);
+      if( *Grib_Data == NULL )
+          return -1;
    } else {
       /* Handle weather grid.  ParseGrid looks up the values... If they are
        * "<Invalid>" it sets it to missing (or creates one).  If the table
        * entry is used it sets f_valid to 2. */
-      ParseGrid (&(meta->gridAttrib), Grib_Data, grib_DataLen, Nx, Ny,
-                 meta->gds.scan, IS->iain, ibitmap, IS->ib, unitM, unitB, 1,
+      ParseGrid (fp, &(meta->gridAttrib), Grib_Data, grib_DataLen, Nx, Ny,
+                 meta->gds.scan, IS->nd2x3, IS->iain, ibitmap, IS->ib, unitM, unitB, 1,
                  (sect2_WxType *) &(meta->pds2.sect2.wx), f_subGrid, x1, y1,
                  x2, y2);
+      if( *Grib_Data == NULL )
+          return -1;
 
       /* compact the table to only those which are actually used. */
       cnt = 0;
@@ -1190,7 +1268,14 @@ int ReadGrib2Record (DataSource &fp, sChar f_unit, double **Grib_Data,
    Clock_Print (meta->validTime, 20, meta->pds2.sect4.validTime,
                 "%Y%m%d%H%M", 0);
 
-   meta->deltTime = (sInt4) (meta->pds2.sect4.validTime - meta->pds2.refTime);
+   const double deltTime = meta->pds2.sect4.validTime - meta->pds2.refTime;
+   if (deltTime >= std::numeric_limits<sInt4>::max() ||
+       deltTime <= std::numeric_limits<sInt4>::min()) {
+      meta->deltTime = 0;
+      preErrSprintf ("deltTime over range\n");
+      return -4;
+   }
+   meta->deltTime = static_cast<sInt4>(deltTime);
 
    return 0;
 }

@@ -33,7 +33,7 @@
 #include "cpl_error.h"
 #include "cpl_string.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           TigerFileBase()                            */
@@ -573,6 +573,8 @@ OGRFeature *TigerFileBase::GetFeature( int nRecordId )
         return NULL;
     }
 
+    // Overflow cannot happen since psRTInfo->nRecordLength is unsigned
+    // char and sizeof(achRecord) == OGR_TIGER_RECBUF_LEN > 255
     if( VSIFReadL( achRecord, psRTInfo->nRecordLength, 1, fpPrimary ) != 1 )
     {
         CPLError( CE_Failure, CPLE_FileIO,

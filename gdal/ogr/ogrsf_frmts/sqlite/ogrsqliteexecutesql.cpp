@@ -33,7 +33,7 @@
 #include "ogrsqliteutility.h"
 #include "cpl_multiproc.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                       OGRSQLiteExecuteSQLLayer                       */
@@ -797,7 +797,9 @@ OGRLayer * OGRSQLiteExecuteSQL( GDALDataset* poDS,
 
         poSQLiteDS = new OGRSQLiteDataSource();
         CPLSetThreadLocalConfigOption("OGR_SQLITE_STATIC_VIRTUAL_OGR", "NO");
-        const int nRet = poSQLiteDS->Open( pszTmpDBName, TRUE, NULL, GDAL_OF_VECTOR );
+        GDALOpenInfo oOpenInfo(pszTmpDBName,
+                               GDAL_OF_VECTOR | GDAL_OF_UPDATE);
+        const int nRet = poSQLiteDS->Open(&oOpenInfo);
         CPLSetThreadLocalConfigOption("OGR_SQLITE_STATIC_VIRTUAL_OGR", pszOldVal);
         if( !nRet )
         {

@@ -50,7 +50,7 @@
 
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // list of named persistent http sessions
 
@@ -218,7 +218,7 @@ char** CPLHTTPGetOptionsFromEnv()
  * <li>NETRC=[YES/NO] to enable or disable use of $HOME/.netrc, default YES.</li>
  * <li>CUSTOMREQUEST=val, where val is GET, PUT, POST, DELETE, etc.. (GDAL >= 1.9.0)</li>
  * <li>COOKIE=val, where val is formatted as COOKIE1=VALUE1; COOKIE2=VALUE2; ...</li>
- * <li>MAX_RETRY=val, where val is the maximum number of retry attempts if a 503 or
+ * <li>MAX_RETRY=val, where val is the maximum number of retry attempts if a 502, 503 or
  *               504 HTTP error occurs. Default is 0. (GDAL >= 2.0)</li>
  * <li>RETRY_DELAY=val, where val is the number of seconds between retry attempts.
  *                 Default is 30. (GDAL >= 2.0)</li>
@@ -488,11 +488,13 @@ CPLHTTPResult *CPLHTTPFetch( const char *pszURL, char **papszOptions )
     const char *pszRetryDelay =
         CSLFetchNameValue( papszOptions, "RETRY_DELAY" );
     if( pszRetryDelay == NULL )
-        pszRetryDelay = CPLGetConfigOption( "GDAL_HTTP_RETRY_DELAY", "30" );
+        pszRetryDelay = CPLGetConfigOption( "GDAL_HTTP_RETRY_DELAY",
+                                    CPLSPrintf("%f", CPL_HTTP_RETRY_DELAY) );
     const char *pszMaxRetries = CSLFetchNameValue( papszOptions, "MAX_RETRY" );
     if( pszMaxRetries == NULL )
-        pszMaxRetries = CPLGetConfigOption( "GDAL_HTTP_MAX_RETRY", "0" );
-    int nRetryDelaySecs = atoi(pszRetryDelay);
+        pszMaxRetries = CPLGetConfigOption( "GDAL_HTTP_MAX_RETRY",
+                                    CPLSPrintf("%d",CPL_HTTP_MAX_RETRY) );
+    double dfRetryDelaySecs = CPLAtof(pszRetryDelay);
     int nMaxRetries = atoi(pszMaxRetries);
     int nRetryCount = 0;
     bool bRequestRetry;
@@ -575,10 +577,10 @@ CPLHTTPResult *CPLHTTPFetch( const char *pszURL, char **papszOptions )
                 {
                     CPLError(CE_Warning, CPLE_AppDefined,
                              "HTTP error code: %d - %s. "
-                             "Retrying again in %d secs",
+                             "Retrying again in %.1f secs",
                              static_cast<int>(response_code), pszURL,
-                             nRetryDelaySecs);
-                    CPLSleep(nRetryDelaySecs);
+                             dfRetryDelaySecs);
+                    CPLSleep(dfRetryDelaySecs);
                     nRetryCount++;
 
                     CPLFree(psResult->pszContentType);
@@ -615,6 +617,37 @@ CPLHTTPResult *CPLHTTPFetch( const char *pszURL, char **papszOptions )
 }
 
 #ifdef HAVE_CURL
+
+#ifdef WIN32
+
+#include <windows.h>
+
+/************************************************************************/
+/*                     CPLFindWin32CurlCaBundleCrt()                    */
+/************************************************************************/
+
+static const char* CPLFindWin32CurlCaBundleCrt()
+{
+    DWORD nResLen;
+    const DWORD nBufSize = MAX_PATH + 1;
+    char *pszFilePart = NULL;
+
+    char *pszPath = static_cast<char*>(CPLCalloc(1, nBufSize));
+
+    nResLen = SearchPathA(NULL, "curl-ca-bundle.crt", NULL,
+                          nBufSize, pszPath, &pszFilePart);
+    if (nResLen > 0)
+    {
+        const char* pszRet = CPLSPrintf("%s", pszPath);
+        CPLFree(pszPath);
+        return pszRet;
+    }
+    CPLFree(pszPath);
+    return NULL;
+}
+
+#endif // WIN32
+
 /************************************************************************/
 /*                         CPLHTTPSetOptions()                          */
 /************************************************************************/
@@ -785,6 +818,12 @@ void* CPLHTTPSetOptions(void *pcurl, const char * const* papszOptions)
         // Name of environment variable used by the curl binary (tested
         // after CURL_CA_BUNDLE
         pszCAInfo = CPLGetConfigOption("SSL_CERT_FILE", NULL);
+#ifdef WIN32
+    if( pszCAInfo == NULL )
+    {
+        pszCAInfo = CPLFindWin32CurlCaBundleCrt();
+    }
+#endif
     if( pszCAInfo != NULL )
     {
         curl_easy_setopt(http_handle, CURLOPT_CAINFO, pszCAInfo);
@@ -838,7 +877,16 @@ void* CPLHTTPSetOptions(void *pcurl, const char * const* papszOptions)
         pszHeaderFile = CPLGetConfigOption( "GDAL_HTTP_HEADER_FILE", NULL );
     if( pszHeaderFile != NULL )
     {
-        VSILFILE *fp = VSIFOpenL( pszHeaderFile, "rb" );
+        VSILFILE *fp = NULL;
+        // Do not allow /vsicurl/ access from /vsicurl because of GetCurlHandleFor()
+        // e.g. "/vsicurl/,HEADER_FILE=/vsicurl/,url= " would cause use of
+        // memory after free
+        if( strstr(pszHeaderFile, "/vsicurl/") == NULL &&
+            strstr(pszHeaderFile, "/vsis3/") == NULL &&
+            strstr(pszHeaderFile, "/vsigs/") == NULL )
+        {
+            fp = VSIFOpenL( pszHeaderFile, "rb" );
+        }
         if( fp == NULL )
         {
             CPLError(CE_Failure, CPLE_FileIO,

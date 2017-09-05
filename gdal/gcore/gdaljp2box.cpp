@@ -44,7 +44,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*! @cond Doxygen_Suppress */
 
@@ -52,6 +52,7 @@ CPL_CVSID("$Id$");
 /*                             GDALJP2Box()                             */
 /************************************************************************/
 
+// GDALJP2Box does *not* take ownership of fpIn
 GDALJP2Box::GDALJP2Box( VSILFILE *fpIn ) :
     fpVSIL(fpIn),
 #if HAVE_CXX11
@@ -74,7 +75,8 @@ GDALJP2Box::GDALJP2Box( VSILFILE *fpIn ) :
 GDALJP2Box::~GDALJP2Box()
 
 {
-    // TODO(schwher): Need to close fpVSIL?
+    // Do not close fpVSIL. Ownership remains to the caller of GDALJP2Box
+    // constructor
     CPLFree( pabyData );
 }
 

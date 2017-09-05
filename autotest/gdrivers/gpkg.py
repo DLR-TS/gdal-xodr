@@ -2466,7 +2466,7 @@ def gpkg_22(tile_drv_name = 'PNG'):
     out_ds = gdal.OpenEx('/vsimem/tmp.gpkg', open_options = ['BAND_COUNT=2'])
     got_cs = [out_ds.GetRasterBand(i+1).Checksum() for i in range(2)]
     if got_cs != expected_cs:
-        if tile_drv_name != 'WEBP' or got_cs != [4899, 10807]:
+        if tile_drv_name != 'WEBP' or got_cs not in ([4899, 10807], [6274, 10807]):
             gdaltest.post_reason('fail')
             print('Got %s, expected %s' % (str(got_cs), str(expected_cs)))
             return 'fail'
@@ -2476,7 +2476,7 @@ def gpkg_22(tile_drv_name = 'PNG'):
     got_cs = [out_ds.GetRasterBand(i+1).Checksum() for i in range(4)]
     expected_cs = [ expected_cs[0], expected_cs[0], expected_cs[0], expected_cs[1] ]
     if got_cs != expected_cs:
-        if tile_drv_name != 'WEBP' or (got_cs != [4899, 4899, 4899, 10807] and got_cs != [4899, 4984, 4899, 10807]):
+        if tile_drv_name != 'WEBP' or got_cs not in ([4899, 4899, 4899, 10807], [4899, 4984, 4899, 10807], [6274, 6274, 6274, 10807]):
             gdaltest.post_reason('fail')
             print('Got %s, expected %s' % (str(got_cs), str(expected_cs)))
             return 'fail'
@@ -2485,7 +2485,7 @@ def gpkg_22(tile_drv_name = 'PNG'):
     ds = gdal.OpenEx('/vsimem/tmp.gpkg', open_options = ['USE_TILE_EXTENT=YES'])
     got_cs = [ds.GetRasterBand(i+1).Checksum() for i in range(4)]
     if got_cs != clamped_expected_cs:
-        if tile_drv_name != 'WEBP' or (got_cs != [5266, 5266, 5266, 11580] and got_cs != [5266, 5310, 5266, 11580]):
+        if tile_drv_name != 'WEBP' or got_cs not in ([5266, 5266, 5266, 11580], [5266, 5310, 5266, 11580], [6436, 6436, 6436, 11580]):
             gdaltest.post_reason('fail')
             print('Got %s, expected %s' % (str(got_cs), str(clamped_expected_cs)))
             return 'fail'
@@ -2558,8 +2558,8 @@ def gpkg_26():
 
         gdal.Unlink('/vsimem/tmp.gpkg')
 
-    tests =  [ ('GoogleCRS84Quad', [42255, 47336, 24963, 35707], None),
-               ('GoogleMapsCompatible', [35429, 36787, 20035, 17849], None) ]
+    tests =  [ ('GoogleCRS84Quad', [[42255, 47336, 24963, 35707],[42253, 47333, 24961, 35707]], None),
+               ('GoogleMapsCompatible', [[35429, 36787, 20035, 17849]], None) ]
 
     for (scheme, expected_cs, other_options) in tests:
 
@@ -2572,7 +2572,7 @@ def gpkg_26():
 
         ds = gdal.Open('/vsimem/tmp.gpkg')
         got_cs = [ds.GetRasterBand(i+1).Checksum() for i in range(4)]
-        if got_cs != expected_cs:
+        if got_cs not in expected_cs:
             gdaltest.post_reason('fail')
             print('For %s, got %s, expected %s' % (scheme, str(got_cs), str(expected_cs)))
             if gdal.GetConfigOption('APPVEYOR') is None:
@@ -3618,6 +3618,135 @@ def gpkg_43():
     return 'success'
 
 ###############################################################################
+# Test opening a .gpkg.sql file
+
+def gpkg_44():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    if gdaltest.gpkg_dr.GetMetadataItem("ENABLE_SQL_GPKG_FORMAT") != 'YES':
+        return 'skip'
+
+    ds = gdal.Open('data/byte.gpkg.sql')
+    if ds.GetRasterBand(1).Checksum() != 4672:
+        gdaltest.post_reason('validation failed')
+        return 'fail'
+    return 'success'
+
+###############################################################################
+# Test opening a .gpkg file
+
+def gpkg_45():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    ds = gdal.Open('data/byte.gpkg')
+    if ds.GetRasterBand(1).Checksum() != 4672:
+        gdaltest.post_reason('validation failed')
+        return 'fail'
+    return 'success'
+
+###############################################################################
+# Test fix for #6932
+
+def gpkg_46():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    ds = gdaltest.gpkg_dr.Create('/vsimem/gpkg_46.gpkg', 6698, 6698,
+                                 options = ['TILING_SCHEME=GoogleMapsCompatible'])
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(3857)
+    ds.SetProjection(srs.ExportToWkt())
+    ds.SetGeoTransform([500,0.037322767717371,0,750,0,-0.037322767717371])
+    ds = None
+
+    ds = gdal.Open('/vsimem/gpkg_46.gpkg', gdal.GA_Update)
+    ds.BuildOverviews('NEAR', [2,4,8,16,32,64,128,256])
+    ds = None
+
+    ds = gdal.Open('/vsimem/gpkg_46.gpkg')
+    sql_lyr = ds.ExecuteSQL('SELECT zoom_level, matrix_width * pixel_x_size * tile_width, matrix_height * pixel_y_size * tile_height FROM gpkg_tile_matrix ORDER BY zoom_level')
+    count = 0
+    for f in sql_lyr:
+        count += 1
+        if abs(f.GetField(1) - 40075016.6855785) > 1e-7 or \
+           abs(f.GetField(2) - 40075016.6855785) > 1e-7:
+            gdaltest.post_reason('fail')
+            f.DumpReadable()
+            ds.ReleaseResultSet(sql_lyr)
+            gdal.Unlink('/vsimem/gpkg_46.gpkg')
+            return 'fail'
+    ds.ReleaseResultSet(sql_lyr)
+    ds = None
+
+    gdal.Unlink('/vsimem/gpkg_46.gpkg')
+
+    if count != 23:
+        gdaltest.post_reason('fail')
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test fix for #6976
+
+def gpkg_47():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    tmpfile = '/vsimem/gpkg_47.gpkg'
+    ds = gdaltest.gpkg_dr.CreateCopy(tmpfile,
+                                     gdal.Open('data/byte.tif'))
+    ds.ExecuteSQL('UPDATE gpkg_contents SET min_x = 1, max_x = 0')
+    ds = None
+    with gdaltest.error_handler():
+        ds = gdal.Open(tmpfile)
+    if ds.RasterXSize != 256:
+        return 'fail'
+    ds = None
+
+    gdal.Unlink(tmpfile)
+
+    return 'success'
+
+###############################################################################
+# Test fix for https://issues.qgis.org/issues/16997 (opening a file with
+# subdatasets on Windows)
+
+def gpkg_48():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    if sys.platform == 'win32':
+        filename = os.path.join(os.getcwd(), 'tmp', 'byte.gpkg')
+    else:
+        # Test Windows code path in a weird way...
+        filename = 'C:\\byte.gpkg'
+
+    gdal.Translate(filename, 'data/byte.tif', format = 'GPKG', creationOptions = ['RASTER_TABLE=foo'])
+    gdal.Translate(filename, 'data/byte.tif', format = 'GPKG', creationOptions = ['APPEND_SUBDATASET=YES', 'RASTER_TABLE=bar'])
+    ds = gdal.Open( 'GPKG:' + filename + ':foo')
+    if ds is None:
+        gdal.Unlink(filename)
+        return 'fail'
+    ds = None
+    ds = gdal.Open( 'GPKG:' + filename + ':bar')
+    if ds is None:
+        gdal.Unlink(filename)
+        return 'fail'
+    ds = None
+
+    gdal.Unlink(filename)
+
+    return 'success'
+
+###############################################################################
 #
 
 def gpkg_cleanup():
@@ -3682,9 +3811,14 @@ gdaltest_list = [
     gpkg_41,
     gpkg_42,
     gpkg_43,
+    gpkg_44,
+    gpkg_45,
+    gpkg_46,
+    gpkg_47,
+    gpkg_48,
     gpkg_cleanup,
 ]
-#gdaltest_list = [ gpkg_init, gpkg_39, gpkg_cleanup ]
+#gdaltest_list = [ gpkg_init, gpkg_47, gpkg_cleanup ]
 if __name__ == '__main__':
 
     gdaltest.setup_run( 'gpkg' )

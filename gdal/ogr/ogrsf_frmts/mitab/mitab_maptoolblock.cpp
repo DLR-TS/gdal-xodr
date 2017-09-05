@@ -40,7 +40,7 @@
 #include "cpl_vsi.h"
 #include "mitab_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class TABMAPToolBlock
@@ -286,7 +286,7 @@ void     TABMAPToolBlock::SetNextToolBlock(GInt32 nNextToolBlockAddress)
 void TABMAPToolBlock::SetMAPBlockManagerRef(TABBinBlockManager *poBlockMgr)
 {
     m_poBlockManagerRef = poBlockMgr;
-};
+}
 
 /**********************************************************************
  *                   TABMAPToolBlock::ReadBytes()

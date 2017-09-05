@@ -38,7 +38,7 @@
 
 //! @cond Doxygen_Suppress
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 class OGRGenSQLGeomFieldDefn: public OGRGeomFieldDefn
 {
@@ -550,6 +550,7 @@ void OGRGenSQLResultsLayer::ClearFilters()
 /* -------------------------------------------------------------------- */
     if( poSrcLayer != NULL )
     {
+        poSrcLayer->ResetReading();
         poSrcLayer->SetAttributeFilter( "" );
         poSrcLayer->SetSpatialFilter( NULL );
     }

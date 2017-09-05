@@ -49,7 +49,7 @@
 
 /*! @cond Doxygen_Suppress */
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // #define GDAL_VRT_DISABLE_PYTHON
 // #define PYTHONSO_DEFAULT "libpython2.7.so"
@@ -1959,10 +1959,12 @@ int  VRTDerivedRasterBand::IGetDataCoverageStatus( int /* nXOff */,
 /************************************************************************/
 
 CPLErr VRTDerivedRasterBand::XMLInit( CPLXMLNode *psTree,
-                                      const char *pszVRTPath )
+                                      const char *pszVRTPath,
+                                      void* pUniqueHandle )
 
 {
-    const CPLErr eErr = VRTSourcedRasterBand::XMLInit( psTree, pszVRTPath );
+    const CPLErr eErr = VRTSourcedRasterBand::XMLInit( psTree, pszVRTPath,
+                                                       pUniqueHandle );
     if( eErr != CE_None )
         return eErr;
 

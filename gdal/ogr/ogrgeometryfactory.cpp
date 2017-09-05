@@ -62,7 +62,7 @@
 #define UNUSED_IF_NO_GEOS
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           createFromWkb()                            */
@@ -630,6 +630,9 @@ void OGR_G_DestroyGeometry( OGRGeometryH hGeom )
  * Starting with GDAL 2.0, curve polygons or closed curves will be changed to
  * polygons.  The passed in geometry is consumed and a new one returned (or
  * potentially the same one).
+ * 
+ * Note: the resulting polygon may break the Simple Features rules for polygons,
+ * for example when converting from a multi-part multipolygon.
  *
  * @param poGeom the input geometry - ownership is passed to the method.
  * @return new geometry.
@@ -4556,6 +4559,13 @@ int OGRGeometryFactory::GetCurveParmeters(
     double& R, double& cx, double& cy,
     double& alpha0, double& alpha1, double& alpha2 )
 {
+    if( CPLIsNan(x0) || CPLIsNan(y0) ||
+        CPLIsNan(x1) || CPLIsNan(y1) ||
+        CPLIsNan(x2) || CPLIsNan(y2) )
+    {
+        return FALSE;
+    }
+
     // Circle.
     if( x0 == x2 && y0 == y2 )
     {

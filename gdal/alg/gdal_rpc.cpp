@@ -56,7 +56,7 @@
 
 // #define DEBUG_VERBOSE_EXTRACT_DEM
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 CPL_C_START
 CPLXMLNode *GDALSerializeRPCTransformer( void *pTransformArg );
@@ -1609,6 +1609,7 @@ GDALRPCTransformWholeLineWithDEM( const GDALRPCTransformInfo *psTransform,
     for( int i = 0; i < nPointCount; i++ )
     {
         double dfDEMH = 0.0;
+        const double dfZ_i = padfZ ? padfZ[i] : 0.0;
 
         if( psTransform->eResampleAlg == DRA_Cubic )
         {
@@ -1701,7 +1702,7 @@ GDALRPCTransformWholeLineWithDEM( const GDALRPCTransformInfo *psTransform,
                     {
                         dfDEMH = adfElevData[k_valid_sample];
                         RPCTransformPoint( psTransform, padfX[i], padfY[i],
-                            padfZ[i] + (psTransform->dfHeightOffset + dfDEMH) *
+                            dfZ_i + (psTransform->dfHeightOffset + dfDEMH) *
                                         psTransform->dfHeightScale,
                             padfX + i, padfY + i );
 
@@ -1712,7 +1713,7 @@ GDALRPCTransformWholeLineWithDEM( const GDALRPCTransformInfo *psTransform,
                     {
                         dfDEMH = psTransform->dfDEMMissingValue;
                         RPCTransformPoint( psTransform, padfX[i], padfY[i],
-                            padfZ[i] + (psTransform->dfHeightOffset + dfDEMH) *
+                            dfZ_i + (psTransform->dfHeightOffset + dfDEMH) *
                                         psTransform->dfHeightScale,
                             padfX + i, padfY + i );
 
@@ -1757,7 +1758,7 @@ GDALRPCTransformWholeLineWithDEM( const GDALRPCTransformInfo *psTransform,
         }
 
         RPCTransformPoint( psTransform, padfX[i], padfY[i],
-                            padfZ[i] + (psTransform->dfHeightOffset + dfDEMH) *
+                            dfZ_i + (psTransform->dfHeightOffset + dfDEMH) *
                                         psTransform->dfHeightScale,
                             padfX + i, padfY + i );
 
@@ -1905,10 +1906,10 @@ int GDALRPCTransform( void *pTransformArg, int bDstToSrc,
 
         if( psTransform->bApplyDEMVDatumShift )
         {
-            CPLSetThreadLocalConfigOption(
-                "GTIFF_REPORT_COMPD_CS",
-                osPrevValueConfigOption.size()
-                ? osPrevValueConfigOption.c_str() : NULL);
+            CPLSetThreadLocalConfigOption("GTIFF_REPORT_COMPD_CS",
+                                          !osPrevValueConfigOption.empty()
+                                              ? osPrevValueConfigOption.c_str()
+                                              : NULL);
         }
 
         if( !bIsValid && psTransform->poDS != NULL )
@@ -2025,12 +2026,19 @@ int GDALRPCTransform( void *pTransformArg, int bDstToSrc,
             }
 
             RPCTransformPoint( psTransform, padfX[i], padfY[i],
-                                padfZ[i] + dfHeight,
+                               (padfZ ? padfZ[i] : 0.0) + dfHeight,
                                 padfX + i, padfY + i );
             panSuccess[i] = TRUE;
         }
 
         return TRUE;
+    }
+
+    if( padfZ == NULL )
+    {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "Z array should be provided for reverse RPC computation");
+        return FALSE;
     }
 
 /* -------------------------------------------------------------------- */

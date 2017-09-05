@@ -35,6 +35,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 
 #include "cpl_atomic_ops.h"
@@ -49,7 +50,7 @@
 #include "ogr_p.h"
 #include "ogr_srs_api.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // The current opinion is that WKT longitudes like central meridian
 // should be relative to Greenwich, not the prime meridian in use.
@@ -1241,6 +1242,9 @@ OGRErr OGRSpatialReference::SetTargetLinearUnits( const char *pszTargetKey,
                                                   double dfInMeters )
 
 {
+    if( dfInMeters <= 0.0 )
+        return OGRERR_FAILURE;
+
     bNormInfoSet = FALSE;
 
     OGR_SRSNode *poCS = NULL;
@@ -1262,7 +1266,9 @@ OGRErr OGRSpatialReference::SetTargetLinearUnits( const char *pszTargetKey,
         return OGRERR_FAILURE;
 
     char szValue[128] = { '\0' };
-    if( dfInMeters == static_cast<int>(dfInMeters) )
+    if( dfInMeters < std::numeric_limits<int>::max() &&
+        dfInMeters > std::numeric_limits<int>::min() &&
+        dfInMeters == static_cast<int>(dfInMeters) )
         snprintf( szValue, sizeof(szValue),
                   "%d", static_cast<int>(dfInMeters) );
     else

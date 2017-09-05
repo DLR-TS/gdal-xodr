@@ -3568,6 +3568,59 @@ def ogr_geojson_63():
     lyr = ds.GetLayer(0)
     return ogrtest.compare_layers(lyr, lyr_ref)
 
+###############################################################################
+# Test exporting XYM / XYZM (#6935)
+
+def ogr_geojson_64():
+
+    g = ogr.CreateGeometryFromWkt('POINT ZM(1 2 3 4)')
+    if ogrtest.check_feature_geometry( ogr.CreateGeometryFromJson(g.ExportToJson()), 
+                            ogr.CreateGeometryFromWkt('POINT Z(1 2 3)') ) != 0:
+        return 'fail'
+
+    g = ogr.CreateGeometryFromWkt('POINT M(1 2 3)')
+    if ogrtest.check_feature_geometry( ogr.CreateGeometryFromJson(g.ExportToJson()), 
+                            ogr.CreateGeometryFromWkt('POINT (1 2)') ) != 0:
+        return 'fail'
+
+    g = ogr.CreateGeometryFromWkt('LINESTRING ZM(1 2 3 4,5 6 7 8)')
+    if ogrtest.check_feature_geometry( ogr.CreateGeometryFromJson(g.ExportToJson()), 
+                            ogr.CreateGeometryFromWkt('LINESTRING Z(1 2 3,5 6 7)') ) != 0:
+        return 'fail'
+
+    g = ogr.CreateGeometryFromWkt('LINESTRING M(1 2 3,4 5 6)')
+    if ogrtest.check_feature_geometry( ogr.CreateGeometryFromJson(g.ExportToJson()), 
+                            ogr.CreateGeometryFromWkt('LINESTRING (1 2,4 5)') ) != 0:
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test feature geometry CRS when CRS set on the FeatureCollection
+# See https://github.com/r-spatial/sf/issues/449#issuecomment-319369945
+
+def ogr_geojson_65():
+
+    ds = ogr.Open("""{
+"type": "FeatureCollection",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::32631" } },
+"features": [{
+"type": "Feature",
+"geometry": {
+"type": "Point",
+"coordinates": [500000,4500000]},
+"properties": {
+}}]}""")
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    srs = f.GetGeometryRef().GetSpatialReference()
+    pcs = int(srs.GetAuthorityCode('PROJCS'))
+    if pcs != 32631:
+        gdaltest.post_reason('Spatial reference for individual geometry was not valid')
+        return 'fail'
+
+    return 'success'
+
 gdaltest_list = [
     ogr_geojson_1,
     ogr_geojson_2,
@@ -3632,6 +3685,8 @@ gdaltest_list = [
     ogr_geojson_61,
     ogr_geojson_62,
     ogr_geojson_63,
+    ogr_geojson_64,
+    ogr_geojson_65,
     ogr_geojson_cleanup ]
 
 if __name__ == '__main__':

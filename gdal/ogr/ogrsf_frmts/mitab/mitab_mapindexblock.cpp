@@ -44,7 +44,7 @@
 #include "cpl_vsi.h"
 #include "mitab_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class TABMAPIndexBlock
@@ -1466,7 +1466,7 @@ void TABMAPIndexBlock::UpdateCurChildMBR(GInt32 nXMin, GInt32 nYMin,
 void TABMAPIndexBlock::SetMAPBlockManagerRef(TABBinBlockManager *poBlockMgr)
 {
     m_poBlockManagerRef = poBlockMgr;
-};
+}
 
 /**********************************************************************
  *                   TABMAPIndexBlock::SetParentRef()

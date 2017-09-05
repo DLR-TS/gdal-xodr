@@ -2,18 +2,7 @@
 #include <stdlib.h>
 #include "grib2.h"
 
-g2int g2_unpack1(unsigned char *,g2int *,g2int **,g2int *);
-g2int g2_unpack2(unsigned char *,g2int *,g2int *,unsigned char **);
-g2int g2_unpack3(unsigned char *,g2int *,g2int **,g2int **,
-                         g2int *,g2int **,g2int *);
-g2int g2_unpack4(unsigned char *,g2int *,g2int *,g2int **,
-                         g2int *,g2float **,g2int *);
-g2int g2_unpack5(unsigned char *,g2int *,g2int *,g2int *, g2int **,g2int *);
-g2int g2_unpack6(unsigned char *,g2int *,g2int ,g2int *, g2int **);
-g2int g2_unpack7(unsigned char *,g2int *,g2int ,g2int *,
-                         g2int ,g2int *,g2int ,g2float **);
-
-g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
+g2int g2_getfld(unsigned char *cgrib,g2int cgrib_length, g2int ifldnum,g2int unpack,g2int expand,
                 gribfield **gfld)
 //$$$  SUBPROGRAM DOCUMENTATION BLOCK
 //                .      .    .                                       .
@@ -386,7 +375,7 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
           iofst=iofst-40;       // reset offset to beginning of section
           if (lgfld->igdtmpl!=0) free(lgfld->igdtmpl);
           if (lgfld->list_opt!=0) free(lgfld->list_opt);
-          jerr=g2_unpack3(cgrib,&iofst,&igds,&lgfld->igdtmpl,
+          jerr=g2_unpack3(cgrib,cgrib_length,&iofst,&igds,&lgfld->igdtmpl,
                           &lgfld->igdtlen,&lgfld->list_opt,&lgfld->num_opt);
           if (jerr == 0) {
             have3=1;
@@ -399,6 +388,7 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
           }
           else {
             ierr=10;
+            free( igds );
             return(ierr);
           }
         }
@@ -415,7 +405,7 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
             lgfld->unpacked=unpack;
             lgfld->expanded=0;
             iofst=iofst-40;       // reset offset to beginning of section
-            jerr=g2_unpack4(cgrib,&iofst,&lgfld->ipdtnum,
+            jerr=g2_unpack4(cgrib,cgrib_length,&iofst,&lgfld->ipdtnum,
                             &lgfld->ipdtmpl,&lgfld->ipdtlen,&lgfld->coord_list,
                             &lgfld->num_coord);
             if (jerr == 0)
@@ -432,7 +422,7 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
         //
         if (isecnum == 5 && numfld == ifldnum) {
           iofst=iofst-40;       // reset offset to beginning of section
-          jerr=g2_unpack5(cgrib,&iofst,&lgfld->ndpts,&lgfld->idrtnum,
+          jerr=g2_unpack5(cgrib,cgrib_length,&iofst,&lgfld->ndpts,&lgfld->idrtnum,
                           &lgfld->idrtmpl,&lgfld->idrtlen);
           if (jerr == 0)
             have5=1;
@@ -450,7 +440,7 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
           if (unpack) {   // unpack bitmap
             iofst=iofst-40;           // reset offset to beginning of section
             bmpsave=lgfld->bmap;      // save pointer to previous bitmap
-            jerr=g2_unpack6(cgrib,&iofst,lgfld->ngrdpts,&lgfld->ibmap,
+            jerr=g2_unpack6(cgrib,cgrib_length,&iofst,lgfld->ngrdpts,&lgfld->ibmap,
                          &lgfld->bmap);
             if (jerr == 0) {
               have6=1;
@@ -481,7 +471,24 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
         //
         if (isecnum==7 && numfld==ifldnum && unpack) {
           iofst=iofst-40;       // reset offset to beginning of section
-          jerr=g2_unpack7(cgrib,&iofst,lgfld->igdtnum,lgfld->igdtmpl,
+          
+          /* If expand is requested and we cannot do it, then early exit */
+          /* to avoid useless operations */
+          /* Fixes https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=2183 */
+          /* See grib2api.c : */
+          /* Check if NCEP had problems expanding the data.  If so we currently
+            * abort.  May need to revisit this behavior. */
+          if( expand )
+          {
+              if ( !(lgfld->ibmap != 255 && lgfld->bmap != 0) && 
+                   lgfld->ngrdpts != lgfld->ndpts )
+              {
+                  ierr=14;
+                  return(ierr);
+              }
+          }
+
+          jerr=g2_unpack7(cgrib,cgrib_length,&iofst,lgfld->igdtnum,lgfld->igdtmpl,
                           lgfld->idrtnum,lgfld->idrtmpl,lgfld->ndpts,
                           &lgfld->fld);
           if (jerr == 0) {
@@ -493,7 +500,17 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
                   n=0;
                   newfld=(g2float *)calloc(lgfld->ngrdpts,sizeof(g2float));
                   for (j=0;j<lgfld->ngrdpts;j++) {
-                      if (lgfld->bmap[j]==1) newfld[j]=lgfld->fld[n++];
+                      if (lgfld->bmap[j]==1)
+                      {
+                          if( n >= lgfld->ndpts )
+                          {
+                              printf("g2_getfld: overflow of lgfld->fld array\n");
+                              ierr=14;
+                              free(newfld);
+                              return(ierr);
+                          }
+                          newfld[j]=lgfld->fld[n++];
+                      }
                   }
                   free(lgfld->fld);
                   lgfld->fld=newfld;
@@ -504,7 +521,15 @@ g2int g2_getfld(unsigned char *cgrib,g2int ifldnum,g2int unpack,g2int expand,
                }
             }
             else {
-               lgfld->expanded=1;
+               if( lgfld->ngrdpts != lgfld->ndpts )
+               {
+                   /* Added by E. Rouault to fix https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=2070 */
+                   lgfld->expanded=0;
+               }
+               else 
+               {
+                    lgfld->expanded=1;
+               }
             }
           }
           else {

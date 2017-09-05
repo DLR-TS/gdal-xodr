@@ -35,7 +35,7 @@
 
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                       OGRVRTGetGeometryType()                        */
@@ -799,6 +799,8 @@ bool OGRVRTDataSource::Initialize( CPLXMLNode *psTreeIn, const char *pszNewName,
 
 {
     CPLAssert(nLayers == 0);
+
+    AddForbiddenNames(pszNewName);
 
     psTree = psTreeIn;
 

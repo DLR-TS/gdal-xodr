@@ -57,7 +57,7 @@
 #include "ogr_srs_api.h"
 
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 CPL_C_START
 void *GDALDeserializeGCPTransformer( CPLXMLNode *psTree );
@@ -1553,7 +1553,7 @@ GDALCreateGenImgProjTransformer2( GDALDatasetH hSrcDS, GDALDatasetH hDstDS,
     }
 
 /* -------------------------------------------------------------------- */
-/*      Handle optional source approximation transformer.               */
+/*      Handle optional destination approximation transformer.          */
 /* -------------------------------------------------------------------- */
     if( psInfo->pDstTransformer )
     {
@@ -1909,10 +1909,7 @@ int GDALGenImgProjTransform( void *pTransformArgIn, int bDstToSrc,
                              int *panSuccess )
 {
     GDALGenImgProjTransformInfo *psInfo =
-        (GDALGenImgProjTransformInfo *) pTransformArgIn;
-    double *padfGeoTransform;
-    GDALTransformerFunc pTransformer;
-    void *pTransformArg;
+        static_cast<GDALGenImgProjTransformInfo *>(pTransformArgIn);
 
 #ifdef DEBUG_APPROX_TRANSFORMER
     CPLAssert(nPointCount > 0);
@@ -1928,6 +1925,9 @@ int GDALGenImgProjTransform( void *pTransformArgIn, int bDstToSrc,
 /*      Convert from src (dst) pixel/line to src (dst)                  */
 /*      georeferenced coordinates.                                      */
 /* -------------------------------------------------------------------- */
+    double *padfGeoTransform = NULL;
+    void *pTransformArg = NULL;
+    GDALTransformerFunc pTransformer = NULL;
     if( bDstToSrc )
     {
         padfGeoTransform = psInfo->adfDstGeoTransform;
@@ -2220,6 +2220,7 @@ void *GDALDeserializeGenImgProjTransformer( CPLXMLNode *psTree )
                 GDALDeserializeTransformer( psIter->psChild,
                                             &psInfo->pSrcTransformer,
                                             &psInfo->pSrcTransformArg );
+                break;
             }
         }
     }
@@ -3135,7 +3136,7 @@ GDALDeserializeApproxTransformer( CPLXMLNode *psTree )
     }
     const char* pszMaxErrorReverse =
                     CPLGetXMLValue( psTree, "MaxErrorReverse", NULL);
-    if( pszMaxErrorForward != NULL )
+    if( pszMaxErrorReverse != NULL )
     {
         dfMaxErrorReverse = CPLAtof(pszMaxErrorReverse);
     }
@@ -3177,11 +3178,12 @@ GDALDeserializeApproxTransformer( CPLXMLNode *psTree )
  *
  * Applies the following computation, converting a (pixel, line) coordinate
  * into a georeferenced (geo_x, geo_y) location.
- *
+ * <pre>
  *  *pdfGeoX = padfGeoTransform[0] + dfPixel * padfGeoTransform[1]
  *                                 + dfLine  * padfGeoTransform[2];
  *  *pdfGeoY = padfGeoTransform[3] + dfPixel * padfGeoTransform[4]
  *                                 + dfLine  * padfGeoTransform[5];
+ * </pre>
  *
  * @param padfGeoTransform Six coefficient GeoTransform to apply.
  * @param dfPixel Input pixel position.
@@ -3594,6 +3596,53 @@ void* GDALCreateSimilarTransformer( void* pTransformArg,
 }
 
 /************************************************************************/
+/*                      GetGenImgProjTransformInfo()                    */
+/************************************************************************/
+
+static GDALTransformerInfo* GetGenImgProjTransformInfo( const char* pszFunc,
+                                                        void *pTransformArg )
+{
+    GDALTransformerInfo *psInfo =
+        static_cast<GDALTransformerInfo *>(pTransformArg);
+
+    if( psInfo == NULL ||
+        memcmp(psInfo->abySignature,
+               GDAL_GTI2_SIGNATURE,
+               strlen(GDAL_GTI2_SIGNATURE)) != 0 )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Attempt to call %s on "
+                 "a non-GTI2 transformer.", pszFunc);
+        return NULL;
+    }
+
+    if( EQUAL(psInfo->pszClassName, "GDALApproxTransformer") )
+    {
+        ApproxTransformInfo *psATInfo =
+            static_cast<ApproxTransformInfo *>(pTransformArg);
+        psInfo = static_cast<GDALTransformerInfo *>(psATInfo->pBaseCBData);
+
+        if( psInfo == NULL ||
+            memcmp(psInfo->abySignature,
+                   GDAL_GTI2_SIGNATURE,
+                   strlen(GDAL_GTI2_SIGNATURE)) != 0 )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Attempt to call %s on "
+                     "a non-GTI2 transformer.", pszFunc);
+            return NULL;
+        }
+    }
+
+    if( EQUAL(psInfo->pszClassName, "GDALGenImgProjTransformer") )
+    {
+        return psInfo;
+    }
+
+    return NULL;
+}
+
+/************************************************************************/
 /*                 GDALSetTransformerDstGeoTransform()                  */
 /************************************************************************/
 
@@ -3621,40 +3670,38 @@ void GDALSetTransformerDstGeoTransform( void *pTransformArg,
 {
     VALIDATE_POINTER0( pTransformArg, "GDALSetTransformerDstGeoTransform" );
 
-    GDALTransformerInfo *psInfo =
-        static_cast<GDALTransformerInfo *>(pTransformArg);
-
-    if( psInfo == NULL ||
-        memcmp(psInfo->abySignature,
-               GDAL_GTI2_SIGNATURE,
-               strlen(GDAL_GTI2_SIGNATURE)) != 0 )
-    {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "Attempt to call GDALSetTransformerDstGeoTransform on "
-                 "a non-GTI2 transformer.");
-        return;
-    }
-
-    if( EQUAL(psInfo->pszClassName, "GDALApproxTransformer") )
-    {
-        ApproxTransformInfo *psATInfo =
-            static_cast<ApproxTransformInfo *>(pTransformArg);
-        psInfo = static_cast<GDALTransformerInfo *>(psATInfo->pBaseCBData);
-
-        if( psInfo == NULL ||
-            memcmp(psInfo->abySignature,
-                   GDAL_GTI2_SIGNATURE,
-                   strlen(GDAL_GTI2_SIGNATURE)) != 0 )
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Attempt to call GDALSetTransformerDstGeoTransform on "
-                     "a non-GTI2 transformer.");
-            return;
-        }
-    }
-
-    if( EQUAL(psInfo->pszClassName, "GDALGenImgProjTransformer") )
+    GDALTransformerInfo* psInfo = GetGenImgProjTransformInfo(
+        "GDALSetTransformerDstGeoTransform", pTransformArg );
+    if( psInfo )
     {
         GDALSetGenImgProjTransformerDstGeoTransform(psInfo, padfGeoTransform);
+    }
+}
+
+/************************************************************************/
+/*                 GDALGetTransformerDstGeoTransform()                  */
+/************************************************************************/
+
+/**
+ * Get ApproxTransformer or GenImgProj output geotransform.
+ *
+ * @param pTransformArg transformer handle.
+ * @param padfGeoTransform (output) the destination geotransform to return (six doubles).
+ */
+
+void GDALGetTransformerDstGeoTransform( void *pTransformArg,
+                                        double *padfGeoTransform )
+{
+    VALIDATE_POINTER0( pTransformArg, "GDALGetTransformerDstGeoTransform" );
+
+    GDALTransformerInfo* psInfo = GetGenImgProjTransformInfo(
+        "GDALGetTransformerDstGeoTransform", pTransformArg );
+    if( psInfo )
+    {
+        GDALGenImgProjTransformInfo *psGenImgProjInfo =
+            reinterpret_cast<GDALGenImgProjTransformInfo *>( psInfo );
+
+        memcpy( padfGeoTransform, psGenImgProjInfo->adfDstGeoTransform,
+                sizeof(double) * 6 );
     }
 }

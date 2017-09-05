@@ -28,7 +28,7 @@
 
 #include "wmsdriver.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 CPLString MD5String(const char *s) {
     unsigned char hash[16];
@@ -96,7 +96,10 @@ int VersionStringToInt(const char *version) {
     const char *p = version;
     int v = 0;
     for (int i = 3; i >= 0; --i) {
-        v += (1 << (i * 8)) * atoi(p);
+        int n = atoi(p);
+        if( n < 0 || n >= 100 )
+            return -1;
+        v += (1 << (i * 8)) * n;
         for (; (*p != '\0') && (*p != '.'); ++p);
         if (*p != '\0') ++p;
     }

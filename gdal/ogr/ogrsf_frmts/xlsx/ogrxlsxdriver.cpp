@@ -29,7 +29,7 @@
 #include "ogr_xlsx.h"
 #include "cpl_conv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 extern "C" void RegisterOGRXLSX();
 
@@ -37,59 +37,50 @@ using namespace OGRXLSX;
 
 // g++ -DHAVE_EXPAT -g -Wall -fPIC ogr/ogrsf_frmts/xlsx/*.cpp -shared -o ogr_XLSX.so -Iport -Igcore -Iogr -Iogr/ogrsf_frmts -Iogr/ogrsf_frmts/mem -Iogr/ogrsf_frmts/xlsx -L. -lgdal
 
+static const char XLSX_MIMETYPE[] =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
+
 /************************************************************************/
-/*                           ~OGRXLSXDriver()                            */
+/*                              Identify()                              */
 /************************************************************************/
 
-OGRXLSXDriver::~OGRXLSXDriver()
-
+static int OGRXLSXDriverIdentify( GDALOpenInfo* poOpenInfo )
 {
-}
+    if (!EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "XLSX") &&
+        !EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "XLSX}"))
+        return FALSE;
 
-/************************************************************************/
-/*                              GetName()                               */
-/************************************************************************/
+    if( STARTS_WITH(poOpenInfo->pszFilename, "/vsizip/") ||
+        STARTS_WITH(poOpenInfo->pszFilename, "/vsitar/") )
+        return poOpenInfo->eAccess == GA_ReadOnly;
 
-const char *OGRXLSXDriver::GetName()
-
-{
-    return "XLSX";
+    return poOpenInfo->nHeaderBytes > 2 &&
+           memcmp(poOpenInfo->pabyHeader, "PK", 2) == 0;
 }
 
 /************************************************************************/
 /*                                Open()                                */
 /************************************************************************/
 
-static const char XLSX_MIMETYPE[] =
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
-
-OGRDataSource *OGRXLSXDriver::Open( const char * pszFilename, int bUpdate )
+static GDALDataset* OGRXLSXDriverOpen( GDALOpenInfo* poOpenInfo )
 
 {
-    if (!EQUAL(CPLGetExtension(pszFilename), "XLSX"))
+    if (!OGRXLSXDriverIdentify(poOpenInfo) )
         return NULL;
 
-    VSILFILE* fp = VSIFOpenL(pszFilename, "rb");
-    if (fp == NULL)
-        return NULL;
-
-    bool bOK = false;
-    char szBuffer[2048];
-    if (VSIFReadL(szBuffer, sizeof(szBuffer), 1, fp) == 1 &&
-        memcmp(szBuffer, "PK", 2) == 0)
+    CPLString osPrefixedFilename("/vsizip/");
+    osPrefixedFilename += poOpenInfo->pszFilename;
+    if( STARTS_WITH(poOpenInfo->pszFilename, "/vsizip/") ||
+        STARTS_WITH(poOpenInfo->pszFilename, "/vsitar/") )
     {
-        bOK = true;
+        osPrefixedFilename = poOpenInfo->pszFilename;
     }
 
-    VSIFCloseL(fp);
-
-    if( !bOK )
-        return NULL;
-
-    VSILFILE* fpContent = VSIFOpenL(CPLSPrintf("/vsizip/%s/[Content_Types].xml", pszFilename), "rb");
+    VSILFILE* fpContent = VSIFOpenL(CPLSPrintf("%s/[Content_Types].xml", osPrefixedFilename.c_str()), "rb");
     if (fpContent == NULL)
         return NULL;
 
+    char szBuffer[2048];
     int nRead = (int)VSIFReadL(szBuffer, 1, sizeof(szBuffer) - 1, fpContent);
     szBuffer[nRead] = 0;
 
@@ -98,23 +89,25 @@ OGRDataSource *OGRXLSXDriver::Open( const char * pszFilename, int bUpdate )
     if (strstr(szBuffer, XLSX_MIMETYPE) == NULL)
         return NULL;
 
-    VSILFILE* fpWorkbook = VSIFOpenL(CPLSPrintf("/vsizip/%s/xl/workbook.xml", pszFilename), "rb");
+    VSILFILE* fpWorkbook = VSIFOpenL(CPLSPrintf("%s/xl/workbook.xml", osPrefixedFilename.c_str()), "rb");
     if (fpWorkbook == NULL)
         return NULL;
 
-    VSILFILE* fpWorkbookRels = VSIFOpenL(CPLSPrintf("/vsizip/%s/xl/_rels/workbook.xml.rels", pszFilename), "rb");
+    VSILFILE* fpWorkbookRels = VSIFOpenL(CPLSPrintf("%s/xl/_rels/workbook.xml.rels", osPrefixedFilename.c_str()), "rb");
     if (fpWorkbookRels == NULL)
     {
         VSIFCloseL(fpWorkbook);
         return NULL;
     }
 
-    VSILFILE* fpSharedStrings = VSIFOpenL(CPLSPrintf("/vsizip/%s/xl/sharedStrings.xml", pszFilename), "rb");
-    VSILFILE* fpStyles = VSIFOpenL(CPLSPrintf("/vsizip/%s/xl/styles.xml", pszFilename), "rb");
+    VSILFILE* fpSharedStrings = VSIFOpenL(CPLSPrintf("%s/xl/sharedStrings.xml", osPrefixedFilename.c_str()), "rb");
+    VSILFILE* fpStyles = VSIFOpenL(CPLSPrintf("%s/xl/styles.xml", osPrefixedFilename.c_str()), "rb");
 
     OGRXLSXDataSource   *poDS = new OGRXLSXDataSource();
 
-    if( !poDS->Open( pszFilename, fpWorkbook, fpWorkbookRels, fpSharedStrings, fpStyles, bUpdate ) )
+    if( !poDS->Open( poOpenInfo->pszFilename, osPrefixedFilename,
+                     fpWorkbook, fpWorkbookRels, fpSharedStrings, fpStyles,
+                     poOpenInfo->eAccess == GA_Update ) )
     {
         delete poDS;
         poDS = NULL;
@@ -124,11 +117,16 @@ OGRDataSource *OGRXLSXDriver::Open( const char * pszFilename, int bUpdate )
 }
 
 /************************************************************************/
-/*                          CreateDataSource()                          */
+/*                       OGRXLSXDriverCreate()                          */
 /************************************************************************/
 
-OGRDataSource *OGRXLSXDriver::CreateDataSource( const char * pszName,
-                                                char **papszOptions )
+static
+GDALDataset *OGRXLSXDriverCreate( const char *pszName,
+                                 int /* nXSize */,
+                                 int /* nYSize */,
+                                 int /* nBands */,
+                                 GDALDataType /* eDT */,
+                                 char **papszOptions )
 
 {
     if (!EQUAL(CPLGetExtension(pszName), "XLSX"))
@@ -166,41 +164,19 @@ OGRDataSource *OGRXLSXDriver::CreateDataSource( const char * pszName,
 }
 
 /************************************************************************/
-/*                         DeleteDataSource()                           */
-/************************************************************************/
-
-OGRErr OGRXLSXDriver::DeleteDataSource( const char *pszName )
-{
-    if (VSIUnlink( pszName ) == 0)
-        return OGRERR_NONE;
-    else
-        return OGRERR_FAILURE;
-}
-
-/************************************************************************/
-/*                           TestCapability()                           */
-/************************************************************************/
-
-int OGRXLSXDriver::TestCapability( const char * pszCap )
-
-{
-    if( EQUAL(pszCap,ODrCCreateDataSource) )
-        return TRUE;
-    else if( EQUAL(pszCap,ODrCDeleteDataSource) )
-        return TRUE;
-    else
-        return FALSE;
-}
-
-/************************************************************************/
 /*                           RegisterOGRXLSX()                           */
 /************************************************************************/
 
 void RegisterOGRXLSX()
 
 {
-    OGRSFDriver* poDriver = new OGRXLSXDriver;
+    if( GDALGetDriverByName( "XLSX" ) != NULL )
+        return;
 
+    GDALDriver *poDriver = new GDALDriver();
+
+    poDriver->SetDescription( "XLSX" );
+    poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "MS Office Open XML spreadsheet" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "xlsx" );
@@ -210,5 +186,9 @@ void RegisterOGRXLSX()
                                "Integer Integer64 Real String Date DateTime "
                                "Time" );
 
-    OGRSFDriverRegistrar::GetRegistrar()->RegisterDriver( poDriver );
+    poDriver->pfnIdentify = OGRXLSXDriverIdentify;
+    poDriver->pfnOpen = OGRXLSXDriverOpen;
+    poDriver->pfnCreate = OGRXLSXDriverCreate;
+
+    GetGDALDriverManager()->RegisterDriver( poDriver );
 }

@@ -41,7 +41,7 @@
 
 #include "ogr_geometry.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*!
   \brief VFKReaderSQLite constructor
@@ -294,11 +294,14 @@ int VFKReaderSQLite::ReadDataBlocks()
     while(ExecuteSQL(hStmt) == OGRERR_NONE) {
         const char *pszName = (const char*) sqlite3_column_text(hStmt, 0);
         const char *pszDefn = (const char*) sqlite3_column_text(hStmt, 1);
-        IVFKDataBlock *poNewDataBlock =
-            (IVFKDataBlock *) CreateDataBlock(pszName);
-        poNewDataBlock->SetGeometryType();
-        poNewDataBlock->SetProperties(pszDefn);
-        VFKReader::AddDataBlock(poNewDataBlock, NULL);
+        if( pszName && pszDefn )
+        {
+            IVFKDataBlock *poNewDataBlock =
+                (IVFKDataBlock *) CreateDataBlock(pszName);
+            poNewDataBlock->SetGeometryType();
+            poNewDataBlock->SetProperties(pszDefn);
+            VFKReader::AddDataBlock(poNewDataBlock, NULL);
+        }
     }
 
     CPL_IGNORE_RET_VAL(sqlite3_exec(m_poDB, "BEGIN", NULL, NULL, NULL));
@@ -538,8 +541,9 @@ void VFKReaderSQLite::AddDataBlock(IVFKDataBlock *poDataBlock, const char *pszDe
                      VFK_DB_TABLE, pszBlockName);
     sqlite3_stmt *hStmt = PrepareStatement(osCommand.c_str());
 
-    if (ExecuteSQL(hStmt) == OGRERR_NONE &&
-        sqlite3_column_int(hStmt, 0) == 0) {
+    if (ExecuteSQL(hStmt) == OGRERR_NONE )
+    {
+      if( sqlite3_column_int(hStmt, 0) == 0) {
 
         osCommand.Printf("CREATE TABLE IF NOT EXISTS '%s' (", pszBlockName);
         for (int i = 0; i < poDataBlock->GetPropertyCount(); i++) {
@@ -606,8 +610,9 @@ void VFKReaderSQLite::AddDataBlock(IVFKDataBlock *poDataBlock, const char *pszDe
                          "('%s', '%s', %d, 2, 5514, 'WKB')",
                          VFK_DB_GEOMETRY_TABLE, pszBlockName, GEOM_COLUMN, geom_type);
         ExecuteSQL(osCommand.c_str());
+      }
 
-        sqlite3_finalize(hStmt);
+      sqlite3_finalize(hStmt);
     }
 
     return VFKReader::AddDataBlock(poDataBlock, NULL);
@@ -690,11 +695,11 @@ OGRErr VFKReaderSQLite::ExecuteSQL( const char *pszSQLCommand, bool bQuiet )
         if (!bQuiet)
             CPLError(CE_Failure, CPLE_AppDefined,
                      "In ExecuteSQL(%s): %s",
-                     pszSQLCommand, pszErrMsg);
+                     pszSQLCommand, pszErrMsg ? pszErrMsg : "(null)");
         else
             CPLError(CE_Warning, CPLE_AppDefined,
                      "In ExecuteSQL(%s): %s",
-                     pszSQLCommand, pszErrMsg);
+                     pszSQLCommand, pszErrMsg ? pszErrMsg : "(null)");
 
         sqlite3_free(pszErrMsg);
         return  OGRERR_FAILURE;

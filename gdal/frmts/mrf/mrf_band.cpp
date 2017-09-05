@@ -51,7 +51,7 @@
 #include <assert.h>
 #include "../zlib/zlib.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 using std::vector;
 using std::string;
@@ -90,7 +90,7 @@ template<typename T> inline int isAllVal(const T *b, size_t bytecount, double nd
 {
     T val = static_cast<T>(ndv);
     size_t count = bytecount / sizeof(T);
-    while (count--) {
+    for (; count; --count) {
         if (*(b++) != val) {
             return FALSE;
         }
@@ -204,8 +204,7 @@ GDALMRFRasterBand::GDALMRFRasterBand( GDALMRFDataset *parent_dataset,
     // Bring the quality to 0 to 9
     deflate_flags(image.quality / 10),
     m_l(ov),
-    img(image),
-    overview(0)
+    img(image)
 {
     nBand = band;
     eDataType = parent_dataset->current.dt;
@@ -686,6 +685,7 @@ CPLErr GDALMRFRasterBand::IReadBlock(int xblk, int yblk, void *buffer)
     if (poDS->bypass_cache && !poDS->source.empty())
         return FetchBlock(xblk, yblk, buffer);
 
+    tinfo.size = 0; // Just in case it is missing
     if (CE_None != poDS->ReadTileIdx(tinfo, req, img)) {
         if (poDS->no_errors) {
             return FillBlock(buffer);
@@ -743,7 +743,7 @@ CPLErr GDALMRFRasterBand::IReadBlock(int xblk, int yblk, void *buffer)
     if (dfp == NULL)
         return CE_Failure;
 
-    void *data = VSIMalloc(static_cast<size_t>(tinfo.size + 3));
+    void *data = VSIMalloc(static_cast<size_t>(tinfo.size + PADDING_BYTES));
     if (data == NULL)
     {
         CPLError(CE_Failure, CPLE_OutOfMemory,
@@ -766,7 +766,7 @@ CPLErr GDALMRFRasterBand::IReadBlock(int xblk, int yblk, void *buffer)
     }
 
     /* initialize padding bytes */
-    memset(((char*)data) + static_cast<size_t>(tinfo.size), 0, 3);
+    memset(((char*)data) + static_cast<size_t>(tinfo.size), 0, PADDING_BYTES);
 
     buf_mgr src = {(char *)data, static_cast<size_t>(tinfo.size)};
     buf_mgr dst;

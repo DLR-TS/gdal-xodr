@@ -34,7 +34,7 @@
 #include <vector>
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static void Usage(int bShort = TRUE);
 static void Usage(const char* pszAdditionalMsg, int bShort = TRUE);
@@ -45,7 +45,8 @@ static void Usage(const char* pszAdditionalMsg, int bShort = TRUE);
 
 static GDALVectorTranslateOptionsForBinary *GDALVectorTranslateOptionsForBinaryNew(void)
 {
-    return (GDALVectorTranslateOptionsForBinary*) CPLCalloc(  1, sizeof(GDALVectorTranslateOptionsForBinary) );
+    return static_cast<GDALVectorTranslateOptionsForBinary *>(
+        CPLCalloc(1, sizeof(GDALVectorTranslateOptionsForBinary)));
 }
 
 /************************************************************************/

@@ -36,7 +36,7 @@
 #include "ogrsf_frmts.h"
 #include "commonutils.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 bool FindSRS( const char *pszInput, OGRSpatialReference &oSRS );
 CPLErr PrintSRS( const OGRSpatialReference &oSRS,
@@ -307,7 +307,7 @@ bool FindSRS( const char *pszInput, OGRSpatialReference &oSRS )
                 }
             }
         }
-        GDALClose( (GDALDatasetH) poGDALDS );
+        GDALClose(poGDALDS);
         if ( ! bGotSRS )
             CPLDebug( "gdalsrsinfo", "did not open with GDAL" );
     }

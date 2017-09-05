@@ -36,7 +36,7 @@
 
 #include <cmath>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                               Usage()                                */
@@ -142,7 +142,7 @@ int main( int argc, char *argv[] )
         }
         else if( EQUAL(argv[iArg],"--help") )
             Usage(NULL);
-        else if( strcmp(argv[iArg],"-f") == 0 )
+        else if( (strcmp(argv[iArg],"-f") == 0 || strcmp(argv[iArg],"-of") == 0) )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
             pszDriverName = argv[++iArg];
@@ -331,7 +331,8 @@ int main( int argc, char *argv[] )
             {
                 hFieldDefn = OGR_Fld_Create( pszSrcSRSName, OFTString );
                 if( nMaxFieldSize )
-                    OGR_Fld_SetWidth( hFieldDefn, (int)nMaxFieldSize);
+                    OGR_Fld_SetWidth(hFieldDefn,
+                                     static_cast<int>(nMaxFieldSize));
                 OGR_L_CreateField( hLayer, hFieldDefn, TRUE );
                 OGR_Fld_Destroy(hFieldDefn);
             }

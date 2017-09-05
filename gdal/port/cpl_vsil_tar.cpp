@@ -45,7 +45,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi_virtual.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #if (defined(DEBUG) || defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)) && !defined(HAVE_FUZZER_FRIENDLY_ARCHIVE)
 /* This is a completely custom archive format that is rather inefficient */
@@ -204,6 +204,8 @@ int VSITarReader::GotoNextFile()
 #ifdef HAVE_FUZZER_FRIENDLY_ARCHIVE
     if( m_bIsFuzzerFriendly )
     {
+        const int nNewFileMarkerSize =
+                                static_cast<int>(strlen("***NEWFILE***:"));
         while( true )
         {
             if( m_abyBufferIdx >= m_abyBufferSize )
@@ -243,13 +245,11 @@ int VSITarReader::GotoNextFile()
                 }
             }
             if( ((m_abyBufferSize == 2048 &&
-                  m_abyBufferIdx <
-                  m_abyBufferSize -
-                  (static_cast<int>(strlen("***NEWFILE***:")) + 64)) ||
+                  m_abyBufferIdx < m_abyBufferSize -(nNewFileMarkerSize+64)) ||
                  (m_abyBufferSize < 2048 &&
-                  m_abyBufferIdx < m_abyBufferSize -
-                  (static_cast<int>(strlen("***NEWFILE***:"))+2))) &&
+                  m_abyBufferIdx < m_abyBufferSize -(nNewFileMarkerSize+2))) &&
                 m_abyBufferIdx >= 0 &&  // Make CSA happy, but useless.
+                m_abyBufferIdx < 2048 - nNewFileMarkerSize &&
                 memcmp(m_abyBuffer + m_abyBufferIdx,
                        "***NEWFILE***:",
                        strlen("***NEWFILE***:")) == 0 )
@@ -266,7 +266,7 @@ int VSITarReader::GotoNextFile()
                         return TRUE;
                     }
                 }
-                m_abyBufferIdx += static_cast<int>(strlen("***NEWFILE***:"));
+                m_abyBufferIdx += nNewFileMarkerSize;
                 const int nFilenameStartIdx = m_abyBufferIdx;
                 for( ; m_abyBufferIdx < m_abyBufferSize &&
                        m_abyBuffer[m_abyBufferIdx] != '\n';

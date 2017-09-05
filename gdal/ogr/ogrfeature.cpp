@@ -38,6 +38,7 @@
 #include <cstring>
 #include <ctime>
 
+#include <limits>
 #include <new>
 #include <vector>
 
@@ -54,7 +55,7 @@
 
 #include "ogr_json_header.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                             OGRFeature()                             */
@@ -558,7 +559,8 @@ OGRGeometryH OGR_F_StealGeometry( OGRFeatureH hFeat )
  *
  * \brief Fetch pointer to feature geometry.
  *
- * This method is the same as the C function OGR_F_GetGeometryRef().
+ * This method is essentially the same as the C function OGR_F_GetGeometryRef().
+ * (the only difference is that the C function honours OGRGetNonLinearGeometriesEnabledFlag())
  *
  * Starting with GDAL 1.11, this is equivalent to calling
  * OGRFeature::GetGeomFieldRef(0).
@@ -582,7 +584,8 @@ OGRGeometry *OGRFeature::GetGeometryRef()
 /**
  * \brief Fetch an handle to feature geometry.
  *
- * This function is the same as the C++ method OGRFeature::GetGeometryRef().
+ * This function is essentially the same as the C++ method OGRFeature::GetGeometryRef()
+ * (the only difference is that this C function honours OGRGetNonLinearGeometriesEnabledFlag())
  *
  * @param hFeat handle to the feature to get geometry from.
  * @return an handle to internal feature geometry.  This object should
@@ -3510,7 +3513,7 @@ void OGRFeature::SetField( int iField, double dfValue )
     if( poFDefn == NULL )
         return;
 
-    OGRFieldType eType = poFDefn->GetType();
+    const OGRFieldType eType = poFDefn->GetType();
     if( eType == OFTReal )
     {
         // if( poFDefn->GetSubType() == OFSTFloat32 &&
@@ -3525,7 +3528,12 @@ void OGRFeature::SetField( int iField, double dfValue )
     }
     else if( eType == OFTInteger )
     {
-        pauFields[iField].Integer = static_cast<int>(dfValue);
+        const int nMin = std::numeric_limits<int>::min();
+        const int nMax = std::numeric_limits<int>::max();
+        const int nVal =
+            dfValue < nMin ? nMin :
+            dfValue > nMax ? nMax : static_cast<int>(dfValue);
+        pauFields[iField].Integer = OGRFeatureGetIntegerValue(poFDefn, nVal);
         pauFields[iField].Set.nMarker2 = 0;
         pauFields[iField].Set.nMarker3 = 0;
     }
@@ -3802,7 +3810,8 @@ void OGRFeature::SetField( int iField, const char * pszValue )
                         }
                         anValues.push_back( nVal );
                     }
-                    SetField( iField, nCount, &(anValues[0]) );
+                    if( nCount > 0 )
+                        SetField( iField, nCount, &(anValues[0]) );
                 }
             }
             else if( eType == OFTInteger64List )
@@ -3817,7 +3826,8 @@ void OGRFeature::SetField( int iField, const char * pszValue )
                             CPLAtoGIntBigEx(papszValueList[i+1], TRUE, NULL);
                         anValues.push_back( nVal );
                     }
-                    SetField( iField, nCount, &(anValues[0]) );
+                    if( nCount > 0 )
+                        SetField( iField, nCount, &(anValues[0]) );
                 }
             }
             else if( eType == OFTRealList )
@@ -3828,7 +3838,8 @@ void OGRFeature::SetField( int iField, const char * pszValue )
                 {
                     for( int i = 0; i < nCount; i++ )
                         adfValues.push_back( CPLAtof(papszValueList[i+1]) );
-                    SetField( iField, nCount, &(adfValues[0]) );
+                    if( nCount > 0 )
+                        SetField( iField, nCount, &(adfValues[0]) );
                 }
             }
 
@@ -3845,7 +3856,8 @@ void OGRFeature::SetField( int iField, const char * pszValue )
             {
                 char** papszValueList =
                     CSLTokenizeString2(pszValue, ",:()", 0);
-                int nCount = atoi(papszValueList[0]);
+                const int nCount =
+                    papszValueList[0] == NULL ? 0 : atoi(papszValueList[0]);
                 std::vector<char*> aosValues;
                 if( nCount == CSLCount(papszValueList)-1 )
                 {
@@ -4008,8 +4020,8 @@ void OGRFeature::SetField( int iField, int nCount, int *panValues )
 
         for( int i = 0; i < nCount; i++ )
             anValues.push_back( panValues[i] );
-
-        SetField( iField, nCount, &anValues[0] );
+        if( nCount > 0 )
+            SetField( iField, nCount, &anValues[0] );
     }
     else if( eType == OFTRealList )
     {
@@ -4017,8 +4029,8 @@ void OGRFeature::SetField( int iField, int nCount, int *panValues )
 
         for( int i = 0; i < nCount; i++ )
             adfValues.push_back( static_cast<double>(panValues[i]) );
-
-        SetField( iField, nCount, &adfValues[0] );
+        if( nCount > 0 )
+            SetField( iField, nCount, &adfValues[0] );
     }
     else if( (eType == OFTInteger ||
               eType == OFTInteger64 ||
@@ -4143,8 +4155,8 @@ void OGRFeature::SetField( int iField, int nCount, const GIntBig *panValues )
             }
             anValues.push_back( nVal32 );
         }
-
-        SetField( iField, nCount, &anValues[0] );
+        if( nCount > 0 )
+            SetField( iField, nCount, &anValues[0] );
     }
     else if( eType == OFTInteger64List )
     {
@@ -4162,8 +4174,8 @@ void OGRFeature::SetField( int iField, int nCount, const GIntBig *panValues )
 
         for( int i = 0; i < nCount; i++ )
             adfValues.push_back( static_cast<double>(panValues[i]) );
-
-        SetField( iField, nCount, &adfValues[0] );
+        if( nCount > 0 )
+            SetField( iField, nCount, &adfValues[0] );
     }
     else if( (eType == OFTInteger ||
               eType == OFTInteger64 ||
@@ -4286,7 +4298,8 @@ void OGRFeature::SetField( int iField, int nCount, double * padfValues )
         for( int i = 0; i < nCount; i++ )
             anValues.push_back( static_cast<int>(padfValues[i]) );
 
-        SetField( iField, nCount, &anValues[0] );
+        if( nCount > 0 )
+            SetField( iField, nCount, &anValues[0] );
     }
     else if( eType == OFTInteger64List )
     {
@@ -4294,8 +4307,8 @@ void OGRFeature::SetField( int iField, int nCount, double * padfValues )
 
         for( int i = 0; i < nCount; i++ )
             anValues.push_back( static_cast<GIntBig>(padfValues[i]) );
-
-        SetField( iField, nCount, &anValues[0] );
+        if( nCount > 0 )
+            SetField( iField, nCount, &anValues[0] );
     }
     else if( (eType == OFTInteger ||
               eType == OFTInteger64 ||

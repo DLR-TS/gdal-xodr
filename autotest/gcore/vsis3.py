@@ -28,6 +28,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+import os.path
 import sys
 from osgeo import gdal
 
@@ -46,10 +47,16 @@ def open_for_read(uri):
 def vsis3_init():
 
     gdaltest.aws_vars = {}
-    for var in ('AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_TIMESTAMP', 'AWS_HTTPS', 'AWS_VIRTUAL_HOSTING', 'AWS_S3_ENDPOINT', 'AWS_REQUEST_PAYER'):
+    for var in ('AWS_SECRET_ACCESS_KEY', 'AWS_ACCESS_KEY_ID', 'AWS_TIMESTAMP', 'AWS_HTTPS', 'AWS_VIRTUAL_HOSTING', 'AWS_S3_ENDPOINT', 'AWS_REQUEST_PAYER', 'AWS_DEFAULT_REGION', 'AWS_DEFAULT_PROFILE'):
         gdaltest.aws_vars[var] = gdal.GetConfigOption(var)
         if gdaltest.aws_vars[var] is not None:
             gdal.SetConfigOption(var, "")
+
+    # To avoid user AWS credentials in ~/.aws/credentials and ~/.aws/config
+    # to mess up our tests
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '')
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL', '')
 
     return 'success'
 
@@ -333,6 +340,108 @@ def vsis3_3():
         gdaltest.post_reason('fail')
         return 'fail'
 
+    # Test CPL_VSIL_CURL_NON_CACHED
+    for config_option_value in [ '/vsis3/s3_non_cached/test.txt',
+                        '/vsis3/s3_non_cached',
+                        '/vsis3/s3_non_cached:/vsis3/unrelated',
+                        '/vsis3/unrelated:/vsis3/s3_non_cached',
+                        '/vsis3/unrelated:/vsis3/s3_non_cached:/vsis3/unrelated' ]:
+        gdal.SetConfigOption('CPL_VSIL_CURL_NON_CACHED', config_option_value)
+
+        # So that the server knows we want it to serve initial content
+        gdaltest.gdalurlopen('http://127.0.0.1:%d/s3_non_cached_test_use_content_1' % gdaltest.webserver_port)
+
+        f = open_for_read('/vsis3/s3_non_cached/test.txt')
+        if f is None:
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            return 'fail'
+        data = gdal.VSIFReadL(1, 3, f).decode('ascii')
+        gdal.VSIFCloseL(f)
+        if data != 'foo':
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            print(data)
+            return 'fail'
+
+        # So that the server knows we want it to serve other content
+        gdaltest.gdalurlopen('http://127.0.0.1:%d/s3_non_cached_test_use_content_2' % gdaltest.webserver_port)
+
+        size = gdal.VSIStatL('/vsis3/s3_non_cached/test.txt').size
+        if size != 4:
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            print(data)
+            return 'fail'
+
+        # So that the server knows we want it to serve initial content
+        gdaltest.gdalurlopen('http://127.0.0.1:%d/s3_non_cached_test_use_content_1' % gdaltest.webserver_port)
+
+        size = gdal.VSIStatL('/vsis3/s3_non_cached/test.txt').size
+        if size != 3:
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            print(data)
+            return 'fail'
+
+        # So that the server knows we want it to serve other content
+        gdaltest.gdalurlopen('http://127.0.0.1:%d/s3_non_cached_test_use_content_2' % gdaltest.webserver_port)
+
+        f = open_for_read('/vsis3/s3_non_cached/test.txt')
+        if f is None:
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            return 'fail'
+        data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+        gdal.VSIFCloseL(f)
+        if data != 'bar2':
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            print(data)
+            return 'fail'
+
+        gdal.SetConfigOption('CPL_VSIL_CURL_NON_CACHED', None)
+
+    # Retry without option
+    for config_option_value in [ None,
+                                '/vsis3/s3_non_cached/bar.txt' ]:
+        gdal.SetConfigOption('CPL_VSIL_CURL_NON_CACHED', config_option_value)
+
+        # So that the server knows we want it to serve initial content
+        gdaltest.gdalurlopen('http://127.0.0.1:%d/s3_non_cached_test_use_content_1' % gdaltest.webserver_port)
+
+        f = open_for_read('/vsis3/s3_non_cached/test.txt')
+        if f is None:
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            return 'fail'
+        data = gdal.VSIFReadL(1, 3, f).decode('ascii')
+        gdal.VSIFCloseL(f)
+        if data != 'foo':
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            print(data)
+            return 'fail'
+
+        # So that the server knows we want it to serve other content
+        gdaltest.gdalurlopen('http://127.0.0.1:%d/s3_non_cached_test_use_content_2' % gdaltest.webserver_port)
+
+        f = open_for_read('/vsis3/s3_non_cached/test.txt')
+        if f is None:
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            return 'fail'
+        data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+        gdal.VSIFCloseL(f)
+        # We should still get foo because of caching
+        if data != 'foo':
+            gdaltest.post_reason('fail')
+            print(config_option_value)
+            print(data)
+            return 'fail'
+
+    gdal.SetConfigOption('CPL_VSIL_CURL_NON_CACHED', None)
+
     return 'success'
 
 ###############################################################################
@@ -562,6 +671,377 @@ def vsis3_6():
     return 'success'
 
 ###############################################################################
+# Read credentials from simulated ~/.aws/credentials
+
+def vsis3_read_credentials_file():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    gdal.SetConfigOption('AWS_SECRET_ACCESS_KEY', '')
+    gdal.SetConfigOption('AWS_ACCESS_KEY_ID', '')
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '/vsimem/aws_credentials')
+
+    gdal.VSICurlClearCache()
+
+    gdal.FileFromMemBuffer('/vsimem/aws_credentials', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[default]
+aws_access_key_id = AWS_ACCESS_KEY_ID
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '')
+    gdal.Unlink('/vsimem/aws_credentials')
+
+    return 'success'
+
+###############################################################################
+# Read credentials from simulated  ~/.aws/config
+
+def vsis3_read_config_file():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    gdal.SetConfigOption('AWS_SECRET_ACCESS_KEY', '')
+    gdal.SetConfigOption('AWS_ACCESS_KEY_ID', '')
+
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '/vsimem/aws_config')
+
+    gdal.VSICurlClearCache()
+
+    gdal.FileFromMemBuffer('/vsimem/aws_config', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[default]
+aws_access_key_id = AWS_ACCESS_KEY_ID
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+region = us-east-1
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '')
+    gdal.Unlink('/vsimem/aws_config')
+
+    return 'success'
+
+###############################################################################
+# Read credentials from simulated ~/.aws/credentials and ~/.aws/config
+
+def vsis3_read_credentials_config_file():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    gdal.SetConfigOption('AWS_SECRET_ACCESS_KEY', '')
+    gdal.SetConfigOption('AWS_ACCESS_KEY_ID', '')
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '/vsimem/aws_credentials')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '/vsimem/aws_config')
+
+    gdal.VSICurlClearCache()
+
+    gdal.FileFromMemBuffer('/vsimem/aws_credentials', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[default]
+aws_access_key_id = AWS_ACCESS_KEY_ID
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    gdal.FileFromMemBuffer('/vsimem/aws_config', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[default]
+aws_access_key_id = AWS_ACCESS_KEY_ID
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+region = us-east-1
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '')
+    gdal.Unlink('/vsimem/aws_credentials')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '')
+    gdal.Unlink('/vsimem/aws_config')
+
+    return 'success'
+
+###############################################################################
+# Read credentials from simulated ~/.aws/credentials and ~/.aws/config with
+# a non default profile
+
+def vsis3_read_credentials_config_file_non_default():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    gdal.SetConfigOption('AWS_SECRET_ACCESS_KEY', '')
+    gdal.SetConfigOption('AWS_ACCESS_KEY_ID', '')
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '/vsimem/aws_credentials')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '/vsimem/aws_config')
+    gdal.SetConfigOption('AWS_DEFAULT_PROFILE', 'myprofile')
+
+    gdal.VSICurlClearCache()
+
+    gdal.FileFromMemBuffer('/vsimem/aws_credentials', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[myprofile]
+aws_access_key_id = AWS_ACCESS_KEY_ID
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+[default]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    gdal.FileFromMemBuffer('/vsimem/aws_config', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[profile myprofile]
+region = us-east-1
+[default]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '')
+    gdal.Unlink('/vsimem/aws_credentials')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '')
+    gdal.Unlink('/vsimem/aws_config')
+    gdal.SetConfigOption('AWS_DEFAULT_PROFILE', '')
+
+    return 'success'
+
+###############################################################################
+# Read credentials from simulated ~/.aws/credentials and ~/.aws/config
+
+def vsis3_read_credentials_config_file_inconsistent():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    gdal.SetConfigOption('AWS_SECRET_ACCESS_KEY', '')
+    gdal.SetConfigOption('AWS_ACCESS_KEY_ID', '')
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '/vsimem/aws_credentials')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '/vsimem/aws_config')
+
+    gdal.VSICurlClearCache()
+
+    gdal.FileFromMemBuffer('/vsimem/aws_credentials', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[default]
+aws_access_key_id = AWS_ACCESS_KEY_ID
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    gdal.FileFromMemBuffer('/vsimem/aws_config', """
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+[default]
+aws_access_key_id = AWS_ACCESS_KEY_ID_inconsistent
+aws_secret_access_key = AWS_SECRET_ACCESS_KEY_inconsistent
+region = us-east-1
+[unrelated]
+aws_access_key_id = foo
+aws_secret_access_key = bar
+""")
+
+    gdal.ErrorReset()
+    with gdaltest.error_handler():
+        f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    if gdal.GetLastErrorMsg() == '':
+        # Expected 'aws_access_key_id defined in both /vsimem/aws_credentials and /vsimem/aws_config'
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', '')
+    gdal.Unlink('/vsimem/aws_credentials')
+    gdal.SetConfigOption('AWS_CONFIG_FILE', '')
+    gdal.Unlink('/vsimem/aws_config')
+
+    return 'success'
+
+###############################################################################
+# Read credentials from simulated EC2 instance
+
+def vsis3_read_credentials_ec2():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    if sys.platform not in ('linux', 'linux2', 'win32'):
+        return 'skip'
+
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL',
+                         'http://localhost:%d/latest/meta-data/iam/security-credentials/' % gdaltest.webserver_port)
+    # Disable hypervisor related check to test if we are really on EC2
+    gdal.SetConfigOption('CPL_AWS_CHECK_HYPERVISOR_UUID', 'NO')
+
+    gdal.VSICurlClearCache()
+
+    f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    # Set a fake URL to check that credentials re-use works
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL', '')
+
+    f = open_for_read('/vsis3/s3_fake_bucket/bar')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'bar':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL','')
+    gdal.SetConfigOption('CPL_AWS_CHECK_HYPERVISOR_UUID', None)
+
+    return 'success'
+
+###############################################################################
+# Read credentials from simulated EC2 instance with expiration of the
+# cached credentials
+
+def vsis3_read_credentials_ec2_expiration():
+
+    if gdaltest.webserver_port == 0:
+        return 'skip'
+
+    if sys.platform not in ('linux', 'linux2', 'win32'):
+        return 'skip'
+
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL',
+                         'http://localhost:%d/latest/meta-data/iam/security-credentials/expire_in_past/' % gdaltest.webserver_port)
+    # Disable hypervisor related check to test if we are really on EC2
+    gdal.SetConfigOption('CPL_AWS_CHECK_HYPERVISOR_UUID', 'NO')
+
+    gdal.VSICurlClearCache()
+
+    f = open_for_read('/vsis3/s3_fake_bucket/resource')
+    if f is None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    data = gdal.VSIFReadL(1, 4, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+
+    if data != 'foo':
+        gdaltest.post_reason('fail')
+        print(data)
+        return 'fail'
+
+    # Set a fake URL to demonstrate we try to re-fetch credentials
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL', '')
+
+    with gdaltest.error_handler():
+        f = open_for_read('/vsis3/s3_fake_bucket/bar')
+    if f is not None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL','')
+    gdal.SetConfigOption('CPL_AWS_CHECK_HYPERVISOR_UUID', None)
+
+    return 'success'
+
+###############################################################################
 def vsis3_stop_webserver():
 
     if gdaltest.webserver_port == 0:
@@ -583,12 +1063,15 @@ def vsis3_extra_1():
     if drv is None:
         return 'skip'
 
-    if gdal.GetConfigOption('AWS_SECRET_ACCESS_KEY') is None:
-        print('Missing AWS_SECRET_ACCESS_KEY for running gdaltest_list_extra')
-        return 'skip'
-    elif gdal.GetConfigOption('AWS_ACCESS_KEY_ID') is None:
-        print('Missing AWS_ACCESS_KEY_ID for running gdaltest_list_extra')
-        return 'skip'
+    credentials_filename = gdal.GetConfigOption('HOME',
+        gdal.GetConfigOption('USERPROFILE', '')) + '/.aws/credentials'
+    if not os.path.exists(credentials_filename):
+        if gdal.GetConfigOption('AWS_SECRET_ACCESS_KEY') is None:
+            print('Missing AWS_SECRET_ACCESS_KEY for running gdaltest_list_extra')
+            return 'skip'
+        elif gdal.GetConfigOption('AWS_ACCESS_KEY_ID') is None:
+            print('Missing AWS_ACCESS_KEY_ID for running gdaltest_list_extra')
+            return 'skip'
     elif gdal.GetConfigOption('S3_RESOURCE') is None:
         print('Missing S3_RESOURCE for running gdaltest_list_extra')
         return 'skip'
@@ -645,6 +1128,10 @@ def vsis3_cleanup():
     for var in gdaltest.aws_vars:
         gdal.SetConfigOption(var, gdaltest.aws_vars[var])
 
+    gdal.SetConfigOption('CPL_AWS_CREDENTIALS_FILE', None)
+    gdal.SetConfigOption('AWS_CONFIG_FILE', None)
+    gdal.SetConfigOption('CPL_AWS_EC2_CREDENTIALS_URL', None)
+
     return 'success'
 
 gdaltest_list = [ vsis3_init,
@@ -655,6 +1142,13 @@ gdaltest_list = [ vsis3_init,
                   vsis3_4,
                   vsis3_5,
                   vsis3_6,
+                  vsis3_read_credentials_file,
+                  vsis3_read_config_file,
+                  vsis3_read_credentials_config_file,
+                  vsis3_read_credentials_config_file_non_default,
+                  vsis3_read_credentials_config_file_inconsistent,
+                  vsis3_read_credentials_ec2,
+                  vsis3_read_credentials_ec2_expiration,
                   vsis3_stop_webserver,
                   vsis3_cleanup ]
 gdaltest_list_extra = [ vsis3_extra_1, vsis3_cleanup ]

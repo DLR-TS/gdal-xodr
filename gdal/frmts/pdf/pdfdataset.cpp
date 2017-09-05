@@ -56,7 +56,7 @@
 
 /* g++ -fPIC -g -Wall frmts/pdf/pdfdataset.cpp -shared -o gdal_PDF.so -Iport -Igcore -Iogr -L. -lgdal -lpoppler -I/usr/include/poppler */
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #if defined(HAVE_POPPLER) || defined(HAVE_PODOFO) || defined(HAVE_PDFIUM)
 
@@ -707,6 +707,11 @@ CPLErr PDFRasterBand::IReadBlockFromTile( int nBlockXOff, int nBlockYOff,
 
     int nXBlocks = DIV_ROUND_UP(nRasterXSize, nBlockXSize);
     int iTile = poGDS->aiTiles[nBlockYOff * nXBlocks + nBlockXOff];
+    if( iTile < 0 )
+    {
+        memset(pImage, 0, nBlockXSize * nBlockYSize);
+        return CE_None;
+    }
 
     GDALPDFTileDesc& sTile = poGDS->asTiles[iTile];
     GDALPDFObject* poImage = sTile.poImage;

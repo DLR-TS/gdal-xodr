@@ -71,7 +71,7 @@
 
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const double BAND_DENSITY_THRESHOLD = 0.0000000001;
 static const float SRC_DENSITY_THRESHOLD =  0.000000001f;
@@ -1066,8 +1066,8 @@ CPLErr GDALWarpKernel::PerformWarp()
             dfYScale = 1.0 / nYReciprocalScale;
     }
 
-    // XSCALE and YSCALE undocumented for now. Can help in some cases
-    // Best would probably a per-pixel scale computation.
+    // XSCALE and YSCALE undocumented for now. Can help in some cases.
+    // Best would probably be a per-pixel scale computation.
     const char* pszXScale = CSLFetchNameValue(papszWarpOptions, "XSCALE");
     if( pszXScale != NULL )
         dfXScale = CPLAtof(pszXScale);

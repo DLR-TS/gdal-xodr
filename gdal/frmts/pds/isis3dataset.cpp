@@ -45,6 +45,7 @@
 #include "ogr_spatialref.h"
 #include "rawdataset.h"
 #include "vrtdataset.h"
+#include "cpl_safemaths.hpp"
 
 // For gethostname()
 #ifdef _WIN32
@@ -104,7 +105,7 @@ static const char* const pszLABEL_BYTES_PLACEHOLDER = "!*^LABEL_BYTES^*!";
 static const char* const pszHISTORY_STARTBYTE_PLACEHOLDER =
                                                     "!*^HISTORY_STARTBYTE^*!";
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /* ==================================================================== */
@@ -838,8 +839,18 @@ ISISTiledBand::ISISTiledBand( GDALDataset *poDSIn, VSILFILE *fpVSILIn,
         m_nYTileOffset = m_nXTileOffset * l_nBlocksPerRow;
     }
 
-    m_nFirstTileOffset = nFirstTileOffsetIn
-        + (nBand-1) * m_nYTileOffset * l_nBlocksPerColumn;
+    m_nFirstTileOffset = nFirstTileOffsetIn;
+    if( nBand > 1 )
+    {
+        if( m_nYTileOffset > GINTBIG_MAX / (nBand - 1) ||
+            (nBand-1) * m_nYTileOffset > GINTBIG_MAX / l_nBlocksPerColumn ||
+            m_nFirstTileOffset > GINTBIG_MAX - (nBand-1) * m_nYTileOffset * l_nBlocksPerColumn )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined, "Integer overflow");
+            return;
+        }
+        m_nFirstTileOffset += (nBand-1) * m_nYTileOffset * l_nBlocksPerColumn;
+    }
 }
 
 /************************************************************************/
@@ -2073,8 +2084,12 @@ GDALDataset *ISIS3Dataset::Open( GDALOpenInfo * poOpenInfo )
 /* -------------------------------------------------------------------- */
 
     /*************   Skipbytes     *****************************/
-    const int nSkipBytes =
-            atoi(poDS->GetKeyword("IsisCube.Core.StartByte", "1")) - 1;
+    int nSkipBytes =
+            atoi(poDS->GetKeyword("IsisCube.Core.StartByte", "1"));
+    if( nSkipBytes <= 1 )
+        nSkipBytes = 0;
+    else
+        nSkipBytes -= 1;
 
     /*******   Grab format type (BandSequential, Tiled)  *******/
     CPLString osFormat = poDS->GetKeyword( "IsisCube.Core.Format" );
@@ -2319,10 +2334,11 @@ GDALDataset *ISIS3Dataset::Open( GDALOpenInfo * poOpenInfo )
             //  not the more standard Radius of Curvature method
             //PI = 4 * atan(1);
             const double radLat = center_lat * M_PI / 180;  // in radians
-            const double localRadius
-                = semi_major * semi_minor
-                / sqrt( pow( semi_minor * cos( radLat ), 2)
-                       + pow( semi_major * sin( radLat ), 2) );
+            const double meanRadius =
+                sqrt( pow( semi_minor * cos( radLat ), 2)
+                    + pow( semi_major * sin( radLat ), 2) );
+            const double localRadius = ( meanRadius == 0.0 ) ?
+                                0.0 : semi_major * semi_minor / meanRadius;
             osSphereName += "_localRadius";
             oSRS.SetGeogCS( osGeogName, osDatumName, osSphereName,
                             localRadius, 0.0,
@@ -2381,6 +2397,13 @@ GDALDataset *ISIS3Dataset::Open( GDALOpenInfo * poOpenInfo )
             CPLError(CE_Warning, CPLE_NotSupported,
                      "Ignoring StartByte=%d for format=GeoTIFF",
                      1+nSkipBytes);
+        }
+        if( osQubeFile == poOpenInfo->pszFilename )
+        {
+            CPLError( CE_Failure, CPLE_AppDefined,
+                      "A ^Core file must be set");
+            delete poDS;
+            return NULL;
         }
         poDS->m_poExternalDS = reinterpret_cast<GDALDataset *>(
                                 GDALOpen( osQubeFile, poOpenInfo->eAccess ) );
@@ -2518,7 +2541,15 @@ GDALDataset *ISIS3Dataset::Open( GDALOpenInfo * poOpenInfo )
     {
         const int nItemSize = GDALGetDataTypeSizeBytes(eDataType);
         nPixelOffset = nItemSize;
-        nLineOffset = nPixelOffset * nCols;
+        try
+        {
+            nLineOffset = (CPLSM(nPixelOffset) * CPLSM(nCols)).v();
+        }
+        catch( const CPLSafeIntOverflow& )
+        {
+            delete poDS;
+            return NULL;
+        }
         nBandOffset = static_cast<vsi_l_offset>(nLineOffset) * nRows;
     }
     /* else Tiled or external */
@@ -2548,12 +2579,18 @@ GDALDataset *ISIS3Dataset::Open( GDALOpenInfo * poOpenInfo )
         }
         else if( poDS->m_bIsTiled )
         {
+            CPLErrorReset();
             ISISTiledBand* poISISBand =
                 new ISISTiledBand( poDS, poDS->m_fpImage, i+1, eDataType,
                                         tileSizeX, tileSizeY,
                                         nSkipBytes, 0, 0,
                                         bNativeOrder );
-
+            if( CPLGetLastErrorType() != CE_None )
+            {
+                delete poISISBand;
+                delete poDS;
+                return NULL;
+            }
             poBand = poISISBand;
             poDS->SetBand( i+1, poBand );
 
@@ -3098,20 +3135,27 @@ void ISIS3Dataset::BuildLabel()
     // Deal with History object
     BuildHistory();
 
-    CPLJsonObject& oHistory = oLabel["History"];
-    oHistory.clear();
-    oHistory["_type"] = "object";
-    oHistory["Name"] = "IsisCube";
-    if( m_osExternalFilename.empty() )
-        oHistory["StartByte"] = pszHISTORY_STARTBYTE_PLACEHOLDER;
-    else
-        oHistory["StartByte"] = 1;
-    oHistory["Bytes"] = static_cast<GIntBig>(m_osHistory.size());
-    if( !m_osExternalFilename.empty() )
+    if( !m_osHistory.empty() )
     {
-        CPLString osFilename(CPLGetBasename(GetDescription()));
-        osFilename += ".History.IsisCube";
-        oHistory["^History"] = osFilename;
+        CPLJsonObject& oHistory = oLabel["History"];
+        oHistory.clear();
+        oHistory["_type"] = "object";
+        oHistory["Name"] = "IsisCube";
+        if( m_osExternalFilename.empty() )
+            oHistory["StartByte"] = pszHISTORY_STARTBYTE_PLACEHOLDER;
+        else
+            oHistory["StartByte"] = 1;
+        oHistory["Bytes"] = static_cast<GIntBig>(m_osHistory.size());
+        if( !m_osExternalFilename.empty() )
+        {
+            CPLString osFilename(CPLGetBasename(GetDescription()));
+            osFilename += ".History.IsisCube";
+            oHistory["^History"] = osFilename;
+        }
+    }
+    else
+    {
+        oLabel.del("History");
     }
 
     // Deal with other objects that have StartByte & Bytes
@@ -3453,9 +3497,6 @@ void ISIS3Dataset::BuildHistory()
         osHistory += SerializeAsPDL( poObj );
         json_object_put(poObj);
     }
-
-    if( osHistory.empty() )
-        osHistory = " ";
 
     m_osHistory = osHistory;
 }

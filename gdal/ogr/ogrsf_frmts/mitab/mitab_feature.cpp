@@ -54,7 +54,7 @@
 #include "ogr_featurestyle.h"
 #include "ogr_geometry.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class TABFeature
@@ -350,9 +350,14 @@ int TABFeature::ReadRecordFromDATFile(TABDATFile *poDATFile)
         {
         case TABFChar:
         {
-            const char *pszValue =
-                poDATFile->ReadCharField(poDATFile->GetFieldWidth(iField));
-            SetField(iField, pszValue);
+            int         iWidth( poDATFile->GetFieldWidth(iField) );
+            CPLString   osValue( poDATFile->ReadCharField( iWidth ) );
+
+            if( !poDATFile->GetEncoding().empty() )
+            {
+                osValue.Recode( poDATFile->GetEncoding(), CPL_ENC_UTF8 );
+            }
+            SetField(iField, osValue);
             break;
         }
         case TABFDecimal:
@@ -518,9 +523,16 @@ int TABFeature::WriteRecordToDATFile(TABDATFile *poDATFile,
         switch(poDATFile->GetFieldType(iField))
         {
         case TABFChar:
-            nStatus = poDATFile->WriteCharField(
-                GetFieldAsString(iField), poDATFile->GetFieldWidth(iField),
-                poINDFile, panIndexNo[iField]);
+            {
+                CPLString   osValue( GetFieldAsString(iField) );
+                if( !poDATFile->GetEncoding().empty() )
+                {
+                    osValue.Recode( CPL_ENC_UTF8, poDATFile->GetEncoding() );
+                }
+                nStatus = poDATFile->WriteCharField(
+                    osValue, poDATFile->GetFieldWidth(iField),
+                    poINDFile, panIndexNo[iField]);
+            }
             break;
         case TABFDecimal:
             nStatus = poDATFile->WriteDecimalField(
@@ -1477,10 +1489,9 @@ void TABFontPoint::SetFontStyleMIFValue(int nStyle)
  **********************************************************************/
 void TABFontPoint::SetSymbolAngle(double dAngle)
 {
-    while(dAngle < 0.0)
+    dAngle = fmod(dAngle, 360.0);
+    if(dAngle < 0.0)
         dAngle += 360.0;
-    while(dAngle > 360.0)
-        dAngle -= 360.0;
 
     m_dAngle = dAngle;
 }
@@ -2998,6 +3009,24 @@ int TABRegion::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
         /*-------------------------------------------------------------
          * Read data from the coord. block
          *------------------------------------------------------------*/
+
+        const int nMinSizeOfSection = 24;
+        if( numLineSections > INT_MAX / nMinSizeOfSection )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many numLineSections");
+            return -1;
+        }
+        const GUInt32 nMinimumBytesForSections =
+                                nMinSizeOfSection * numLineSections;
+        if( nMinimumBytesForSections > 1024 * 1024 && 
+            nMinimumBytesForSections > poMapFile->GetFileSize() )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many numLineSections");
+            return -1;
+        }
+
         TABMAPCoordSecHdr *pasSecHdrs = static_cast<TABMAPCoordSecHdr *>(
             VSI_MALLOC2_VERBOSE(numLineSections, sizeof(TABMAPCoordSecHdr)));
         if( pasSecHdrs == NULL )
@@ -3019,6 +3048,17 @@ int TABRegion::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
             CPLError(CE_Failure, CPLE_FileIO,
                      "Failed reading coordinate data at offset %d",
                      nCoordBlockPtr);
+            CPLFree(pasSecHdrs);
+            return -1;
+        }
+
+        const GUInt32 nMinimumBytesForPoints =
+                        (bComprCoord ? 4 : 8) * numPointsTotal;
+        if( nMinimumBytesForPoints > 1024 * 1024 && 
+            nMinimumBytesForPoints > poMapFile->GetFileSize() )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many numPointsTotal");
             CPLFree(pasSecHdrs);
             return -1;
         }
@@ -5071,16 +5111,18 @@ int TABArc::WriteGeometryToMAPFile(TABMAPFile *poMapFile,
  **********************************************************************/
 void TABArc::SetStartAngle(double dAngle)
 {
-    while(dAngle < 0.0)   dAngle += 360.0;
-    while(dAngle > 360.0) dAngle -= 360.0;
+    dAngle = fmod(dAngle, 360.0);
+    if(dAngle < 0.0)
+        dAngle += 360.0;
 
     m_dStartAngle = dAngle;
 }
 
 void TABArc::SetEndAngle(double dAngle)
 {
-    while(dAngle < 0.0)   dAngle += 360.0;
-    while(dAngle > 360.0) dAngle -= 360.0;
+    dAngle = fmod(dAngle, 360.0);
+    if(dAngle < 0.0)
+        dAngle += 360.0;
 
     m_dEndAngle = dAngle;
 }
@@ -5676,8 +5718,9 @@ double TABText::GetTextAngle()
 void TABText::SetTextAngle(double dAngle)
 {
     // Make sure angle is in the range [0..360]
-    while(dAngle < 0.0)   dAngle += 360.0;
-    while(dAngle > 360.0) dAngle -= 360.0;
+    dAngle = fmod(dAngle, 360.0);
+    if(dAngle < 0.0)
+        dAngle += 360.0;
     m_dAngle = dAngle;
     UpdateMBR();
 }
@@ -6370,6 +6413,16 @@ int TABMultiPoint::ReadGeometryFromMAPFile(TABMAPFile *poMapFile,
          * Copy data from poObjHdr
          *------------------------------------------------------------*/
         TABMAPObjMultiPoint *poMPointHdr = (TABMAPObjMultiPoint *)poObjHdr;
+ 
+        const GUInt32 nMinimumBytesForPoints =
+                        (bComprCoord ? 4 : 8) * poMPointHdr->m_nNumPoints;
+        if( nMinimumBytesForPoints > 1024 * 1024 && 
+            nMinimumBytesForPoints > poMapFile->GetFileSize() )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Too many points");
+            return -1;
+        }
 
         // MBR
         poMapFile->Int2Coordsys(poMPointHdr->m_nMinX, poMPointHdr->m_nMinY,

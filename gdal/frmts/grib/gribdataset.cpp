@@ -64,7 +64,7 @@
 #include "gdal_priv.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static CPLMutex *hGRIBMutex = NULL;
 
@@ -154,7 +154,8 @@ void GRIBRasterBand::FindPDSTemplate()
         memcpy(&nSectSize, abyHead, 4);
         CPL_MSBPTR32(&nSectSize);
 
-        if( VSIFSeekL(poGDS->fp, nSectSize - 5, SEEK_CUR) != 0 ||
+        if( nSectSize < 5 ||
+            VSIFSeekL(poGDS->fp, nSectSize - 5, SEEK_CUR) != 0 ||
             VSIFReadL(abyHead, 5, 1, poGDS->fp) != 1 )
             break;
     }
@@ -163,35 +164,38 @@ void GRIBRasterBand::FindPDSTemplate()
     {
         memcpy(&nSectSize, abyHead, 4);
         CPL_MSBPTR32(&nSectSize);
-
-        GByte *pabyBody = static_cast<GByte *>(CPLMalloc(nSectSize - 5));
-        VSIFReadL(pabyBody, 1, nSectSize - 5, poGDS->fp);
-
-        GUInt16 nCoordCount = 0;
-        memcpy(&nCoordCount, pabyBody + 5 - 5, 2);
-        CPL_MSBPTR16(&nCoordCount);
-
-        GUInt16 nPDTN = 0;
-        memcpy(&nPDTN, pabyBody + 7 - 5, 2);
-        CPL_MSBPTR16(&nPDTN);
-
-        SetMetadataItem("GRIB_PDS_PDTN", CPLString().Printf("%d", nPDTN));
-
-        CPLString osOctet;
-        for( int i = 9; i < static_cast<int>(nSectSize); i++ )
+        if( nSectSize >= 9 &&
+            nSectSize <= 100000  /* arbitrary upper limit */ )
         {
-            char szByte[10] = { '\0' };
+            GByte *pabyBody = static_cast<GByte *>(CPLMalloc(nSectSize - 5));
+            VSIFReadL(pabyBody, 1, nSectSize - 5, poGDS->fp);
 
-            if( i == 9 )
-                snprintf(szByte, sizeof(szByte), "%d", pabyBody[i - 5]);
-            else
-                snprintf(szByte, sizeof(szByte), " %d", pabyBody[i - 5]);
-            osOctet += szByte;
+            GUInt16 nCoordCount = 0;
+            memcpy(&nCoordCount, pabyBody + 5 - 5, 2);
+            CPL_MSBPTR16(&nCoordCount);
+
+            GUInt16 nPDTN = 0;
+            memcpy(&nPDTN, pabyBody + 7 - 5, 2);
+            CPL_MSBPTR16(&nPDTN);
+
+            SetMetadataItem("GRIB_PDS_PDTN", CPLString().Printf("%d", nPDTN));
+
+            CPLString osOctet;
+            for( int i = 9; i < static_cast<int>(nSectSize); i++ )
+            {
+                char szByte[10] = { '\0' };
+
+                if( i == 9 )
+                    snprintf(szByte, sizeof(szByte), "%d", pabyBody[i - 5]);
+                else
+                    snprintf(szByte, sizeof(szByte), " %d", pabyBody[i - 5]);
+                osOctet += szByte;
+            }
+
+            SetMetadataItem("GRIB_PDS_TEMPLATE_NUMBERS", osOctet);
+
+            CPLFree(pabyBody);
         }
-
-        SetMetadataItem("GRIB_PDS_TEMPLATE_NUMBERS", osOctet);
-
-        CPLFree(pabyBody);
     }
 
     VSIFSeekL(poGDS->fp, nOffset, SEEK_SET);
@@ -256,12 +260,31 @@ CPLErr GRIBRasterBand::LoadData()
         if( !m_Grib_Data )
         {
             CPLError(CE_Failure, CPLE_AppDefined, "Out of memory.");
+            if (m_Grib_MetaData != NULL)
+            {
+                MetaFree(m_Grib_MetaData);
+                delete m_Grib_MetaData;
+                m_Grib_MetaData = NULL;
+            }
             return CE_Failure;
         }
 
         // Check the band matches the dataset as a whole, size wise. (#3246)
         nGribDataXSize = m_Grib_MetaData->gds.Nx;
         nGribDataYSize = m_Grib_MetaData->gds.Ny;
+        if( nGribDataXSize <= 0 || nGribDataYSize <= 0 ||
+            nGribDataXSize > INT_MAX / nGribDataYSize ||
+            nGribDataXSize > INT_MAX / (nGribDataYSize * static_cast<int>(sizeof(double))) )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Band %d of GRIB dataset is %dx%d, which is too large.",
+                     nBand,
+                     nGribDataXSize, nGribDataYSize);
+            MetaFree(m_Grib_MetaData);
+            delete m_Grib_MetaData;
+            m_Grib_MetaData = NULL;
+            return CE_Failure;
+        }
 
         poGDS->nCachedBytes += nGribDataXSize * nGribDataYSize * sizeof(double);
         poGDS->poLastUsedBand = this;
@@ -304,7 +327,7 @@ CPLErr GRIBRasterBand::IReadBlock( int /* nBlockXOff */,
     {
         // Simple 1:1 case.
         memcpy(pImage,
-               m_Grib_Data + nRasterXSize * (nRasterYSize - nBlockYOff - 1),
+               m_Grib_Data + static_cast<size_t>(nRasterXSize) * (nRasterYSize - nBlockYOff - 1),
                nRasterXSize * sizeof(double));
 
         return CE_None;
@@ -318,7 +341,7 @@ CPLErr GRIBRasterBand::IReadBlock( int /* nBlockXOff */,
     const int nCopyWords = std::min(nRasterXSize, nGribDataXSize);
 
     memcpy(pImage,
-           m_Grib_Data + nGribDataXSize * (nGribDataYSize - nBlockYOff - 1),
+           m_Grib_Data + static_cast<size_t>(nGribDataXSize) * (nGribDataYSize - nBlockYOff - 1),
            nCopyWords * sizeof(double));
 
     return CE_None;
@@ -640,6 +663,7 @@ GDALDataset *GRIBDataset::Open( GDALOpenInfo *poOpenInfo )
                 CPLAcquireMutex(hGRIBMutex, 1000.0);
                 if (metaData != NULL)
                 {
+                    MetaFree(metaData);
                     delete metaData;
                 }
                 if (data != NULL)

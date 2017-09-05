@@ -65,7 +65,7 @@ woven in by Terry Thorsen 1/2003.
 #   include <errno.h>
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #ifndef CASESENSITIVITYDEFAULT_NO
 #  if !defined(unix) && !defined(CASESENSITIVITYDEFAULT_YES)
@@ -725,7 +725,9 @@ static void unzlocal_DosDateToTmuDate (uLong64 ulDosDate, tm_unz* ptm)
     uLong64 uDate;
     uDate = (uLong64)(ulDosDate>>16);
     ptm->tm_mday = (uInt)(uDate&0x1f);
-    ptm->tm_mon =  (uInt)((((uDate)&0x1E0)/0x20)-1);
+    ptm->tm_mon =  (uInt)(((uDate)&0x1E0)/0x20);
+    if( ptm->tm_mon )
+        ptm->tm_mon --;
     ptm->tm_year = (uInt)(((uDate&0x0FE00)/0x0200)+1980);
 
     ptm->tm_hour = (uInt) ((ulDosDate &0xF800)/0x800);

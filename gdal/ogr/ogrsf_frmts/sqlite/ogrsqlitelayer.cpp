@@ -42,7 +42,7 @@
 #include "ogrsqliteutility.h"
 #include <cassert>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           OGRSQLiteLayer()                           */
@@ -2331,6 +2331,7 @@ OGRErr OGRSQLiteLayer::createFromSpatialiteInternal(const GByte *pabyData,
             eErr = poGC->addGeometryDirectly( poThisGeom );
             if( eErr != OGRERR_NONE )
             {
+                delete poThisGeom;
                 delete poGC;
                 return eErr;
             }
@@ -2569,7 +2570,7 @@ OGRErr OGRSQLiteLayer::ImportSpatiaLiteGeometry( const GByte *pabyData,
         /* the original curve geometry after the spatialite blob, so in case */
         /* we detect that there's still binary */
         /* content after the spatialite blob, this may be our original geometry */
-        if( pabyData[39 + nBytesConsumed] == 0xFE && 39 + nBytesConsumed + 1 < nBytes )
+        if( 39 + nBytesConsumed + 1 < nBytes && pabyData[39 + nBytesConsumed] == 0xFE )
         {
             OGRGeometry* poOriginalGeometry = NULL;
             eErr = OGRGeometryFactory::createFromWkb(
@@ -2803,7 +2804,6 @@ int OGRSQLiteLayer::GetSpatialiteGeometryCode(const OGRGeometry *poGeometry,
 
     if (!bAcceptMultiGeom)
     {
-        CPLError(CE_Failure, CPLE_AppDefined, "Unexpected geometry type");
         return 0;
     }
 
@@ -3110,7 +3110,18 @@ int OGRSQLiteLayer::ExportSpatiaLiteGeometryInternal(const OGRGeometry *poGeomet
             {
                 pabyData[nTotalSize] = 0x69;
                 nTotalSize ++;
-                int nCode = GetSpatialiteGeometryCode(poGeomCollection->getGeometryRef(i),
+
+                OGRGeometry* poPart = poGeomCollection->getGeometryRef(i);
+                if( OGR_GT_IsSubClassOf(poPart->getGeometryType(),
+                                        wkbGeometryCollection) )
+                {
+                    CPLError(CE_Failure, CPLE_AppDefined,
+                        "Unexpected geometry type %s as part of %s",
+                        OGRToOGCGeomType(poPart->getGeometryType()),
+                        OGRToOGCGeomType(poGeometry->getGeometryType()));
+                    return 0;
+                }
+                int nCode = GetSpatialiteGeometryCode(poPart,
                                                       bSpatialite2D,
                                                       bUseComprGeom, FALSE);
                 if (nCode == 0)
@@ -3119,7 +3130,7 @@ int OGRSQLiteLayer::ExportSpatiaLiteGeometryInternal(const OGRGeometry *poGeomet
                 if (NEED_SWAP_SPATIALITE())
                     CPL_SWAP32PTR( pabyData + nTotalSize );
                 nTotalSize += 4;
-                nTotalSize += ExportSpatiaLiteGeometryInternal(poGeomCollection->getGeometryRef(i),
+                nTotalSize += ExportSpatiaLiteGeometryInternal(poPart,
                                                                eByteOrder,
                                                                bSpatialite2D,
                                                                bUseComprGeom,

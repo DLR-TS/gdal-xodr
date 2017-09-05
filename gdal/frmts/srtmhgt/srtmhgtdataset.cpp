@@ -40,7 +40,7 @@
 
 static const GInt16 SRTMHG_NODATA_VALUE = -32768;
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /* ==================================================================== */
@@ -232,7 +232,15 @@ CPLErr SRTMHGTDataset::GetGeoTransform(double * padfTransform)
 const char *SRTMHGTDataset::GetProjectionRef()
 
 {
-    return SRS_WKT_WGS84;
+        if (CPLTestBool( CPLGetConfigOption("REPORT_COMPD_CS", "NO") ) )
+        {
+                return "COMPD_CS[\"WGS 84 + EGM96 geoid height\", GEOGCS[\"WGS 84\", DATUM[\"WGS_1984\", SPHEROID[\"WGS 84\",6378137,298.257223563, AUTHORITY[\"EPSG\",\"7030\"]], AUTHORITY[\"EPSG\",\"6326\"]], PRIMEM[\"Greenwich\",0, AUTHORITY[\"EPSG\",\"8901\"]], UNIT[\"degree\",0.0174532925199433, AUTHORITY[\"EPSG\",\"9122\"]], AUTHORITY[\"EPSG\",\"4326\"]], VERT_CS[\"EGM96 geoid height\", VERT_DATUM[\"EGM96 geoid\",2005, AUTHORITY[\"EPSG\",\"5171\"]], UNIT[\"metre\",1, AUTHORITY[\"EPSG\",\"9001\"]], AXIS[\"Up\",UP], AUTHORITY[\"EPSG\",\"5773\"]]]";
+
+        }
+        else
+        {
+            return SRS_WKT_WGS84;
+        }
 }
 
 /************************************************************************/
@@ -257,7 +265,8 @@ int SRTMHGTDataset::Identify( GDALOpenInfo * poOpenInfo )
     return Identify(&oOpenInfo);
   }
 
-  if( !EQUAL(fileName + strlen(fileName) - strlen(".hgt"), ".hgt") )
+  if( !EQUAL(fileName + strlen(fileName) - strlen(".hgt"), ".hgt") &&
+      !EQUAL(fileName + strlen(fileName) - strlen(".hgt.gz"), ".hgt.gz") )
     return FALSE;
 
 /* -------------------------------------------------------------------- */
@@ -295,7 +304,13 @@ GDALDataset* SRTMHGTDataset::Open(GDALOpenInfo* poOpenInfo)
       osFilename += CPLString(fileName).substr(0, 7);
       osFilename += ".hgt";
       GDALOpenInfo oOpenInfo(osFilename, poOpenInfo->eAccess);
-      return Open(&oOpenInfo);
+      GDALDataset* poDS = Open(&oOpenInfo);
+      if( poDS != NULL )
+      {
+          // override description with the main one
+          poDS->SetDescription(poOpenInfo->pszFilename);
+      }
+      return poDS;
   }
 
   char latLonValueString[4];
@@ -352,7 +367,7 @@ GDALDataset* SRTMHGTDataset::Open(GDALOpenInfo* poOpenInfo)
   default:
     numPixels_x = numPixels_y = 0;
     break;
-  }    
+  }
 
   poDS->eAccess = poOpenInfo->eAccess;
 #ifdef CPL_LSB

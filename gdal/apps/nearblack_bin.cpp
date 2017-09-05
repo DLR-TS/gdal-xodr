@@ -30,7 +30,7 @@
 #include "commonutils.h"
 #include "gdal_utils_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                               Usage()                                */
@@ -53,7 +53,8 @@ static void Usage(const char* pszErrorMsg = NULL)
 
 static GDALNearblackOptionsForBinary *GDALNearblackOptionsForBinaryNew(void)
 {
-    return (GDALNearblackOptionsForBinary*) CPLCalloc(  1, sizeof(GDALNearblackOptionsForBinary) );
+    return static_cast<GDALNearblackOptionsForBinary *>(
+        CPLCalloc(1, sizeof(GDALNearblackOptionsForBinary)));
 }
 
 /************************************************************************/

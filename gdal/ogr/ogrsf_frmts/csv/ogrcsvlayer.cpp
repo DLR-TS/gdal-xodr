@@ -57,7 +57,9 @@
 #include "ogr_spatialref.h"
 #include "ogrsf_frmts.h"
 
-CPL_CVSID("$Id$");
+#define DIGIT_ZERO '0'
+
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                            CSVSplitLine()                            */
@@ -1702,9 +1704,9 @@ OGRFeature *OGRCSVLayer::GetNextUnfilteredFeature()
              papszTokens[iLatitudeField][0] != 0 )
     {
         // Some records have dummy 0,0 value.
-        if( papszTokens[iLongitudeField][0] != '0' ||
+        if( papszTokens[iLongitudeField][0] != DIGIT_ZERO ||
             papszTokens[iLongitudeField][1] != '\0' ||
-            papszTokens[iLatitudeField][0] != '0' ||
+            papszTokens[iLatitudeField][0] != DIGIT_ZERO ||
             papszTokens[iLatitudeField][1] != '\0' )
         {
             const double dfLon = CPLAtof(papszTokens[iLongitudeField]);
@@ -1918,7 +1920,7 @@ OGRErr OGRCSVLayer::CreateGeomField( OGRGeomFieldDefn *poGeomField,
         }
         pszName = "WKT";
     }
-    if( STARTS_WITH_CI(pszName, "geom_") )
+    if( STARTS_WITH_CI(pszName, "geom_") && strlen(pszName) >= strlen("geom_") )
         pszName += strlen("geom_");
     if( !EQUAL(pszName, "WKT") && !STARTS_WITH_CI(pszName, "_WKT") )
         pszName = CPLSPrintf("_WKT%s", pszName);

@@ -39,7 +39,7 @@
 #include <math.h>
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const char * const apszAllowedDrivers[] = {"JPEG", "PNG", NULL};
 
@@ -51,6 +51,12 @@ static const char * const apszAllowedDrivers[] = {"JPEG", "PNG", NULL};
 // TileMatrixSet origin : caution this is in GeoPackage / WMTS convention ! That is upper-left corner
 #define TMS_ORIGIN_X        -MAX_GM
 #define TMS_ORIGIN_Y         MAX_GM
+
+#if defined(DEBUG) || defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION) || defined(ALLOW_FORMAT_DUMPS)
+// Enable accepting a SQL dump (starting with a "-- SQL MBTILES" line) as a valid
+// file. This makes fuzzer life easier
+#define ENABLE_SQL_SQLITE_FORMAT
+#endif
 
 class MBTilesBand;
 
@@ -1188,16 +1194,16 @@ char** MBTilesDataset::GetMetadata( const char * pszDomain )
     {
         if (OGR_F_IsFieldSetAndNotNull(hFeat, 0) && OGR_F_IsFieldSetAndNotNull(hFeat, 1))
         {
-            const char* pszName = OGR_F_GetFieldAsString(hFeat, 0);
-            const char* pszValue = OGR_F_GetFieldAsString(hFeat, 1);
-            if (pszValue[0] != '\0' &&
-                !STARTS_WITH(pszValue, "function(") &&
-                strstr(pszValue, "<img ") == NULL &&
-                strstr(pszValue, "<p>") == NULL &&
-                strstr(pszValue, "</p>") == NULL &&
-                strstr(pszValue, "<div") == NULL)
+            CPLString osName = OGR_F_GetFieldAsString(hFeat, 0);
+            CPLString osValue = OGR_F_GetFieldAsString(hFeat, 1);
+            if (osName[0] != '\0' &&
+                !STARTS_WITH(osValue, "function(") &&
+                strstr(osValue, "<img ") == NULL &&
+                strstr(osValue, "<p>") == NULL &&
+                strstr(osValue, "</p>") == NULL &&
+                strstr(osValue, "<div") == NULL)
             {
-                aosList.AddNameValue(pszName, pszValue);
+                aosList.AddNameValue(osName, osValue);
             }
         }
         OGR_F_Destroy(hFeat);
@@ -1228,10 +1234,19 @@ const char *MBTilesDataset::GetMetadataItem( const char* pszName, const char * p
 
 int MBTilesDataset::Identify(GDALOpenInfo* poOpenInfo)
 {
+#ifdef ENABLE_SQL_SQLITE_FORMAT
+    if( poOpenInfo->pabyHeader &&
+        STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL MBTILES") )
+    {
+        return TRUE;
+    }
+#endif
+
     if ( (EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "MBTILES") ||
       // Allow direct Amazon S3 signed URLs that contains .mbtiles in the middle of the URL
           strstr(poOpenInfo->pszFilename, ".mbtiles") != NULL) &&
         poOpenInfo->nHeaderBytes >= 1024 &&
+        poOpenInfo->pabyHeader &&
         STARTS_WITH_CI((const char*)poOpenInfo->pabyHeader, "SQLite Format 3"))
     {
         return TRUE;
@@ -1474,11 +1489,14 @@ bool MBTilesGetBounds(OGRDataSourceH hDS, bool bUseBounds,
             int nMaxTileCol = OGR_F_GetFieldAsInteger(hFeat, 1);
             int nMinTileRow = OGR_F_GetFieldAsInteger(hFeat, 2);
             int nMaxTileRow = OGR_F_GetFieldAsInteger(hFeat, 3);
-            minX = MBTilesTileCoordToWorldCoord(nMinTileCol, nMaxLevel);
-            minY = MBTilesTileCoordToWorldCoord(nMinTileRow, nMaxLevel);
-            maxX = MBTilesTileCoordToWorldCoord(nMaxTileCol + 1, nMaxLevel);
-            maxY = MBTilesTileCoordToWorldCoord(nMaxTileRow + 1, nMaxLevel);
-            bHasBounds = true;
+            if( nMaxTileCol < INT_MAX && nMaxTileRow < INT_MAX )
+            {
+                minX = MBTilesTileCoordToWorldCoord(nMinTileCol, nMaxLevel);
+                minY = MBTilesTileCoordToWorldCoord(nMinTileRow, nMaxLevel);
+                maxX = MBTilesTileCoordToWorldCoord(nMaxTileCol + 1, nMaxLevel);
+                maxY = MBTilesTileCoordToWorldCoord(nMaxTileRow + 1, nMaxLevel);
+                bHasBounds = true;
+            }
         }
 
         OGR_F_Destroy(hFeat);
@@ -1643,8 +1661,8 @@ int MBTilesGetBandCount(OGRDataSourceH &hDS,
     const char* pszSQL =
         CPLSPrintf("SELECT tile_data FROM tiles WHERE "
                    "tile_column = %d AND tile_row = %d AND zoom_level = %d",
-                   (nMinTileCol  + nMaxTileCol) / 2,
-                   (nMinTileRow  + nMaxTileRow) / 2,
+                   nMinTileCol / 2 + nMaxTileCol / 2,
+                   nMinTileRow / 2 + nMaxTileRow / 2,
                    nMaxLevel);
     CPLDebug("MBTILES", "%s", pszSQL);
 
@@ -2746,6 +2764,10 @@ COMPRESSION_OPTIONS
 "  <Option name='WRITE_MINMAXZOOM' type='boolean' description='Whether to write the minzoom and maxzoom metadata' default='YES'/>"
 "</CreationOptionList>");
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
+
+#ifdef ENABLE_SQL_SQLITE_FORMAT
+    poDriver->SetMetadataItem("ENABLE_SQL_SQLITE_FORMAT", "YES");
+#endif
 
     poDriver->pfnOpen = MBTilesDataset::Open;
     poDriver->pfnIdentify = MBTilesDataset::Identify;

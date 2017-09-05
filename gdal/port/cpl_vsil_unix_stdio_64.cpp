@@ -81,7 +81,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi_error.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #if defined(UNIX_STDIO_64)
 
@@ -265,10 +265,12 @@ int VSIUnixStdioHandle::Seek( vsi_l_offset nOffsetIn, int nWhence )
     // if the next position to seek to is within the buffered page.
     if( bReadOnly && nWhence == SEEK_SET )
     {
-        if( nOffsetIn > m_nOffset && nOffsetIn < 4096 + m_nOffset )
+        const int l_PAGE_SIZE = 4096;
+        if( nOffsetIn > m_nOffset && nOffsetIn < l_PAGE_SIZE + m_nOffset )
         {
             const int nDiff = static_cast<int>(nOffsetIn - m_nOffset);
-            GByte abyTemp[4096] = {};
+            // Do not zero-initialize the buffer. We don't read from it
+            GByte abyTemp[l_PAGE_SIZE];
             const int nRead = static_cast<int>(fread(abyTemp, 1, nDiff, fp));
             if( nRead == nDiff )
             {
@@ -324,6 +326,10 @@ int VSIUnixStdioHandle::Seek( vsi_l_offset nOffsetIn, int nWhence )
         }
         else if( nWhence == SEEK_CUR )
         {
+            if( nOffsetIn > INT_MAX )
+            {
+                //printf("likely negative offset intended\n");
+            }
             m_nOffset += nOffsetIn;
         }
     }
@@ -501,9 +507,10 @@ int VSIUnixStdioHandle::Truncate( vsi_l_offset nNewSize )
 /************************************************************************/
 
 #ifdef __linux
-#include <linux/fs.h> /* FS_IOC_FIEMAP */
+#include <linux/fs.h>  // FS_IOC_FIEMAP
 #ifdef FS_IOC_FIEMAP
-#include <linux/fiemap.h> /* struct fiemap */
+#include <linux/types.h>   // for types used in linux/fiemap.h
+#include <linux/fiemap.h>  // struct fiemap
 #endif
 #include <sys/ioctl.h>
 #include <errno.h>

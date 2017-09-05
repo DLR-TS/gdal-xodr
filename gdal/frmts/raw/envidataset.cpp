@@ -55,7 +55,7 @@
 #include "ogr_spatialref.h"
 #include "ogr_srs_api.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // TODO(schwehr): This really should be defined in port/somewhere.h.
 static const double kdfDegToRad = M_PI / 180.0;
@@ -1786,9 +1786,9 @@ void ENVIDataset::ProcessStatsFile()
 
     // TODO(schwehr): What are 1, 4, 8, and 40?
     int lOffset = 0;
-    if( VSIFSeekL(fpStaFile, 40 + (nb + 1) * 4, SEEK_SET) == 0 &&
+    if( VSIFSeekL(fpStaFile, 40 + static_cast<vsi_l_offset>(nb + 1) * 4, SEEK_SET) == 0 &&
         VSIFReadL(&lOffset, sizeof(int), 1, fpStaFile) == 1 &&
-        VSIFSeekL(fpStaFile, 40 + (nb + 1) * 8 + byteSwapInt(lOffset) + nb,
+        VSIFSeekL(fpStaFile, 40 + static_cast<vsi_l_offset>(nb + 1) * 8 + byteSwapInt(lOffset) + nb,
                   SEEK_SET) == 0)
     {
         // This should be the beginning of the statistics.
@@ -2305,10 +2305,32 @@ GDALDataset *ENVIDataset::Open( GDALOpenInfo *poOpenInfo )
         nBandOffset = (vsi_l_offset)nLineOffset * nLines;
     }
 
+    // Currently each ENVIRasterBand allocates nPixelOffset * nRasterXSize bytes
+    // so for a pixel interleaved scheme, this will allocate lots of memory!
+    // Actually this is quadratic in the number of bands!
+    // Do a few sanity checks to avoid excessive memory allocation on
+    // small files.
+    // But ultimately we should fix RawRasterBand to have a shared buffer
+    // among bands.
+    if( nBands > 10 ||
+        static_cast<vsi_l_offset>(nPixelOffset) * poDS->nRasterXSize > 20000 )
+    {
+        vsi_l_offset nExpectedFileSize =
+                nHeaderSize + nBandOffset * (nBands - 1) +
+                            (poDS->nRasterXSize-1) * nPixelOffset;
+        CPL_IGNORE_RET_VAL( VSIFSeekL(poDS->fpImage, 0, SEEK_END) );
+        vsi_l_offset nFileSize = VSIFTellL(poDS->fpImage);
+        if( nFileSize < nExpectedFileSize )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined, "Image file is too small");
+            delete poDS;
+            return NULL;
+        }
+    }
+
     // Create band information objects.
-    poDS->nBands = nBands;
     CPLErrorReset();
-    for( int i = 0; i < poDS->nBands; i++ )
+    for( int i = 0; i < nBands; i++ )
     {
         poDS->SetBand(i + 1,
                       new ENVIRasterBand(poDS, i + 1, poDS->fpImage,
@@ -2317,7 +2339,6 @@ GDALDataset *ENVIDataset::Open( GDALOpenInfo *poOpenInfo )
                                          bNativeOrder, TRUE));
         if( CPLGetLastErrorType() != CE_None )
         {
-            poDS->nBands = i + 1;
             delete poDS;
             return NULL;
         }

@@ -34,7 +34,7 @@
 
 #include <cmath>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                            OGRDXFLayer()                             */
@@ -615,6 +615,18 @@ OGRFeature *OGRDXFLayer::TranslateMTEXT()
         osStyle += CPLString().Printf(",s:%sg", szBuffer);
     }
 
+    if( dfXDirection != 0.0 )
+    {
+        CPLsnprintf(szBuffer, sizeof(szBuffer), "%.6g", dfXDirection);
+        osStyle += CPLString().Printf(",dx:%s", szBuffer);
+    }
+
+    if( dfYDirection != 0.0 )
+    {
+        CPLsnprintf(szBuffer, sizeof(szBuffer), "%.6g", dfYDirection);
+        osStyle += CPLString().Printf(",dy:%s", szBuffer);
+    }
+
     if( nAttachmentPoint >= 0 && nAttachmentPoint <= 9 )
     {
         const static int anAttachmentMap[10] =
@@ -656,6 +668,8 @@ OGRFeature *OGRDXFLayer::TranslateTEXT()
     double dfZ = 0.0;
     double dfAngle = 0.0;
     double dfHeight = 0.0;
+    double dfXDirection = 0.0;
+    double dfYDirection = 0.0;
     CPLString osText;
     CPLString osStyleName = "Arial";
     bool bHaveZ = false;
@@ -673,6 +687,14 @@ OGRFeature *OGRDXFLayer::TranslateTEXT()
 
           case 20:
             dfY = CPLAtof(szLineBuf);
+            break;
+
+          case 11:
+            dfXDirection = CPLAtof(szLineBuf);
+            break;
+
+          case 21:
+            dfYDirection = CPLAtof(szLineBuf);
             break;
 
           case 30:
@@ -828,6 +850,18 @@ OGRFeature *OGRDXFLayer::TranslateTEXT()
     {
         CPLsnprintf(szBuffer, sizeof(szBuffer), "%.3g", dfHeight);
         osStyle += CPLString().Printf(",s:%sg", szBuffer);
+    }
+
+    if( dfXDirection != 0.0 )
+    {
+        CPLsnprintf(szBuffer, sizeof(szBuffer), "%.6g", dfXDirection - dfX);
+        osStyle += CPLString().Printf(",dx:%s", szBuffer);
+    }
+
+    if( dfYDirection != 0.0 )
+    {
+        CPLsnprintf(szBuffer, sizeof(szBuffer), "%.6g", dfYDirection - dfY);
+        osStyle += CPLString().Printf(",dy:%s", szBuffer);
     }
 
     const unsigned char *pabyDWGColors = ACGetColorTable();
@@ -1764,14 +1798,35 @@ OGRFeature *OGRDXFLayer::TranslateSPLINE()
 
           case 71:
             nDegree = atoi(szLineBuf);
+            // Arbitrary threshold
+            if( nDegree < 0 || nDegree > 100)
+            {
+                DXF_LAYER_READER_ERROR();
+                delete poFeature;
+                return NULL;
+            }
             break;
 
           case 72:
             nKnots = atoi(szLineBuf);
+            // Arbitrary threshold
+            if( nKnots < 0 || nKnots > 10000000)
+            {
+                DXF_LAYER_READER_ERROR();
+                delete poFeature;
+                return NULL;
+            }
             break;
 
           case 73:
             nControlPoints = atoi(szLineBuf);
+            // Arbitrary threshold
+            if( nControlPoints < 0 || nControlPoints > 10000000)
+            {
+                DXF_LAYER_READER_ERROR();
+                delete poFeature;
+                return NULL;
+            }
             break;
 
           default:
@@ -2514,6 +2569,17 @@ OGRFeature *OGRDXFLayer::GetNextUnfilteredFeature()
                 CPLDebug( "DWG", "Ignoring one or more of entity '%s'.",
                           szLineBuf );
             }
+        }
+
+        // If there are no more features, but we do still have pending features
+        // (for example, after an INSERT), return the first pending feature.
+        if ( poFeature == NULL && !apoPendingFeatures.empty() )
+        {
+            poFeature = apoPendingFeatures.front();
+            apoPendingFeatures.pop();
+
+            poFeature->SetFID( iNextFID++ );
+            return poFeature;
         }
     }
 

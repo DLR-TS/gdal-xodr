@@ -43,7 +43,7 @@
 #include "cpl_error.h"
 #include "cpl_vsi.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class TABMAPCoordBlock
@@ -655,7 +655,7 @@ int     TABMAPCoordBlock::WriteIntCoord(GInt32 nX, GInt32 nY,
 void TABMAPCoordBlock::SetMAPBlockManagerRef(TABBinBlockManager *poBlockMgr)
 {
     m_poBlockManagerRef = poBlockMgr;
-};
+}
 
 /**********************************************************************
  *                   TABMAPCoordBlock::ReadBytes()

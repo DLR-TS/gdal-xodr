@@ -33,6 +33,15 @@
 #include "cpl_conv.h"
 #include "cpl_error.h"
 
+extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv);
+
+int LLVMFuzzerInitialize(int* /*argc*/, char*** /*argv*/)
+{
+    CPLSetConfigOption("GDAL_HTTP_TIMEOUT", "1");
+    CPLSetConfigOption("GDAL_HTTP_CONNECTTIMEOUT", "1");
+    return 0;
+}
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len);
 
 int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)

@@ -32,7 +32,7 @@
 #include "cpl_sha1.h"
 #include "cpl_time.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #ifdef HAVE_CURL
 
@@ -146,6 +146,7 @@ VSIGSHandleHelper* VSIGSHandleHelper::BuildFromURI( const char* pszURI,
 
     if( osHeaderFile.empty() )
     {
+        // coverity[tainted_data]
         struct curl_slist* headers = 
             GetGSHeaders( "GET", "",  osSecretAccessKey, osAccessKeyId );
         if( headers == NULL )

@@ -35,7 +35,7 @@
 
 #include "ogrsf_frmts.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 extern "C" void CPL_DLL RegisterOGRNULL();
 
@@ -213,6 +213,8 @@ int OGRNULLDataSource::TestCapability( const char * pszCap )
 
 {
     if( EQUAL(pszCap, ODsCCreateLayer) )
+        return TRUE;
+    if( EQUAL(pszCap, ODsCRandomLayerWrite) )
         return TRUE;
     return FALSE;
 }

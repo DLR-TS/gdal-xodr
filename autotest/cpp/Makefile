@@ -1,10 +1,14 @@
 # This Makefile requires GNU Make.
 
 CXX = g++
-CXXFLAGS := $(shell gdal-config --cflags) -I. -Itut $(CPPFLAGS)
+#CXXFLAGS := $(shell gdal-config --cflags)
+CXXFLAGS = -I../../gdal/port -I../../gdal/alg -I../../gdal/gcore -I../../gdal/ogr -I../../gdal/ogr/ogrsf_frmts -I../../gdal/apps -I../../gdal/frmts/vrt -DGDAL_COMPILATION
+CXXFLAGS += -I. -Itut $(CPPFLAGS)
 CXXFLAGS += -Wall
 CXXFLAGS += -Wextra -Wno-unused-function
 # CXXFLAGS += -Werror
+#CXXFLAGS += -fsanitize=undefined
+#LDFLAGS := -fsanitize=undefined
 
 ifdef HARDEN
 CXXFLAGS += -O2 -g

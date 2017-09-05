@@ -33,7 +33,7 @@
 #include "ogr_p.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static void Usage()
 
@@ -65,7 +65,7 @@ int main( int nArgc, char ** papszArgv )
         if( EQUAL(papszArgv[i],"-xml") )
             bReportXML = true;
 
-        else if( EQUAL(papszArgv[i],"-t") && i < nArgc - 4 )
+        else if( i < nArgc - 4 && EQUAL(papszArgv[i],"-t") )
         {
             OGRSpatialReference oSourceSRS;
             OGRSpatialReference oTargetSRS;

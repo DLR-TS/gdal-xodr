@@ -36,11 +36,18 @@
 #include "ogrsqliteutility.h"
 
 #include <vector>
+#include <set>
 
 #define UNKNOWN_SRID   -2
 #define DEFAULT_SRID    0
 
 #define ENABLE_GPKG_OGR_CONTENTS
+
+#if defined(DEBUG) || defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION) || defined(ALLOW_FORMAT_DUMPS)
+// Enable accepting a SQL dump (starting with a "-- SQL GPKG" line) as a valid
+// file. This makes fuzzer life easier
+#define ENABLE_SQL_GPKG_FORMAT
+#endif
 
 typedef enum
 {
@@ -266,6 +273,7 @@ class GDALGeoPackageDataset CPL_FINAL : public OGRSQLiteBaseDataSource, public G
         OGRErr              SetApplicationAndUserVersionId();
         bool                ReOpenDB();
         bool                OpenOrCreateDB( int flags );
+        void                InstallSQLFunctions();
         bool                HasGDALAspatialExtension();
 };
 
@@ -377,6 +385,7 @@ class OGRGeoPackageTableLayer CPL_FINAL : public OGRGeoPackageLayer
     bool                        m_bHasReadMetadataFromStorage;
     bool                        m_bHasTriedDetectingFID64;
     GPKGASpatialVariant         m_eASPatialVariant;
+    std::set<OGRwkbGeometryType> m_eSetBadGeomTypeWarned;
 
     virtual OGRErr      ResetStatement() override;
 
@@ -391,6 +400,8 @@ class OGRGeoPackageTableLayer CPL_FINAL : public OGRGeoPackageLayer
     void                CreateTriggers(const char* pszTableName = NULL);
     void                DisableTriggers(bool bNullifyFeatureCount = true);
 #endif
+
+    void                CheckGeometryType( OGRFeature *poFeature );
 
     public:
                         OGRGeoPackageTableLayer( GDALGeoPackageDataset *poDS,

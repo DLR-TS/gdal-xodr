@@ -55,9 +55,9 @@
 #include "ogr_p.h"
 #include "ogr_spatialref.h"
 #include "ogr_srs_api.h"
-#include "ogrsf_frmts/xplane/ogr_xplane_geo_utils.h"
+#include "ogr_geo_utils.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #if HAVE_CXX11
 constexpr double kdfD2R = M_PI / 180.0;
@@ -1425,12 +1425,12 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
                                 double dfDistance = 0.0;
                                 if( bLastCurveWasApproximateArcInvertedAxisOrder )
                                     dfDistance =
-                                        OGRXPlane_Distance(
+                                        OGR_GreatCircle_Distance(
                                             p.getX(), p.getY(),
                                             p2.getX(), p2.getY());
                                 else
                                     dfDistance =
-                                        OGRXPlane_Distance(
+                                        OGR_GreatCircle_Distance(
                                             p.getY(), p.getX(),
                                             p2.getY(), p2.getX());
                                 // CPLDebug("OGR", "%f %f",
@@ -1482,12 +1482,12 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
                                 double dfDistance = 0.0;
                                 if( bLastCurveWasApproximateArcInvertedAxisOrder )
                                     dfDistance =
-                                        OGRXPlane_Distance(
+                                        OGR_GreatCircle_Distance(
                                             p.getX(), p.getY(),
                                             p2.getX(), p2.getY());
                                 else
                                     dfDistance =
-                                        OGRXPlane_Distance(
+                                        OGR_GreatCircle_Distance(
                                             p.getY(), p.getX(),
                                             p2.getY(), p2.getX());
                                 // CPLDebug(
@@ -1596,7 +1596,10 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
             return NULL;
         }
 
-        if( poCC->getNumPoints() != 3 )
+        // Normally a gml:Arc has only 3 points of controls, but in the
+        // wild we sometimes find GML with 5 points, so accept any odd
+        // number >= 3 (ArcString should be used for > 3 points)
+        if( poCC->getNumPoints() < 3 || (poCC->getNumPoints() % 2) != 1 )
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "Bad number of points in Arc");
@@ -1697,7 +1700,8 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
     if( EQUAL(pszBaseGeometry, "ArcByBulge") )
     {
         const CPLXMLNode *psChild = FindBareXMLChild( psNode, "bulge");
-        if( psChild == NULL || psChild->eType != CXT_Element )
+        if( psChild == NULL || psChild->eType != CXT_Element ||
+            psChild->psChild == NULL )
         {
             CPLError( CE_Failure, CPLE_AppDefined,
                       "Missing bulge element." );
@@ -1850,7 +1854,7 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
                 double dfLat = 0.0;
                 if( bInvertedAxisOrder )
                 {
-                    OGRXPlane_ExtendPosition(
+                    OGR_GreatCircle_ExtendPosition(
                        dfCenterX, dfCenterY,
                        dfDistance,
                        // Not sure of angle conversion here.
@@ -1861,7 +1865,7 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
                 }
                 else
                 {
-                    OGRXPlane_ExtendPosition(dfCenterY, dfCenterX,
+                    OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX,
                                              dfDistance, 90-dfAngle,
                                              &dfLat, &dfLong);
                     p.setX( dfLong );
@@ -1874,7 +1878,7 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
             double dfLat = 0.0;
             if( bInvertedAxisOrder )
             {
-                OGRXPlane_ExtendPosition(dfCenterX, dfCenterY,
+                OGR_GreatCircle_ExtendPosition(dfCenterX, dfCenterY,
                                          dfDistance,
                                          // Not sure of angle conversion here.
                                          90.0 - dfEndAngle,
@@ -1884,7 +1888,7 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
             }
             else
             {
-                OGRXPlane_ExtendPosition(dfCenterY, dfCenterX,
+                OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX,
                                          dfDistance, 90-dfEndAngle,
                                          &dfLat, &dfLong);
                 p.setX( dfLong );
@@ -1973,7 +1977,7 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
                 double dfLat = 0.0;
                 if( bInvertedAxisOrder )
                 {
-                    OGRXPlane_ExtendPosition(dfCenterX, dfCenterY,
+                    OGR_GreatCircle_ExtendPosition(dfCenterX, dfCenterY,
                                              dfDistance, dfAngle,
                                              &dfLat, &dfLong);
                     p.setY( dfLat );
@@ -1981,7 +1985,7 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
                 }
                 else
                 {
-                    OGRXPlane_ExtendPosition(dfCenterY, dfCenterX,
+                    OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX,
                                              dfDistance, dfAngle,
                                              &dfLat, &dfLong);
                     p.setX( dfLong );
@@ -3693,15 +3697,67 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
 /* -------------------------------------------------------------------- */
     if( EQUAL(pszBaseGeometry, "Solid") )
     {
+        const CPLXMLNode *psChild = FindBareXMLChild( psNode, "interior");
+        if( psChild != NULL )
+        {
+            static bool bWarnedOnce = false;
+            if( !bWarnedOnce )
+            {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                         "<interior> elements of <Solid> are ignored");
+                bWarnedOnce = true;
+            }
+        }
+
         // Find exterior element.
-        const CPLXMLNode *psChild = FindBareXMLChild( psNode, "exterior");
+        psChild = FindBareXMLChild( psNode, "exterior");
+
+        if( nSRSDimension == 0 )
+            nSRSDimension = 3;
 
         psChild = GetChildElement(psChild);
         if( psChild == NULL )
         {
             // <gml:Solid/> and <gml:Solid><gml:exterior/></gml:Solid> are valid
             // GML.
-            return new OGRPolygon();
+            return new OGRPolyhedralSurface();
+        }
+
+        if( EQUAL(BareGMLElement(psChild->pszValue), "CompositeSurface") )
+        {
+            OGRPolyhedralSurface* poPS = new OGRPolyhedralSurface();
+
+            // Iterate over children.
+            for( psChild = psChild->psChild;
+                 psChild != NULL;
+                 psChild = psChild->psNext )
+            {
+                const char* pszMemberElement = BareGMLElement(psChild->pszValue);
+                if( psChild->eType == CXT_Element
+                    && (EQUAL(pszMemberElement, "polygonMember") ||
+                        EQUAL(pszMemberElement, "surfaceMember")) )
+                {
+                    const CPLXMLNode* psSurfaceChild = GetChildElement(psChild);
+
+                    if( psSurfaceChild != NULL )
+                    {
+                        OGRGeometry* poGeom =
+                            GML2OGRGeometry_XMLNode_Internal( psSurfaceChild,
+                                nPseudoBoolGetSecondaryGeometryOption,
+                                nRecLevel + 1, nSRSDimension, pszSRSName );
+                        if( poGeom != NULL &&
+                            wkbFlatten(poGeom->getGeometryType()) == wkbPolygon )
+                        {
+                            poPS->addGeometryDirectly(poGeom);
+                        }
+                        else
+                        {
+                            delete poGeom;
+                        }
+                    }
+                }
+            }
+            return poPS;
         }
 
         // Get the geometry inside <exterior>.
@@ -3713,18 +3769,6 @@ OGRGeometry *GML2OGRGeometry_XMLNode_Internal(
             CPLError( CE_Failure, CPLE_AppDefined, "Invalid exterior element");
             delete poGeom;
             return NULL;
-        }
-
-        psChild = FindBareXMLChild( psNode, "interior");
-        if( psChild != NULL )
-        {
-            static bool bWarnedOnce = false;
-            if( !bWarnedOnce )
-            {
-                CPLError( CE_Warning, CPLE_AppDefined,
-                          "<interior> elements of <Solid> are ignored");
-                bWarnedOnce = true;
-            }
         }
 
         return poGeom;

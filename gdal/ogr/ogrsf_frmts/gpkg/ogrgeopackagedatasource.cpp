@@ -38,7 +38,7 @@
 
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                             Tiling schemes                           */
@@ -211,7 +211,9 @@ OGRErr GDALGeoPackageDataset::PragmaCheck(
     if( rc != SQLITE_OK )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
-                  "Unable to execute PRAGMA %s", pszPragma);
+                  "Unable to execute PRAGMA %s: %s", pszPragma,
+                  pszErrMsg ? pszErrMsg : "(null)" );
+        sqlite3_free( pszErrMsg );
         return OGRERR_FAILURE;
     }
 
@@ -602,14 +604,24 @@ int GDALGeoPackageDataset::Open( GDALOpenInfo* poOpenInfo )
     if( STARTS_WITH_CI(poOpenInfo->pszFilename, "GPKG:") )
     {
         char** papszTokens = CSLTokenizeString2(poOpenInfo->pszFilename, ":", 0);
-        if( CSLCount(papszTokens) != 3 )
+        int nCount = CSLCount(papszTokens);
+        if( nCount != 3 && nCount != 4 )
         {
             CSLDestroy(papszTokens);
             return FALSE;
         }
 
-        osFilename = papszTokens[1];
-        osSubdatasetTableName = papszTokens[2];
+        if( nCount == 3 )
+        {
+            osFilename = papszTokens[1];
+        }
+        /* GPKG:C:\BLA.GPKG:foo */
+        else if ( nCount == 4 && strlen(papszTokens[1]) == 1 &&
+                  (papszTokens[2][0] == '/' || papszTokens[2][0] == '\\') )
+        {
+            osFilename = CPLString(papszTokens[1]) + ":" + papszTokens[2];
+        }
+        osSubdatasetTableName = papszTokens[nCount-1];
 
         CSLDestroy(papszTokens);
         VSILFILE *fp = VSIFOpenL(osFilename, "rb");
@@ -625,32 +637,127 @@ int GDALGeoPackageDataset::Open( GDALOpenInfo* poOpenInfo )
     eAccess = poOpenInfo->eAccess; /* hum annoying duplication */
     m_pszFilename = CPLStrdup( osFilename );
 
-    /* See if we can open the SQLite database */
-    if( !OpenOrCreateDB(bUpdate
+#ifdef ENABLE_SQL_GPKG_FORMAT
+    if( poOpenInfo->pabyHeader &&
+        STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL GPKG") &&
+        poOpenInfo->fpL != NULL )
+    {
+        if( sqlite3_open_v2( ":memory:", &hDB, SQLITE_OPEN_READWRITE, NULL )
+                != SQLITE_OK )
+        {
+            return FALSE;
+        }
+
+        InstallSQLFunctions();
+
+        // Ingest the lines of the dump
+        VSIFSeekL( poOpenInfo->fpL, 0, SEEK_SET );
+        const char* pszLine;
+        while( (pszLine = CPLReadLineL( poOpenInfo->fpL )) != NULL )
+        {
+            if( STARTS_WITH(pszLine, "--") )
+                continue;
+
+            // Blacklist a few words tat might have security implications
+            // Basically we just want to allow CREATE TABLE and INSERT INTO
+            if( CPLString(pszLine).ifind("ATTACH") != std::string::npos ||
+                CPLString(pszLine).ifind("DETACH") != std::string::npos ||
+                CPLString(pszLine).ifind("PRAGMA") != std::string::npos ||
+                CPLString(pszLine).ifind("SELECT") != std::string::npos ||
+                CPLString(pszLine).ifind("UPDATE") != std::string::npos ||
+                CPLString(pszLine).ifind("REPLACE") != std::string::npos ||
+                CPLString(pszLine).ifind("DELETE") != std::string::npos ||
+                CPLString(pszLine).ifind("DROP") != std::string::npos ||
+                CPLString(pszLine).ifind("ALTER") != std::string::npos||
+                CPLString(pszLine).ifind("VIRTUAL") != std::string::npos )
+            {
+                bool bOK = false;
+                // Accept creation of spatial index
+                if( STARTS_WITH_CI(pszLine, "CREATE VIRTUAL TABLE ") )
+                {
+                    const char* pszStr = pszLine +
+                                        strlen("CREATE VIRTUAL TABLE ");
+                    if( *pszStr == '"' )
+                        pszStr ++;
+                    while( (*pszStr >= 'a' && *pszStr <= 'z') ||
+                            (*pszStr >= 'A' && *pszStr <= 'Z') ||
+                            *pszStr == '_' )
+                    {
+                        pszStr ++;
+                    }
+                    if( *pszStr == '"' )
+                        pszStr ++;
+                    if( EQUAL(pszStr,
+                        " USING rtree(id, minx, maxx, miny, maxy);") )
+                    {
+                        bOK = true;
+                    }
+                }
+                // Accept INSERT INTO rtree_poly_geom SELECT fid, ST_MinX(geom), ST_MaxX(geom), ST_MinY(geom), ST_MaxY(geom) FROM poly;
+                else if( STARTS_WITH_CI(pszLine, "INSERT INTO rtree_") &&
+                    CPLString(pszLine).ifind("SELECT") != std::string::npos )
+                {
+                    char** papszTokens = CSLTokenizeString2( pszLine, " (),,", 0 );
+                    if( CSLCount(papszTokens) == 15 &&
+                        EQUAL(papszTokens[3], "SELECT") &&
+                        EQUAL(papszTokens[5], "ST_MinX") &&
+                        EQUAL(papszTokens[7], "ST_MaxX") &&
+                        EQUAL(papszTokens[9], "ST_MinY") &&
+                        EQUAL(papszTokens[11], "ST_MaxY") &&
+                        EQUAL(papszTokens[13], "FROM") )
+                    {
+                        bOK = TRUE;
+                    }
+                    CSLDestroy(papszTokens);
+                }
+
+                if( !bOK )
+                {
+                    CPLError(CE_Failure, CPLE_NotSupported,
+                            "Rejected statement: %s", pszLine);
+                    return FALSE;
+                }
+            }
+            char* pszErrMsg = NULL;
+            if( sqlite3_exec( hDB, pszLine, NULL, NULL, &pszErrMsg ) != SQLITE_OK )
+            {
+                if( pszErrMsg )
+                    CPLDebug("SQLITE", "Error %s", pszErrMsg);
+            }
+            sqlite3_free(pszErrMsg);
+        }
+    }
+
+    else if( pabyHeader != NULL )
+#endif
+    {
+        /* See if we can open the SQLite database */
+        if( !OpenOrCreateDB(bUpdate
                         ? SQLITE_OPEN_READWRITE
                         : SQLITE_OPEN_READONLY) )
-        return FALSE;
+            return FALSE;
 
 
-    memcpy(&m_nApplicationId, pabyHeader + knApplicationIdPos, 4);
-    m_nApplicationId = CPL_MSBWORD32(m_nApplicationId);
-    memcpy(&m_nUserVersion, pabyHeader + knUserVersionPos, 4);
-    m_nUserVersion = CPL_MSBWORD32(m_nUserVersion);
-    if( m_nApplicationId == GP10_APPLICATION_ID )
-    {
-        CPLDebug("GPKG", "GeoPackage v1.0");
-    }
-    else if( m_nApplicationId == GP11_APPLICATION_ID )
-    {
-        CPLDebug("GPKG", "GeoPackage v1.1");
-    }
-    else if( m_nApplicationId == GPKG_APPLICATION_ID &&
-             m_nUserVersion >= GPKG_1_2_VERSION )
-    {
-        CPLDebug("GPKG", "GeoPackage v%d.%d.%d",
-                 m_nUserVersion / 10000,
-                 (m_nUserVersion % 10000) / 100,
-                 m_nUserVersion % 100);
+        memcpy(&m_nApplicationId, pabyHeader + knApplicationIdPos, 4);
+        m_nApplicationId = CPL_MSBWORD32(m_nApplicationId);
+        memcpy(&m_nUserVersion, pabyHeader + knUserVersionPos, 4);
+        m_nUserVersion = CPL_MSBWORD32(m_nUserVersion);
+        if( m_nApplicationId == GP10_APPLICATION_ID )
+        {
+            CPLDebug("GPKG", "GeoPackage v1.0");
+        }
+        else if( m_nApplicationId == GP11_APPLICATION_ID )
+        {
+            CPLDebug("GPKG", "GeoPackage v1.1");
+        }
+        else if( m_nApplicationId == GPKG_APPLICATION_ID &&
+                m_nUserVersion >= GPKG_1_2_VERSION )
+        {
+            CPLDebug("GPKG", "GeoPackage v%d.%d.%d",
+                    m_nUserVersion / 10000,
+                    (m_nUserVersion % 10000) / 100,
+                    m_nUserVersion % 100);
+        }
     }
 
     /* Requirement 6: The SQLite PRAGMA integrity_check SQL command SHALL return “ok” */
@@ -769,7 +876,7 @@ int GDALGeoPackageDataset::Open( GDALOpenInfo* poOpenInfo )
                     "AND name NOT LIKE 'rtree_%' AND name NOT LIKE 'sqlite_%' "
                     // Avoid reading those views from simple_sewer_features.gpkg
                     "AND name NOT IN ('st_spatial_ref_sys', 'spatial_ref_sys', 'st_geometry_columns') "
-                    "AND name NOT IN (SELECT table_name FROM gpkg_contents)";
+                    "AND lower(name) NOT IN (SELECT lower(table_name) FROM gpkg_contents)";
         }
         const int nTableLimit =
                     atoi(CPLGetConfigOption("OGR_TABLE_LIMIT", "10000"));
@@ -972,17 +1079,36 @@ bool GDALGeoPackageDataset::InitRaster( GDALGeoPackageDataset* poParentDS,
     m_dfTMSMinX = dfMinX;
     m_dfTMSMaxY = dfMaxY;
 
+    // Despite prior checking, the type might be Binary and
+    // SQLResultGetValue() not working properly on it
     int nZoomLevel = atoi(SQLResultGetValue(&oResult, 0, nIdxInResult));
+    if( nZoomLevel < 0 || nZoomLevel > 65536 )
+    {
+        return false;
+    }
     double dfPixelXSize = CPLAtof(SQLResultGetValue(&oResult, 1, nIdxInResult));
     double dfPixelYSize = CPLAtof(SQLResultGetValue(&oResult, 2, nIdxInResult));
+    if( dfPixelXSize <= 0 || dfPixelYSize <= 0 )
+    {
+        return false;
+    }
     int nTileWidth = atoi(SQLResultGetValue(&oResult, 3, nIdxInResult));
     int nTileHeight = atoi(SQLResultGetValue(&oResult, 4, nIdxInResult));
+    if( nTileWidth <= 0 || nTileWidth > 65536 ||
+        nTileHeight <= 0 || nTileHeight > 65536 )
+    {
+        return false;
+    }
     int nTileMatrixWidth = static_cast<int>(
         std::min(static_cast<GIntBig>(INT_MAX),
                  CPLAtoGIntBig(SQLResultGetValue(&oResult, 5, nIdxInResult))));
     int nTileMatrixHeight = static_cast<int>(
         std::min(static_cast<GIntBig>(INT_MAX),
                  CPLAtoGIntBig(SQLResultGetValue(&oResult, 6, nIdxInResult))));
+    if( nTileMatrixWidth <= 0 || nTileMatrixHeight <= 0 )
+    {
+        return false;
+    }
 
     /* Use content bounds in priority over tile_matrix_set bounds */
     double dfGDALMinX = dfMinX;
@@ -996,10 +1122,22 @@ bool GDALGeoPackageDataset::InitRaster( GDALGeoPackageDataset* poParentDS,
     if( pszContentsMinX != NULL && pszContentsMinY != NULL &&
         pszContentsMaxX != NULL && pszContentsMaxY != NULL )
     {
-        dfGDALMinX = CPLAtof(pszContentsMinX);
-        dfGDALMinY = CPLAtof(pszContentsMinY);
-        dfGDALMaxX = CPLAtof(pszContentsMaxX);
-        dfGDALMaxY = CPLAtof(pszContentsMaxY);
+        if( CPLAtof(pszContentsMinX) < CPLAtof(pszContentsMaxX) &&
+            CPLAtof(pszContentsMinY) < CPLAtof(pszContentsMaxY) )
+        {
+            dfGDALMinX = CPLAtof(pszContentsMinX);
+            dfGDALMinY = CPLAtof(pszContentsMinY);
+            dfGDALMaxX = CPLAtof(pszContentsMaxX);
+            dfGDALMaxY = CPLAtof(pszContentsMaxY);
+        }
+        else
+        {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                     "Illegal min_x/min_y/max_x/max_y values for %s in open "
+                     "options and/or gpkg_contents. Using bounds of "
+                     "gpkg_tile_matrix_set instead",
+                     pszTableName);
+        }
     }
     if( dfGDALMinX >= dfGDALMaxX || dfGDALMinY >= dfGDALMaxY )
     {
@@ -1337,9 +1475,9 @@ bool GDALGeoPackageDataset::OpenRaster( const char* pszTableName,
             // overflows, but that's already a insane value.
             "AND zoom_level >= 0 AND zoom_level <= 65536 "
             "AND pixel_x_size > 0 AND pixel_y_size > 0 "
-            "AND tile_width > 0 AND tile_width <= 65536 "
-            "AND tile_height > 0 AND tile_height <= 65536 "
-            "AND matrix_width > 0 AND matrix_height > 0",
+            "AND tile_width >= 1 AND tile_width <= 65536 "
+            "AND tile_height >= 1 AND tile_height <= 65536 "
+            "AND matrix_width >= 1 AND matrix_height >= 1",
             osQuotedTableName.c_str());
     CPLString osSQL(pszSQL);
     const char* pszZoomLevel =  CSLFetchNameValue(papszOpenOptionsIn, "ZOOM_LEVEL");
@@ -1519,10 +1657,14 @@ bool GDALGeoPackageDataset::OpenRaster( const char* pszTableName,
     for( int i = 1; i < oResult.nRowCount; i++ )
     {
         GDALGeoPackageDataset* poOvrDS = new GDALGeoPackageDataset();
-        poOvrDS->InitRaster(
+        if( !poOvrDS->InitRaster(
             this, pszTableName, dfMinX, dfMinY, dfMaxX, dfMaxY,
             pszContentsMinX, pszContentsMinY, pszContentsMaxX, pszContentsMaxY,
-            papszOpenOptionsIn, oResult, i);
+            papszOpenOptionsIn, oResult, i) )
+        {
+            delete poOvrDS;
+            break;
+        }
 
         m_papoOverviewDS = (GDALGeoPackageDataset**) CPLRealloc(m_papoOverviewDS,
                         sizeof(GDALGeoPackageDataset*) * (m_nOverviewCount+1));
@@ -1530,7 +1672,8 @@ bool GDALGeoPackageDataset::OpenRaster( const char* pszTableName,
 
         int nTileWidth, nTileHeight;
         poOvrDS->GetRasterBand(1)->GetBlockSize(&nTileWidth, &nTileHeight);
-        if( poOvrDS->GetRasterXSize() < nTileWidth &&
+        if( eAccess == GA_ReadOnly &&
+            poOvrDS->GetRasterXSize() < nTileWidth &&
             poOvrDS->GetRasterYSize() < nTileHeight )
         {
             break;
@@ -1606,14 +1749,14 @@ CPLErr GDALGeoPackageDataset::SetProjection( const char* pszProjection )
 
     if( m_bRecordInsertedInGPKGContent )
     {
-        char* pszSQL = sqlite3_mprintf("UPDATE gpkg_contents SET srs_id = %d WHERE table_name = '%q'",
+        char* pszSQL = sqlite3_mprintf("UPDATE gpkg_contents SET srs_id = %d WHERE lower(table_name) = lower('%q')",
                                         m_nSRID, m_osRasterTable.c_str());
         OGRErr eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
         if ( eErr != OGRERR_NONE )
             return CE_Failure;
 
-        pszSQL = sqlite3_mprintf("UPDATE gpkg_tile_matrix_set SET srs_id = %d WHERE table_name = '%q'",
+        pszSQL = sqlite3_mprintf("UPDATE gpkg_tile_matrix_set SET srs_id = %d WHERE lower(table_name) = lower('%q')",
                                  m_nSRID, m_osRasterTable.c_str());
         eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
@@ -1909,7 +2052,7 @@ OGRErr GDALGeoPackageDataset::UpdateGpkgContentsLastChange(
         pszSQL = sqlite3_mprintf(
                     "UPDATE gpkg_contents SET "
                     "last_change = '%q'"
-                    "WHERE table_name = '%q'",
+                    "WHERE lower(table_name) = lower('%q')",
                     pszCurrentDate,
                     pszTableName);
     }
@@ -1918,7 +2061,7 @@ OGRErr GDALGeoPackageDataset::UpdateGpkgContentsLastChange(
         pszSQL = sqlite3_mprintf(
                     "UPDATE gpkg_contents SET "
                     "last_change = strftime('%%Y-%%m-%%dT%%H:%%M:%%fZ','now')"
-                    "WHERE table_name = '%q'",
+                    "WHERE lower(table_name) = lower('%q')",
                     pszTableName);
     }
 
@@ -2127,7 +2270,7 @@ CPLErr GDALGeoPackageDataset::IBuildOverviews(
                 for(int k=0;k<=jCandidate;k++)
                 {
                     pszSQL = sqlite3_mprintf("UPDATE gpkg_tile_matrix SET zoom_level = %d "
-                        "WHERE table_name = '%q' AND zoom_level = %d",
+                        "WHERE lower(table_name) = lower('%q') AND zoom_level = %d",
                         m_nZoomLevel - k + 1,
                         m_osRasterTable.c_str(),
                         m_nZoomLevel - k);
@@ -2343,7 +2486,7 @@ char **GDALGeoPackageDataset::GetMetadata( const char *pszDomain )
             "md.md_standard_uri IS NOT NULL AND "
             "md.mime_type IS NOT NULL AND "
             "(mdr.reference_scope = 'geopackage' OR "
-            "(mdr.reference_scope = 'table' AND mdr.table_name = '%q')) ORDER BY md.id "
+            "(mdr.reference_scope = 'table' AND lower(mdr.table_name) = lower('%q'))) ORDER BY md.id "
             "LIMIT 1000", // to avoid denial of service
             m_osRasterTable.c_str());
     }
@@ -2482,7 +2625,7 @@ void GDALGeoPackageDataset::WriteMetadata(CPLXMLNode* psXMLNode, /* will be dest
             "SELECT md.id FROM gpkg_metadata md "
             "JOIN gpkg_metadata_reference mdr ON (md.id = mdr.md_file_id ) "
             "WHERE md.md_scope = 'dataset' AND md.md_standard_uri='http://gdal.org' "
-            "AND md.mime_type='text/xml' AND mdr.reference_scope = 'table' AND mdr.table_name = '%q'",
+            "AND md.mime_type='text/xml' AND mdr.reference_scope = 'table' AND lower(mdr.table_name) = lower('%q')",
             pszTableName);
     }
     else
@@ -2570,7 +2713,7 @@ bool GDALGeoPackageDataset::CreateMetadataTables()
     /* From C.10. gpkg_metadata Table 35. gpkg_metadata Table Definition SQL  */
     CPLString osSQL =
         "CREATE TABLE gpkg_metadata ("
-        "id INTEGER CONSTRAINT m_pk PRIMARY KEY ASC NOT NULL UNIQUE,"
+        "id INTEGER CONSTRAINT m_pk PRIMARY KEY ASC NOT NULL,"
         "md_scope TEXT NOT NULL DEFAULT 'dataset',"
         "md_standard_uri TEXT NOT NULL,"
         "mime_type TEXT NOT NULL DEFAULT 'text/xml',"
@@ -2752,7 +2895,7 @@ CPLErr GDALGeoPackageDataset::FlushMetadata()
         {
             m_osIdentifier = pszIdentifier;
             char* pszSQL = sqlite3_mprintf(
-                "UPDATE gpkg_contents SET identifier = '%q' WHERE table_name = '%q'",
+                "UPDATE gpkg_contents SET identifier = '%q' WHERE lower(table_name) = lower('%q')",
                 pszIdentifier, m_osRasterTable.c_str());
             SQLCommand(hDB, pszSQL);
             sqlite3_free(pszSQL);
@@ -2762,7 +2905,7 @@ CPLErr GDALGeoPackageDataset::FlushMetadata()
         {
             m_osDescription = pszDescription;
             char* pszSQL = sqlite3_mprintf(
-                "UPDATE gpkg_contents SET description = '%q' WHERE table_name = '%q'",
+                "UPDATE gpkg_contents SET description = '%q' WHERE lower(table_name) = lower('%q')",
                 pszDescription, m_osRasterTable.c_str());
             SQLCommand(hDB, pszSQL);
             sqlite3_free(pszSQL);
@@ -2831,7 +2974,7 @@ CPLErr GDALGeoPackageDataset::FlushMetadata()
         if( pszIdentifier != NULL )
         {
             char* pszSQL = sqlite3_mprintf(
-                "UPDATE gpkg_contents SET identifier = '%q' WHERE table_name = '%q'",
+                "UPDATE gpkg_contents SET identifier = '%q' WHERE lower(table_name) = lower('%q')",
                 pszIdentifier, m_papoLayers[i]->GetName());
             SQLCommand(hDB, pszSQL);
             sqlite3_free(pszSQL);
@@ -2839,7 +2982,7 @@ CPLErr GDALGeoPackageDataset::FlushMetadata()
         if( pszDescription != NULL )
         {
             char* pszSQL = sqlite3_mprintf(
-                "UPDATE gpkg_contents SET description = '%q' WHERE table_name = '%q'",
+                "UPDATE gpkg_contents SET description = '%q' WHERE lower(table_name) = lower('%q')",
                 pszDescription, m_papoLayers[i]->GetName());
             SQLCommand(hDB, pszSQL);
             sqlite3_free(pszSQL);
@@ -3335,13 +3478,13 @@ int GDALGeoPackageDataset::Create( const char * pszFilename,
         "BEFORE INSERT ON \"%w\" "
         "FOR EACH ROW BEGIN "
         "SELECT RAISE(ABORT, 'insert on table ''%q'' violates constraint: zoom_level not specified for table in gpkg_tile_matrix') "
-        "WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE table_name = '%q')) ; "
+        "WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE lower(table_name) = lower('%q'))) ; "
         "END; "
         "CREATE TRIGGER \"%w_zoom_update\" "
         "BEFORE UPDATE OF zoom_level ON \"%w\" "
         "FOR EACH ROW BEGIN "
         "SELECT RAISE(ABORT, 'update on table ''%q'' violates constraint: zoom_level not specified for table in gpkg_tile_matrix') "
-        "WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE table_name = '%q')) ; "
+        "WHERE NOT (NEW.zoom_level IN (SELECT zoom_level FROM gpkg_tile_matrix WHERE lower(table_name) = lower('%q'))) ; "
         "END; "
         "CREATE TRIGGER \"%w_tile_column_insert\" "
         "BEFORE INSERT ON \"%w\" "
@@ -3349,7 +3492,7 @@ int GDALGeoPackageDataset::Create( const char * pszFilename,
         "SELECT RAISE(ABORT, 'insert on table ''%q'' violates constraint: tile_column cannot be < 0') "
         "WHERE (NEW.tile_column < 0) ; "
         "SELECT RAISE(ABORT, 'insert on table ''%q'' violates constraint: tile_column must by < matrix_width specified for table and zoom level in gpkg_tile_matrix') "
-        "WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE table_name = '%q' AND zoom_level = NEW.zoom_level)); "
+        "WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE lower(table_name) = lower('%q') AND zoom_level = NEW.zoom_level)); "
         "END; "
         "CREATE TRIGGER \"%w_tile_column_update\" "
         "BEFORE UPDATE OF tile_column ON \"%w\" "
@@ -3357,7 +3500,7 @@ int GDALGeoPackageDataset::Create( const char * pszFilename,
         "SELECT RAISE(ABORT, 'update on table ''%q'' violates constraint: tile_column cannot be < 0') "
         "WHERE (NEW.tile_column < 0) ; "
         "SELECT RAISE(ABORT, 'update on table ''%q'' violates constraint: tile_column must by < matrix_width specified for table and zoom level in gpkg_tile_matrix') "
-        "WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE table_name = '%q' AND zoom_level = NEW.zoom_level)); "
+        "WHERE NOT (NEW.tile_column < (SELECT matrix_width FROM gpkg_tile_matrix WHERE lower(table_name) = lower('%q') AND zoom_level = NEW.zoom_level)); "
         "END; "
         "CREATE TRIGGER \"%w_tile_row_insert\" "
         "BEFORE INSERT ON \"%w\" "
@@ -3365,7 +3508,7 @@ int GDALGeoPackageDataset::Create( const char * pszFilename,
         "SELECT RAISE(ABORT, 'insert on table ''%q'' violates constraint: tile_row cannot be < 0') "
         "WHERE (NEW.tile_row < 0) ; "
         "SELECT RAISE(ABORT, 'insert on table ''%q'' violates constraint: tile_row must by < matrix_height specified for table and zoom level in gpkg_tile_matrix') "
-        "WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE table_name = '%q' AND zoom_level = NEW.zoom_level)); "
+        "WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE lower(table_name) = lower('%q') AND zoom_level = NEW.zoom_level)); "
         "END; "
         "CREATE TRIGGER \"%w_tile_row_update\" "
         "BEFORE UPDATE OF tile_row ON \"%w\" "
@@ -3373,7 +3516,7 @@ int GDALGeoPackageDataset::Create( const char * pszFilename,
         "SELECT RAISE(ABORT, 'update on table ''%q'' violates constraint: tile_row cannot be < 0') "
         "WHERE (NEW.tile_row < 0) ; "
         "SELECT RAISE(ABORT, 'update on table ''%q'' violates constraint: tile_row must by < matrix_height specified for table and zoom level in gpkg_tile_matrix') "
-        "WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE table_name = '%q' AND zoom_level = NEW.zoom_level)); "
+        "WHERE NOT (NEW.tile_row < (SELECT matrix_height FROM gpkg_tile_matrix WHERE lower(table_name) = lower('%q') AND zoom_level = NEW.zoom_level)); "
         "END; ",
         m_osRasterTable.c_str(),
         m_osRasterTable.c_str(),
@@ -4464,7 +4607,7 @@ OGRErr GDALGeoPackageDataset::DeleteLayer( int iLayer )
         m_papoLayers[iLayer]->DropSpatialIndex();
 
     char* pszSQL = sqlite3_mprintf(
-            "DELETE FROM gpkg_geometry_columns WHERE table_name = '%q'",
+            "DELETE FROM gpkg_geometry_columns WHERE lower(table_name) = lower('%q')",
              osLayerName.c_str());
     OGRErr eErr = SQLCommand(hDB, pszSQL);
     sqlite3_free(pszSQL);
@@ -4472,7 +4615,7 @@ OGRErr GDALGeoPackageDataset::DeleteLayer( int iLayer )
     if( eErr == OGRERR_NONE )
     {
         pszSQL = sqlite3_mprintf(
-                "DELETE FROM gpkg_contents WHERE table_name = '%q'",
+                "DELETE FROM gpkg_contents WHERE lower(table_name) = lower('%q')",
                 osLayerName.c_str());
         eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
@@ -4481,7 +4624,7 @@ OGRErr GDALGeoPackageDataset::DeleteLayer( int iLayer )
     if( eErr == OGRERR_NONE && HasExtensionsTable() )
     {
         pszSQL = sqlite3_mprintf(
-                "DELETE FROM gpkg_extensions WHERE table_name = '%q'",
+                "DELETE FROM gpkg_extensions WHERE lower(table_name) = lower('%q')",
                 osLayerName.c_str());
         eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
@@ -4490,7 +4633,7 @@ OGRErr GDALGeoPackageDataset::DeleteLayer( int iLayer )
     if( eErr == OGRERR_NONE && HasMetadataTables() )
     {
         pszSQL = sqlite3_mprintf(
-                "DELETE FROM gpkg_metadata_reference WHERE table_name = '%q'",
+                "DELETE FROM gpkg_metadata_reference WHERE lower(table_name) = lower('%q')",
                 osLayerName.c_str());
         eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
@@ -4499,7 +4642,7 @@ OGRErr GDALGeoPackageDataset::DeleteLayer( int iLayer )
     if( eErr == OGRERR_NONE && HasDataColumnsTable() )
     {
         pszSQL = sqlite3_mprintf(
-                "DELETE FROM gpkg_data_columns WHERE table_name = '%q'",
+                "DELETE FROM gpkg_data_columns WHERE lower(table_name) = lower('%q')",
                 osLayerName.c_str());
         eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
@@ -4509,7 +4652,7 @@ OGRErr GDALGeoPackageDataset::DeleteLayer( int iLayer )
     if( eErr == OGRERR_NONE && m_bHasGPKGOGRContents )
     {
         pszSQL = sqlite3_mprintf(
-                "DELETE FROM gpkg_ogr_contents WHERE table_name = '%q'",
+                "DELETE FROM gpkg_ogr_contents WHERE lower(table_name) = lower('%q')",
                 osLayerName.c_str());
         eErr = SQLCommand(hDB, pszSQL);
         sqlite3_free(pszSQL);
@@ -4942,7 +5085,7 @@ void GDALGeoPackageDataset::CheckUnknownExtensions(bool bCheckRasterTable)
     else
         pszSQL = sqlite3_mprintf(
             "SELECT extension_name, definition, scope FROM gpkg_extensions "
-            "WHERE (table_name = '%q' "
+            "WHERE (lower(table_name) = lower('%q') "
             "AND extension_name IS NOT NULL "
             "AND definition IS NOT NULL "
             "AND scope IS NOT NULL "
@@ -5726,20 +5869,15 @@ void GPKG_GDAL_HasColorTable(sqlite3_context* pContext,
 }
 
 /************************************************************************/
-/*                         OpenOrCreateDB()                             */
+/*                      InstallSQLFunctions()                           */
 /************************************************************************/
 
 #ifndef SQLITE_DETERMINISTIC
 #define SQLITE_DETERMINISTIC 0
 #endif
 
-bool GDALGeoPackageDataset::OpenOrCreateDB(int flags)
+void GDALGeoPackageDataset::InstallSQLFunctions()
 {
-    const bool bSuccess =
-        CPL_TO_BOOL(OGRSQLiteBaseDataSource::OpenOrCreateDB(flags, FALSE));
-    if( !bSuccess )
-        return false;
-
 #ifdef SPATIALITE_412_OR_LATER
     InitNewSpatialite();
 
@@ -5826,6 +5964,20 @@ bool GDALGeoPackageDataset::OpenOrCreateDB(int flags)
                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC, NULL,
                                 GPKG_GDAL_HasColorTable, NULL, NULL);
     }
+}
+
+/************************************************************************/
+/*                         OpenOrCreateDB()                             */
+/************************************************************************/
+
+bool GDALGeoPackageDataset::OpenOrCreateDB(int flags)
+{
+    const bool bSuccess =
+        CPL_TO_BOOL(OGRSQLiteBaseDataSource::OpenOrCreateDB(flags, FALSE));
+    if( !bSuccess )
+        return false;
+
+    InstallSQLFunctions();
 
     return true;
 }

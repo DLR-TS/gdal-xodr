@@ -53,7 +53,7 @@
 #include <cmath>
 #include <vector>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // Before v7.5 Kakadu does not advertise its version well
 // After v7.5 Kakadu has KDU_{MAJOR,MINOR,PATCH}_VERSION defines so it's easier
@@ -135,9 +135,16 @@ JP2KAKRasterBand::JP2KAKRasterBand( int nBandIn, int nDiscardLevelsIn,
     }
     SetMetadataItem("COMPRESSION", "JP2000", "IMAGE_STRUCTURE");
 
-    // Use a 2048x128 "virtual" block size unless the file is small.
-    nBlockXSize = std::min(nRasterXSize, 2048);
-    nBlockYSize = std::min(nRasterYSize, 128);
+    // Use tile dimension as block size, unless it is too big
+    kdu_dims valid_tiles;
+    kdu_dims tile_dims;
+    oCodeStream.get_valid_tiles(valid_tiles);
+    oCodeStream.get_tile_dims(valid_tiles.pos, -1, tile_dims);
+    nBlockXSize = std::min(std::min(tile_dims.size.x, 2048), nRasterXSize);
+    nBlockYSize = std::min(std::min(tile_dims.size.y, 2048), nRasterYSize);
+    CPLDebug( "JP2KAK", "JP2KAKRasterBand::JP2KAKRasterBand() : "
+            "Tile dimension : %d X %d\n",
+            nBlockXSize, nBlockYSize);
 
     // Figure out the color interpretation for this band.
     eInterp = GCI_Undefined;
@@ -985,6 +992,7 @@ GDALDataset *JP2KAKDataset::Open( GDALOpenInfo * poOpenInfo )
             else
                 family->open(poOpenInfo->pszFilename, true);
             jp2_source *jp2_src = new jp2_source;
+            poInput = jp2_src;
             if( !jp2_src->open(family) || !jp2_src->read_header() )
             {
                 CPLDebug("JP2KAK", "Cannot read JP2 boxes");
@@ -993,8 +1001,6 @@ GDALDataset *JP2KAKDataset::Open( GDALOpenInfo * poOpenInfo )
                 delete poRawInput;
                 return NULL;
             }
-
-            poInput = jp2_src;
 
             oJP2Palette = jp2_src->access_palette();
             oJP2Channels = jp2_src->access_channels();
@@ -2139,8 +2145,8 @@ JP2KAKCreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
 
     // Avoid splitting into too many tiles - apparently limiting to 64K tiles.
     // There is a hard limit on the number of tiles allowed in JPEG2000.
-    const double dfXbyY = static_cast<double>(nXSize * nYSize) / (1024 * 64);
-    while( dfXbyY >= static_cast<double>(nTileXSize * nTileYSize) )
+    const double dfXbyY = static_cast<double>(nXSize) * nYSize / (1024 * 64);
+    while( dfXbyY >= static_cast<double>(nTileXSize) * nTileYSize )
     {
         nTileXSize *= 2;
         nTileYSize *= 2;
@@ -2568,7 +2574,7 @@ JP2KAKCreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             // Setup scaled progress monitor.
 
             const double dfPixelsDoneAfter =
-                dfPixelsDone + (nThisTileXSize * nThisTileYSize);
+                dfPixelsDone + static_cast<double>(nThisTileXSize) * nThisTileYSize;
 
             void *pScaledProgressData = GDALCreateScaledProgress(
                 dfPixelsDone / dfPixelsTotal, dfPixelsDoneAfter / dfPixelsTotal,

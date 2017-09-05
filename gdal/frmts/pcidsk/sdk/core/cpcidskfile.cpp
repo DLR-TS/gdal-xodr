@@ -112,7 +112,14 @@ CPCIDSKFile::CPCIDSKFile( std::string filename )
 CPCIDSKFile::~CPCIDSKFile()
 
 {
-    Synchronize();
+    try
+    {
+        Synchronize();
+    }
+    catch( const PCIDSKException& e )
+    {
+        fprintf(stderr, "Exception in ~CPCIDSKFile(): %s", e.what()); // ok
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Cleanup last block buffer.                                      */
@@ -404,6 +411,39 @@ std::vector<PCIDSK::PCIDSKSegment *> CPCIDSKFile::GetSegments()
 }
 
 /************************************************************************/
+/*                        CheckFileBigEnough()                          */
+/************************************************************************/
+
+void CPCIDSKFile::CheckFileBigEnough( uint64 nBytesToRead )
+{
+    if( nBytesToRead > 100 * 1024 * 1024 )
+    {
+        bool bTooBig = false;
+        // Do not trust too big filesize from header
+        if( GetFileSize() * 512 > 100 * 1024 * 1024 )
+        {
+            MutexHolder oHolder( io_mutex );
+
+            interfaces.io->Seek( io_handle, 0, SEEK_END );
+            if( nBytesToRead > interfaces.io->Tell( io_handle ) )
+            {
+                bTooBig = true;
+            }
+        }
+        else if ( nBytesToRead > GetFileSize() * 512 )
+        {
+            bTooBig = true;
+        }
+        if( bTooBig )
+        {
+            ThrowPCIDSKException( 
+                "File too short to read " PCIDSK_FRMT_UINT64 " bytes "
+                "of scanline.", nBytesToRead );
+        }
+    }
+}
+
+/************************************************************************/
 /*                        InitializeFromHeader()                        */
 /************************************************************************/
 
@@ -485,11 +525,21 @@ void CPCIDSKFile::InitializeFromHeader()
         block_size = static_cast<PCIDSK::uint64>(pixel_group_size) * width;
         if( block_size % 512 != 0 )
             block_size += 512 - (block_size % 512);
+        if( block_size != static_cast<size_t>(block_size) )
+        {
+             return ThrowPCIDSKException( 
+                "Allocating " PCIDSK_FRMT_UINT64 " bytes for scanline "
+                "buffer failed.", block_size );
+        }
+        CheckFileBigEnough(block_size);
 
-        last_block_data = malloc((size_t) block_size);
+        last_block_data = malloc(static_cast<size_t>(block_size));
         if( last_block_data == NULL )
-            return ThrowPCIDSKException( "Allocating %d bytes for scanline buffer failed.", 
-                                       (int) block_size );
+        {
+             return ThrowPCIDSKException( 
+                "Allocating " PCIDSK_FRMT_UINT64 " bytes for scanline "
+                "buffer failed.", block_size );
+        }
 
         last_block_mutex = interfaces.CreateMutex();
         image_offset = 0;

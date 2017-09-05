@@ -34,7 +34,7 @@
 
 #include <ctime>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                          Range                                       */
@@ -442,9 +442,9 @@ int OGRSelafinDataSource::OpenTable(const char * pszFilename) {
     }
 
     // Read header of file to get common information for all layers
+    // poHeader now owns fp
     poHeader=Selafin::read_header(fp,pszFilename);
     if (poHeader==NULL) {
-        VSIFCloseL(fp);
         CPLError( CE_Failure, CPLE_OpenFailed, "Failed to open %s, wrong format.\n", pszFilename);
         return FALSE;
     }
@@ -472,7 +472,6 @@ int OGRSelafinDataSource::OpenTable(const char * pszFilename) {
                 if( VSIFSeekL(fp, poHeader->getPosition(i)+4, SEEK_SET)!=0 ||
                     Selafin::read_float(fp, dfTime)==0 )
                 {
-                    VSIFCloseL(fp);
                     CPLError( CE_Failure, CPLE_OpenFailed, "Failed to open %s, wrong format.\n", pszFilename);
                     return FALSE;
                 }
@@ -613,7 +612,7 @@ OGRErr OGRSelafinDataSource::DeleteLayer( int iLayer ) {
         {
             int nTemp = 0;
             if (VSIFSeekL(poHeader->fp,poHeader->getPosition(i+1)+12,SEEK_SET)!=0 ||
-                (nTemp=Selafin::read_floatarray(poHeader->fp,&dfValues)) !=poHeader->nPoints ||
+                (nTemp=Selafin::read_floatarray(poHeader->fp,&dfValues,poHeader->nFileSize)) !=poHeader->nPoints ||
                 VSIFSeekL(poHeader->fp,poHeader->getPosition(i)+12,SEEK_SET)!=0 ||
                 Selafin::write_floatarray(poHeader->fp,dfValues,poHeader->nPoints)==0) {
                 CPLError( CE_Failure, CPLE_FileIO, "Could not update Selafin file %s.\n",pszName);

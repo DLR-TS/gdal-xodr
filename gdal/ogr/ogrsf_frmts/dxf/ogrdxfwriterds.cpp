@@ -33,7 +33,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi_error.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                          OGRDXFWriterDS()                          */
@@ -749,6 +749,8 @@ bool OGRDXFWriterDS::WriteNewBlockRecords( VSILFILE * fpIn )
 bool OGRDXFWriterDS::WriteNewBlockDefinitions( VSILFILE * fpIn )
 
 {
+    if( poLayer == NULL )
+        poLayer = new OGRDXFWriterLayer( this, fpTemp );
     poLayer->ResetFP( fpIn );
 
 /* ==================================================================== */

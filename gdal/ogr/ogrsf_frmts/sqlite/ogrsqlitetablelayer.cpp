@@ -38,7 +38,7 @@
 static const char UNSUPPORTED_OP_READ_ONLY[] =
   "%s : unsupported operation on a read-only datasource.";
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                        OGRSQLiteTableLayer()                         */
@@ -414,6 +414,7 @@ CPLErr OGRSQLiteTableLayer::EstablishFeatureDefn(const char* pszGeomCol)
             if( papszRow[1] == NULL || papszRow[2] == NULL )
             {
                 CPLDebug("SQLite", "Did not get expected col value");
+                sqlite3_free_table(papszResult);
                 continue;
             }
             if( papszRow[0] != NULL )
@@ -1134,7 +1135,7 @@ OGRErr OGRSQLiteTableLayer::GetExtent(int iGeomField, OGREnvelope *psExtent, int
     OGRSQLiteGeomFieldDefn* poGeomFieldDefn = poFeatureDefn->myGetGeomFieldDefn(iGeomField);
     if (poGeomFieldDefn->bCachedExtentIsValid)
     {
-        memcpy(psExtent, &poGeomFieldDefn->oCachedExtent, sizeof(poGeomFieldDefn->oCachedExtent));
+        *psExtent = poGeomFieldDefn->oCachedExtent;
         return OGRERR_NONE;
     }
 
@@ -1181,7 +1182,7 @@ OGRErr OGRSQLiteTableLayer::GetExtent(int iGeomField, OGREnvelope *psExtent, int
                 poGeomFieldDefn->bCachedExtentIsValid = TRUE;
                 if( poDS->GetUpdate() )
                     bStatisticsNeedsToBeFlushed = TRUE;
-                memcpy(&poGeomFieldDefn->oCachedExtent, psExtent, sizeof(poGeomFieldDefn->oCachedExtent));
+                poGeomFieldDefn->oCachedExtent = *psExtent;
             }
         }
 
@@ -1200,7 +1201,7 @@ OGRErr OGRSQLiteTableLayer::GetExtent(int iGeomField, OGREnvelope *psExtent, int
     {
         poGeomFieldDefn->bCachedExtentIsValid = TRUE;
         bStatisticsNeedsToBeFlushed = TRUE;
-        memcpy(&poGeomFieldDefn->oCachedExtent, psExtent, sizeof(poGeomFieldDefn->oCachedExtent));
+        poGeomFieldDefn->oCachedExtent = *psExtent;
     }
     return eErr;
 }
@@ -3034,9 +3035,9 @@ OGRErr OGRSQLiteTableLayer::RunDeferredCreationIfNecessary()
 
     CPLString osCommand;
 
-    osCommand.Printf( "CREATE TABLE '%s' ( %s INTEGER PRIMARY KEY AUTOINCREMENT",
+    osCommand.Printf( "CREATE TABLE '%s' ( \"%s\" INTEGER PRIMARY KEY AUTOINCREMENT",
                       pszEscapedTableName,
-                      pszFIDColumn );
+                      SQLEscapeName(pszFIDColumn).c_str() );
 
     if ( !poDS->IsSpatialiteDB() )
     {

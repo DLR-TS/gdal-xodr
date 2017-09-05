@@ -1366,7 +1366,42 @@ def ogr_vrt_23(shared_ds_flag = ''):
 
 def ogr_vrt_24():
 
-    return ogr_vrt_23(' shared="1"')
+    ret = ogr_vrt_23(' shared="1"')
+    if ret != 'success':
+        return ret
+
+    rec1 = """<OGRVRTDataSource>
+    <OGRVRTLayer name="test">
+        <SrcDataSource shared="1">/vsimem/rec2.vrt</SrcDataSource>
+    </OGRVRTLayer>
+</OGRVRTDataSource>"""
+
+    rec2 = """<OGRVRTDataSource>
+    <OGRVRTLayer name="test">
+        <SrcDataSource shared="1">/vsimem/rec2.vrt</SrcDataSource>
+    </OGRVRTLayer>
+</OGRVRTDataSource>"""
+
+    gdal.FileFromMemBuffer('/vsimem/rec1.vrt', rec1)
+    gdal.FileFromMemBuffer('/vsimem/rec2.vrt', rec2)
+
+    ds = ogr.Open('/vsimem/rec1.vrt')
+    if ds is None:
+        return 'fail'
+
+    gdal.ErrorReset()
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+    ds.GetLayer(0).GetLayerDefn()
+    ds.GetLayer(0).GetFeatureCount()
+    gdal.PopErrorHandler()
+    if gdal.GetLastErrorMsg() == '':
+        gdaltest.post_reason('error expected !')
+        return 'fail'
+
+    gdal.Unlink('/vsimem/rec1.vrt')
+    gdal.Unlink('/vsimem/rec2.vrt')
+
+    return 'success'
 
 
 ###############################################################################
@@ -3592,6 +3627,22 @@ def ogr_vrt_40():
     return 'success'
 
 ###############################################################################
+# Test GetExtent() on erroneous definition
+
+def ogr_vrt_41():
+
+    ds = ogr.Open("""<OGRVRTDataSource>
+  <OGRVRTLayer name="test">
+    <SrcDataSource>/i_dont/exist</SrcDataSource>
+  </OGRVRTLayer>
+</OGRVRTDataSource>""")
+    lyr = ds.GetLayer(0)
+    with gdaltest.error_handler():
+        lyr.GetExtent()
+
+    return 'success'
+
+###############################################################################
 #
 
 def ogr_vrt_cleanup():
@@ -3659,6 +3710,7 @@ gdaltest_list = [
     ogr_vrt_38,
     ogr_vrt_39,
     ogr_vrt_40,
+    ogr_vrt_41,
     ogr_vrt_cleanup ]
 
 if __name__ == '__main__':

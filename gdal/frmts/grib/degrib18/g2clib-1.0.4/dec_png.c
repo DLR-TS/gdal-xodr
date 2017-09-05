@@ -5,6 +5,7 @@ int dec_png(unsigned char *pngbuf,g2int len,g2int *width,g2int *height,unsigned 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <png.h>
 
 
@@ -57,7 +58,7 @@ int dec_png(unsigned char *pngbuf,g2int len,g2int *width,g2int *height,unsigned 
 
 /*  check if stream is a valid PNG format   */
 
-    if ( png_sig_cmp(pngbuf,0,8) != 0)
+    if ( len < 8 || png_sig_cmp(pngbuf,0,8) != 0)
        return (-3);
 
 /* create and initialize png_structs  */
@@ -118,7 +119,7 @@ int dec_png(unsigned char *pngbuf,g2int len,g2int *width,g2int *height,unsigned 
         png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
         return( -4 );
     }
-    if( u_width > 0x7FFFFFFFU || u_height > 0x7FFFFFFFU )
+    if( u_width > (unsigned)INT_MAX || u_height > (unsigned)INT_MAX )
     {
         fprintf(stderr, "invalid width/height\n");
         png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);

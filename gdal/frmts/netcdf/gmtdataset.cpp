@@ -44,7 +44,7 @@
 #include "netcdf.h"
 #include "ogr_core.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 extern CPLMutex *hNCMutex; /* shared with netcdf. See netcdfdataset.cpp */
 
@@ -163,12 +163,13 @@ CPLErr GMTRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff, int nBlockYOff,
                                   (short int *) pImage );
     else if( eDataType == GDT_Int32 )
     {
-        if( sizeof(long) == 4 )
+#if SIZEOF_UNSIGNED_LONG == 4
             nErr = nc_get_vara_long( cdfid, nZId, start, edge,
                                      (long *) pImage );
-        else
+#else
             nErr = nc_get_vara_int( cdfid, nZId, start, edge,
                                     (int *) pImage );
+#endif
     }
     else if( eDataType == GDT_Float32 )
         nErr = nc_get_vara_float( cdfid, nZId, start, edge,
@@ -235,6 +236,14 @@ GDALDataset *GMTDataset::Open( GDALOpenInfo * poOpenInfo )
         || poOpenInfo->pabyHeader[2] != 'F'
         || poOpenInfo->pabyHeader[3] != 1 )
         return NULL;
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    // We don't necessarily want to catch bugs in libnetcdf ...
+    if( CPLGetConfigOption("DISABLE_OPEN_REAL_NETCDF_FILES", NULL) )
+    {
+        return NULL;
+    }
+#endif
 
     CPLMutexHolderD(&hNCMutex);
 

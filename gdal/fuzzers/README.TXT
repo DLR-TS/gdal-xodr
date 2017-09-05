@@ -1,4 +1,4 @@
-This directory contain fuzzer main funtions and scripts for the
+This directory contain fuzzer main functions and scripts for the
 Google OSS Fuzz project: https://github.com/google/oss-fuzz/
 
 The main build scripts are in:
@@ -7,6 +7,13 @@ and call scripts in this directory.
 
 The list of issues is in:
 https://bugs.chromium.org/p/oss-fuzz/issues/list?q=gdal
+
+It is possible to filter issues related to a particular fuzzer program
+(here cad_fuzzer) with:
+https://bugs.chromium.org/p/oss-fuzz/issues/list?can=2&q=cad_fuzzer+gdal
+
+Alternative:
+https://oss-fuzz.com/v2/testcases?open=yes&q=cad_fuzzer
 
 - Simple build of fuzzer main functions:
     $ make

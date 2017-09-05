@@ -3574,7 +3574,11 @@ def tiff_write_87():
 
     import validate_cloud_optimized_geotiff
     try:
-        validate_cloud_optimized_geotiff.validate('tmp/tiff_write_87_dst.tif', check_tiled = False)
+        errors, _ = validate_cloud_optimized_geotiff.validate('tmp/tiff_write_87_dst.tif', check_tiled = False)
+        if len(errors) != 0:
+            gdaltest.post_reason('validate_cloud_optimized_geotiff failed')
+            print(errors)
+            return 'fail'
     except:
         gdaltest.post_reason('validate_cloud_optimized_geotiff failed')
         return 'fail'
@@ -4334,6 +4338,7 @@ def tiff_write_102():
     ds = gdaltest.tiff_drv.Create('/vsimem/tiff_write_102.tif',1,1)
     sr = osr.SpatialReference()
     sr.ImportFromEPSG(7401)
+    name = sr.GetAttrValue('COMPD_CS')
     wkt = sr.ExportToWkt()
     ds.SetProjection(wkt)
     ds = None
@@ -4357,6 +4362,14 @@ def tiff_write_102():
 
     if wkt2.find('COMPD_CS') == 0:
         gdaltest.post_reason('got COMPD_CS, but did not expected it')
+        print(wkt2)
+        return 'fail'
+
+    sr2 = osr.SpatialReference()
+    sr2.SetFromUserInput(wkt1)
+    got_name = sr2.GetAttrValue('COMPD_CS')
+    if got_name != name:
+        gdaltest.post_reason('dit not get expected COMPD_CS name')
         print(wkt2)
         return 'fail'
 
@@ -5206,6 +5219,7 @@ def tiff_write_126():
                      (['COMPRESS=JPEG', 'INTERLEAVE=BAND', 'TILED=YES'], [49887,58937], [59311,2826], [30829,34806], [11664,58937]),
                      (['COMPRESS=JPEG', 'INTERLEAVE=BAND', 'BLOCKYSIZE=800'], [49887,58937], [59311,2826], [30829,34806], [11664,58937]),
                      (['COMPRESS=JPEG', 'INTERLEAVE=BAND', 'BLOCKYSIZE=32'], [49887,58937], [59311,2826], [30829,34806], [11664,58937]),
+                     (['COMPRESS=JPEG', 'BLOCKYSIZE=8'], [49887,58937], [59311,2826], [30829,34806], [11664,58937]),
                    ]
 
     for (options, cs1, cs2, cs3, cs4) in options_list:
@@ -7459,6 +7473,36 @@ def tiff_write_162():
     return 'success'
 
 ###############################################################################
+# Test creating a file that would trigger strip chopping (#6924)
+
+def tiff_write_163():
+
+    # Was a libtiff 4.0.8 regression
+    if gdaltest.tiff_drv.GetMetadataItem('LIBTIFF').find('4.0.8') >= 0:
+        print('Test broken with libtiff 4.0.8')
+        return 'skip'
+
+    gdal.Translate('/vsimem/tiff_write_163.tif', 'data/byte.tif',
+                   options = '-outsize 1 20000 -co BLOCKYSIZE=20000 -co PROFILE=BASELINE' )
+    ds = gdal.Open('/vsimem/tiff_write_163.tif')
+    cs = ds.GetRasterBand(1).Checksum()
+    if cs != 47567:
+        gdaltest.post_reason('fail')
+        print(cs)
+        return 'fail'
+    # Check that IsBlockAvailable() works properly in that mode
+    offset_0_2 = ds.GetRasterBand(1).GetMetadataItem('BLOCK_OFFSET_0_2', 'TIFF')
+    if offset_0_2 != str(146 + 2 * 8192):
+        gdaltest.post_reason('fail')
+        print(offset_0_2)
+        return 'fail'
+    ds = None
+
+    gdaltest.tiff_drv.Delete( '/vsimem/tiff_write_163.tif' )
+
+    return 'success'
+
+###############################################################################
 # Ask to run again tests with GDAL_API_PROXY=YES
 
 def tiff_write_api_proxy():
@@ -7650,10 +7694,11 @@ gdaltest_list = [
     tiff_write_160,
     tiff_write_161,
     tiff_write_162,
+    tiff_write_163,
     #tiff_write_api_proxy,
     tiff_write_cleanup ]
 
-# gdaltest_list = [ tiff_write_1, tiff_write_161 ]
+# gdaltest_list = [ tiff_write_1, tiff_write_163 ]
 
 if __name__ == '__main__':
 

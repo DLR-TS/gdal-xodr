@@ -43,6 +43,18 @@
 #include "cpl_string.h"
 #include "gdal_frmts.h"
 #include "gdal_pam.h"
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+// Disabled for now since currently this only works for libpng 1.2
+// libpng 1.6 requires additional includes. See #6928
+// #define DISABLE_CRC_CHECK
+#endif
+
+#ifdef DISABLE_CRC_CHECK
+// Needs to be defined before including png.h
+#define PNG_INTERNAL
+#endif
+
 #include "png.h"
 
 #include <csetjmp>
@@ -105,7 +117,8 @@ class PNGDataset : public GDALPamDataset
     int         bHasReadICCMetadata;
     void        LoadICCProfile();
 
-    static void WriteMetadataAsText(png_structp hPNG, png_infop psPNGInfo,
+    static void WriteMetadataAsText(jmp_buf sSetJmpContext,
+                                    png_structp hPNG, png_infop psPNGInfo,
                                     const char* pszKey, const char* pszValue);
     static GDALDataset *OpenStage2( GDALOpenInfo *, PNGDataset*& );
 

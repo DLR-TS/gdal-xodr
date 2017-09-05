@@ -47,7 +47,7 @@
 #include "hfa.h"
 #include "gdal_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                              HFABand()                               */
@@ -174,7 +174,9 @@ CPLErr HFABand::LoadOverviews()
 
     if( poRRDNames != NULL )
     {
-        for( int iName = 0; true; iName++ )
+        // Limit to 1000 to avoid infinite loop as in
+        // https://oss-fuzz.com/v2/testcase-detail/6206784937132032
+        for( int iName = 0; iName < 1000; iName++ )
         {
             char szField[128] = {};
             snprintf(szField, sizeof(szField), "nameList[%d].string", iName);
@@ -881,10 +883,9 @@ static CPLErr UncompressBlock( GByte *pabyCData, int nSrcBytes,
         }
         else if( nNumBits == 32 )
         {
-            nDataValue = 256 * 256 * 256 * *(pabyValues++);
-            nDataValue += 256 * 256 * *(pabyValues++);
-            nDataValue += 256 * *(pabyValues++);
-            nDataValue += *(pabyValues++);
+            memcpy(&nDataValue, pabyValues, 4);
+            CPL_MSBPTR32(&nDataValue);
+            pabyValues += 4;
         }
         else
         {
@@ -1805,10 +1806,14 @@ double *HFAReadBFUniqueBins( HFAEntry *poBinFunc, int nPCTColors )
         return NULL;
 
     // Field the MIFObject raw data pointer.
+    int nMIFObjectSize = 0;
     const GByte *pabyMIFObject =
-        (const GByte *)poBinFunc->GetStringField("binFunction.MIFObject");
+        reinterpret_cast<const GByte *>(
+            poBinFunc->GetStringField("binFunction.MIFObject",
+                                      NULL, &nMIFObjectSize));
 
-    if( pabyMIFObject == NULL )
+    if( pabyMIFObject == NULL ||
+        nMIFObjectSize < 24 + static_cast<int>(sizeof(double)) * nPCTColors )
         return NULL;
 
     // Confirm that this is a 64bit floating point basearray.

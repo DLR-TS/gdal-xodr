@@ -802,7 +802,7 @@ def jp2openjpeg_22():
     if ds.GetRasterBand(4).GetColorInterpretation() != gdal.GCI_AlphaBand:
         gdaltest.post_reason('fail')
         return 'fail'
-    if ds.GetRasterBand(1).Checksum() != 11457:
+    if ds.GetRasterBand(1).Checksum() not in [ 11457, 11450 ]:
         gdaltest.post_reason('fail')
         print(ds.GetRasterBand(1).Checksum())
         return 'fail'
@@ -1606,7 +1606,9 @@ def jp2openjpeg_33():
   </VRTRasterBand>
 </VRTDataset>""")
     gdal.PushErrorHandler()
-    out_ds = gdaltest.jp2openjpeg_drv.CreateCopy('/vsimem/jp2openjpeg_33.jp2', src_ds, options = ['BLOCKXSIZE=100000', 'BLOCKYSIZE=100000'])
+    # Limit number of resolutions, because of
+    # https://github.com/uclouvain/openjpeg/issues/493
+    out_ds = gdaltest.jp2openjpeg_drv.CreateCopy('/vsimem/jp2openjpeg_33.jp2', src_ds, options = ['BLOCKXSIZE=100000', 'BLOCKYSIZE=100000', 'RESOLUTIONS=5'])
     gdal.PopErrorHandler()
     if out_ds is not None:
         gdaltest.post_reason('fail')
@@ -3584,6 +3586,28 @@ def jp2openjpeg_49():
     return 'success'
 
 ###############################################################################
+# Test opening an image of small dimension with very small tiles (#7012)
+
+def jp2openjpeg_50():
+
+    if gdaltest.jp2openjpeg_drv is None:
+        return 'skip'
+
+    ds = gdal.Open('data/fake_sent2_preview.jp2')
+    blockxsize, blockysize = ds.GetRasterBand(1).GetBlockSize()
+    if blockxsize != ds.RasterXSize or blockysize != ds.RasterYSize:
+        gdaltest.post_reason('expected warning')
+        print(blockxsize, blockysize)
+        return 'fail'
+    cs = ds.GetRasterBand(1).Checksum()
+    if cs != 2046:
+        gdaltest.post_reason('expected warning')
+        print(cs)
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
 def jp2openjpeg_cleanup():
 
     gdaltest.reregister_all_jpeg2000_drivers()
@@ -3641,6 +3665,7 @@ gdaltest_list = [
     jp2openjpeg_47,
     jp2openjpeg_48,
     jp2openjpeg_49,
+    jp2openjpeg_50,
     jp2openjpeg_online_1,
     jp2openjpeg_online_2,
     jp2openjpeg_online_3,

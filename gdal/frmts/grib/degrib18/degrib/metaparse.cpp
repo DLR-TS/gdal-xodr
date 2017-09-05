@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <limits>
 #include "clock.h"
 #include "meta.h"
 #include "metaname.h"
@@ -852,6 +853,11 @@ static int ParseSect3 (sInt4 *is3, sInt4 ns3, grib_MetaData *meta)
          meta->gds.Dx = is3[63] * unit; /* degrees. */
          if (is3[12] == GS3_GAUSSIAN_LATLON) {
             int np = is3[67]; /* parallels between a pole and the equator */
+            if( np == 0 )
+            {
+                errSprintf ("Gaussian Lat/Lon grid is not defined completely.\n");
+                return -2;
+            }
             meta->gds.Dy = 90.0 / np;
          } else
             meta->gds.Dy = is3[67] * unit; /* degrees. */
@@ -1201,6 +1207,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
                                         meta->pds2.sect4.numBands *
                                         sizeof (sect4_BandType));
       for (i = 0; i < meta->pds2.sect4.numBands; i++) {
+         if (ns4 < 20 + 10 * i + 1) {
+             return -1;
+         }
          meta->pds2.sect4.bands[i].series =
                (unsigned short int) is4[14 + 10 * i];
          meta->pds2.sect4.bands[i].numbers =
@@ -1268,11 +1277,17 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
       case GS4_ANALYSIS: /* 4.0 */
          break;
       case GS4_ENSEMBLE: /* 4.1 */
+         if (ns4 < 37) {
+            return -1;
+         }
          meta->pds2.sect4.typeEnsemble = (uChar) is4[34];
          meta->pds2.sect4.perturbNum = (uChar) is4[35];
          meta->pds2.sect4.numberFcsts = (uChar) is4[36];
          break;
       case GS4_ENSEMBLE_STAT: /* 4.1 */
+         if (ns4 < 46) {
+            return -1;
+         }
          meta->pds2.sect4.typeEnsemble = (uChar) is4[34];
          meta->pds2.sect4.perturbNum = (uChar) is4[35];
          meta->pds2.sect4.numberFcsts = (uChar) is4[36];
@@ -1311,6 +1326,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
             }
             meta->pds2.sect4.Interval = (sect4_IntervalType *) temp_ptr;
             meta->pds2.sect4.numMissing = is4[45];
+            if (ns4 < 57 + (meta->pds2.sect4.numInterval-1)*12+1) {
+                return -1;
+            }
             for (i = 0; i < meta->pds2.sect4.numInterval; i++) {
                meta->pds2.sect4.Interval[i].processID =
                      (uChar) is4[49 + i * 12];
@@ -1332,10 +1350,16 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          }
          break;
       case GS4_DERIVED: /* 4.2 */
+         if (ns4 < 36) {
+            return -1;
+         }
          meta->pds2.sect4.derivedFcst = (uChar) is4[34];
          meta->pds2.sect4.numberFcsts = (uChar) is4[35];
          break;
       case GS4_DERIVED_INTERVAL: /* 4.12 */
+         if (ns4 < 45) {
+            return -1;
+         }
          meta->pds2.sect4.derivedFcst = (uChar) is4[34];
          meta->pds2.sect4.numberFcsts = (uChar) is4[35];
 
@@ -1374,6 +1398,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
             }
             meta->pds2.sect4.Interval = (sect4_IntervalType *) temp_ptr;
             meta->pds2.sect4.numMissing = is4[44];
+            if (ns4 < 56 + (meta->pds2.sect4.numInterval-1)*12+1) {
+                return -1;
+            }
             for (i = 0; i < meta->pds2.sect4.numInterval; i++) {
                meta->pds2.sect4.Interval[i].processID =
                      (uChar) is4[48 + i * 12];
@@ -1395,6 +1422,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          }
          break;
       case GS4_STATISTIC: /* 4.8 */
+         if (ns4 < 43) {
+            return -1;
+         }
          if (ParseTime (&(meta->pds2.sect4.validTime), is4[34], is4[36],
                         is4[37], is4[38], is4[39], is4[40]) != 0) {
             msg = errSprintf (NULL);
@@ -1430,6 +1460,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
             }
             meta->pds2.sect4.Interval = (sect4_IntervalType *) temp_ptr;
             meta->pds2.sect4.numMissing = is4[42];
+            if (ns4 < 54 + (meta->pds2.sect4.numInterval-1)*12+1) {
+                return -1;
+            }
             for (i = 0; i < meta->pds2.sect4.numInterval; i++) {
                meta->pds2.sect4.Interval[i].processID =
                      (uChar) is4[46 + i * 12];
@@ -1451,6 +1484,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          }
          break;
       case GS4_PERCENTILE: /* 4.10 */
+         if (ns4 < 44) {
+            return -1;
+         }
          meta->pds2.sect4.percentile = is4[34];
          if (ParseTime (&(meta->pds2.sect4.validTime), is4[35], is4[37],
                         is4[38], is4[39], is4[40], is4[41]) != 0) {
@@ -1487,6 +1523,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
             }
             meta->pds2.sect4.Interval = (sect4_IntervalType *) temp_ptr;
             meta->pds2.sect4.numMissing = is4[43];
+            if (ns4 < 55 + (meta->pds2.sect4.numInterval-1)*12+1) {
+                return -1;
+            }
             for (i = 0; i < meta->pds2.sect4.numInterval; i++) {
                meta->pds2.sect4.Interval[i].processID =
                      (uChar) is4[47 + i * 12];
@@ -1508,6 +1547,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          }
          break;
       case GS4_PROBABIL_PNT: /* 4.5 */
+         if (ns4 < 44) {
+            return -1;
+         }
          meta->pds2.sect4.foreProbNum = (uChar) is4[34];
          meta->pds2.sect4.numForeProbs = (uChar) is4[35];
          meta->pds2.sect4.probType = (uChar) is4[36];
@@ -1517,6 +1559,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          meta->pds2.sect4.upperLimit.value = is4[43];
          break;
       case GS4_PROBABIL_TIME: /* 4.9 */
+         if (ns4 < 56) {
+            return -1;
+         }
          meta->pds2.sect4.foreProbNum = (uChar) is4[34];
          meta->pds2.sect4.numForeProbs = (uChar) is4[35];
          meta->pds2.sect4.probType = (uChar) is4[36];
@@ -1555,6 +1600,9 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          }
          meta->pds2.sect4.Interval = (sect4_IntervalType *) temp_ptr;
          meta->pds2.sect4.numMissing = is4[55];
+         if (ns4 < 67 + (meta->pds2.sect4.numInterval-1)*12+1) {
+            return -1;
+         }
          for (i = 0; i < meta->pds2.sect4.numInterval; i++) {
             meta->pds2.sect4.Interval[i].processID = (uChar) is4[59 + i * 12];
             meta->pds2.sect4.Interval[i].incrType = (uChar) is4[60 + i * 12];
@@ -1869,7 +1917,16 @@ int MetaParse (grib_MetaData *meta, sInt4 *is0, sInt4 ns0,
       }
       sndSurfType = meta->pds2.sect4.sndSurfType;
       scale = meta->pds2.sect4.sndSurfScale;
-      value = static_cast<int>(meta->pds2.sect4.sndSurfValue);
+      if (meta->pds2.sect4.sndSurfValue < std::numeric_limits<int>::max() &&
+          meta->pds2.sect4.sndSurfValue > std::numeric_limits<int>::min()) {
+         value = static_cast<int>(meta->pds2.sect4.sndSurfValue);
+      } else {
+         // sndSurfValue is out of range, so just call it missing.
+         // TODO(schwehr): Consider using a tmp double if the scale will
+         // make the resulting sndSurfValue be within range.
+         preErrSprintf ("sndSurfValue out of range\n");
+         value = GRIB2MISSING_s4;
+      }
       if ((value == GRIB2MISSING_s4) || (scale == GRIB2MISSING_s1) ||
           (sndSurfType == GRIB2MISSING_u1)) {
          sndSurfValue = 0;
@@ -2361,9 +2418,9 @@ static void ParseGridSecMiss (gridAttribType *attrib, double *grib_Data,
  * NOTES
  *****************************************************************************
  */
-void ParseGrid (gridAttribType *attrib, double **Grib_Data,
+void ParseGrid (DataSource &fp, gridAttribType *attrib, double **Grib_Data,
                 uInt4 *grib_DataLen, uInt4 Nx, uInt4 Ny, int scan,
-                sInt4 *iain, sInt4 ibitmap, sInt4 *ib, double unitM,
+                sInt4 nd2x3, sInt4 *iain, sInt4 ibitmap, sInt4 *ib, double unitM,
                 double unitB, uChar f_wxType, sect2_WxType *WxType,
                 CPL_UNUSED uChar f_subGrid,
                 int startX, int startY, int stopX, int stopY)
@@ -2393,10 +2450,44 @@ void ParseGrid (gridAttribType *attrib, double **Grib_Data,
    myAssert (((!f_subGrid) && (subNx == Nx)) || (f_subGrid));
    myAssert (((!f_subGrid) && (subNy == Ny)) || (f_subGrid));
 
+   if( subNy == 0 || subNx > UINT_MAX / subNy )
+   {
+       errSprintf ("Too large raster");
+       *grib_DataLen = 0;
+       *Grib_Data = NULL;
+       return;
+   }
+   
    if (subNx * subNy > *grib_DataLen) {
+
+      if( subNx * subNy > 100 * 1024 * 1024 )
+      {
+          long curPos = fp.DataSourceFtell();
+          fp.DataSourceFseek(0, SEEK_END);
+          long fileSize = fp.DataSourceFtell();
+          fp.DataSourceFseek(curPos, SEEK_SET);
+          // allow a compression ratio of 1:1000
+          if( subNx * subNy / 1000 > (uInt4)fileSize )
+          {
+            errSprintf ("ERROR: File too short\n");
+            *grib_DataLen = 0;
+            *Grib_Data = NULL;
+            return;
+          }
+      }
+
       *grib_DataLen = subNx * subNy;
-      *Grib_Data = (double *) realloc ((void *) (*Grib_Data),
+      double* newData = (double *) realloc ((void *) (*Grib_Data),
                                        (*grib_DataLen) * sizeof (double));
+      if( newData == NULL )
+      {
+          errSprintf ("Memory allocation failed");
+          free(*Grib_Data);
+          *Grib_Data = NULL;
+          *grib_DataLen = 0;
+          return;
+      }
+      *Grib_Data = newData;
    }
    grib_Data = *Grib_Data;
 
@@ -2422,7 +2513,7 @@ void ParseGrid (gridAttribType *attrib, double **Grib_Data,
        * dedicated procedure.  Here we don't since for scan != 0100, we
        * would_ need a different unpacker library, which is extremely
        * unlikely. */
-      for (scanIndex = 0; scanIndex < Nx * Ny; scanIndex++) {
+      for (scanIndex = 0; scanIndex < (uInt4)nd2x3 && scanIndex < Nx * Ny; scanIndex++) {
          if (attrib->fieldType) {
             value = iain[scanIndex];
          } else {
@@ -2512,7 +2603,7 @@ void ParseGrid (gridAttribType *attrib, double **Grib_Data,
    /* Walk through the grid, resetting the missing values, as determined by
     * the original grid. */
    if (f_readjust) {
-      for (scanIndex = 0; scanIndex < Nx * Ny; scanIndex++) {
+      for (scanIndex = 0; scanIndex < (uInt4)nd2x3 && scanIndex < Nx * Ny; scanIndex++) {
          ScanIndex2XY (scanIndex, &x, &y, scan, Nx, Ny);
          /* ScanIndex returns value as if scan was 0100 */
          newIndex = (x - 1) + (y - 1) * Nx;
@@ -2546,7 +2637,7 @@ void ParseGrid (gridAttribType *attrib, double **Grib_Data,
             }
          }
          /* embed the missing value. */
-         for (scanIndex = 0; scanIndex < Nx * Ny; scanIndex++) {
+         for (scanIndex = 0; scanIndex < (uInt4)nd2x3 && scanIndex < Nx * Ny; scanIndex++) {
             ScanIndex2XY (scanIndex, &x, &y, scan, Nx, Ny);
             /* ScanIndex returns value as if scan was 0100 */
             newIndex = (x - 1) + (y - 1) * Nx;

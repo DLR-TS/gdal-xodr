@@ -58,7 +58,7 @@
 #include "ogr_srs_api.h"
 #include "vrtdataset.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                        GDALWarpAppOptions                            */
@@ -276,77 +276,102 @@ static double GetAverageSegmentLength(OGRGeometryH hGeom)
 }
 
 /************************************************************************/
+/*                          GetSrcDSProjection()                        */
+/*                                                                      */
+/* Takes into account SRC_SRS transformer option in priority, and then  */
+/* dataset characteristics as well as the METHOD transformer            */
+/* option to determine the source SRS.                                  */
+/************************************************************************/
+
+static const char* GetSrcDSProjection( GDALDatasetH hDS,
+                                       char** papszTO )
+{
+    const char *pszProjection = CSLFetchNameValue( papszTO, "SRC_SRS" );
+    if( pszProjection != NULL || hDS == NULL )
+    {
+        return pszProjection;
+    }
+
+    const char *pszMethod = CSLFetchNameValue( papszTO, "METHOD" );
+    char** papszMD = NULL;
+    if( GDALGetProjectionRef( hDS ) != NULL
+        && strlen(GDALGetProjectionRef( hDS )) > 0
+        && (pszMethod == NULL || EQUAL(pszMethod,"GEOTRANSFORM")) )
+    {
+        pszProjection = GDALGetProjectionRef( hDS );
+    }
+    else if( GDALGetGCPProjection( hDS ) != NULL
+             && strlen(GDALGetGCPProjection( hDS )) > 0
+             && GDALGetGCPCount( hDS ) > 1
+             && (pszMethod == NULL || STARTS_WITH_CI(pszMethod, "GCP_")) )
+    {
+        pszProjection = GDALGetGCPProjection( hDS );
+    }
+    else if( GDALGetMetadata( hDS, "RPC" ) != NULL &&
+             (pszMethod == NULL || EQUAL(pszMethod,"RPC") ) )
+    {
+        pszProjection = SRS_WKT_WGS84;
+    }
+    else if( (papszMD = GDALGetMetadata( hDS, "GEOLOCATION" )) != NULL &&
+             (pszMethod == NULL || EQUAL(pszMethod,"GEOLOC_ARRAY") ) )
+    {
+        pszProjection = CSLFetchNameValue( papszMD, "SRS" );
+    }
+    return pszProjection;
+}
+
+/************************************************************************/
 /*                           CropToCutline()                            */
 /************************************************************************/
 
-static CPLErr CropToCutline( OGRGeometryH hCutline, char** papszTO, int nSrcCount, GDALDatasetH *pahSrcDS,
-                           double& dfMinX, double& dfMinY, double& dfMaxX, double &dfMaxY )
+static CPLErr CropToCutline( OGRGeometryH hCutline, char** papszTO,
+                             int nSrcCount, GDALDatasetH *pahSrcDS,
+                             double& dfMinX, double& dfMinY,
+                             double& dfMaxX, double &dfMaxY )
 {
-    OGRGeometryH hCutlineGeom = OGR_G_Clone( hCutline );
-    OGRSpatialReferenceH hCutlineSRS = OGR_G_GetSpatialReference( hCutlineGeom );
+    // We could possibly directly reproject from cutline SRS to target SRS,
+    // but when applying the cutline, it is reprojected to source raster image
+    // space using the source SRS. To be consistent, we reproject
+    // the cutline from cutline SRS to source SRS and then from source SRS to
+    // target SRS.
+    OGRSpatialReferenceH hCutlineSRS = OGR_G_GetSpatialReference( hCutline );
     const char *pszThisTargetSRS = CSLFetchNameValue( papszTO, "DST_SRS" );
-    const char *pszThisSourceSRS = CSLFetchNameValue(papszTO, "SRC_SRS");
-    OGRCoordinateTransformationH hCTCutlineToSrc = NULL;
-    OGRCoordinateTransformationH hCTSrcToDst = NULL;
-    OGRSpatialReferenceH hSrcSRS = NULL, hDstSRS = NULL;
+    OGRSpatialReferenceH hSrcSRS = NULL;
+    OGRSpatialReferenceH hDstSRS = NULL;
 
-    if( pszThisSourceSRS != NULL )
+    const char *pszThisSourceSRS =
+        GetSrcDSProjection(
+            nSrcCount > 0 && pahSrcDS[0] != NULL ? pahSrcDS[0] : NULL,
+            papszTO);
+    if( pszThisSourceSRS != NULL && pszThisSourceSRS[0] != '\0' )
     {
         hSrcSRS = OSRNewSpatialReference(NULL);
         if( OSRImportFromWkt( hSrcSRS, (char **)&pszThisSourceSRS ) != OGRERR_NONE )
         {
-            CPLError(CE_Failure, CPLE_AppDefined, "Cannot compute bounding box of cutline.");
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Cannot compute bounding box of cutline.");
             OSRDestroySpatialReference(hSrcSRS);
-            OGR_G_DestroyGeometry(hCutlineGeom);
             return CE_Failure;
         }
     }
-    else if( nSrcCount == 0 || pahSrcDS[0] == NULL )
+    else if( pszThisTargetSRS == NULL && hCutlineSRS == NULL )
     {
-        CPLError(CE_Failure, CPLE_AppDefined, "Cannot compute bounding box of cutline.");
-        OGR_G_DestroyGeometry(hCutlineGeom);
-        return CE_Failure;
+        OGREnvelope sEnvelope;
+        OGR_G_GetEnvelope(hCutline, &sEnvelope);
+
+        dfMinX = sEnvelope.MinX;
+        dfMinY = sEnvelope.MinY;
+        dfMaxX = sEnvelope.MaxX;
+        dfMaxY = sEnvelope.MaxY;
+
+        return CE_None;
     }
     else
     {
-        const char *pszProjection = NULL;
-
-        if( GDALGetProjectionRef( pahSrcDS[0] ) != NULL
-            && strlen(GDALGetProjectionRef( pahSrcDS[0] )) > 0 )
-            pszProjection = GDALGetProjectionRef( pahSrcDS[0] );
-        else if( GDALGetGCPProjection( pahSrcDS[0] ) != NULL )
-            pszProjection = GDALGetGCPProjection( pahSrcDS[0] );
-
-        if( pszProjection == NULL || pszProjection[0] == '\0' )
-        {
-            if( pszThisTargetSRS == NULL && hCutlineSRS == NULL )
-            {
-                OGREnvelope sEnvelope;
-                OGR_G_GetEnvelope(hCutlineGeom, &sEnvelope);
-
-                dfMinX = sEnvelope.MinX;
-                dfMinY = sEnvelope.MinY;
-                dfMaxX = sEnvelope.MaxX;
-                dfMaxY = sEnvelope.MaxY;
-
-                OGR_G_DestroyGeometry(hCutlineGeom);
-
-                return CE_None;
-            }
-
-            CPLError(CE_Failure, CPLE_AppDefined, "Cannot compute bounding box of cutline.");
-            OGR_G_DestroyGeometry(hCutlineGeom);
-            return CE_Failure;
-        }
-
-        hSrcSRS = OSRNewSpatialReference(NULL);
-        if( OSRImportFromWkt( hSrcSRS, (char **)&pszProjection ) != OGRERR_NONE )
-        {
-            CPLError(CE_Failure, CPLE_AppDefined, "Cannot compute bounding box of cutline.");
-            OSRDestroySpatialReference(hSrcSRS);
-            OGR_G_DestroyGeometry(hCutlineGeom);
-            return CE_Failure;
-        }
+        CPLError(CE_Failure, CPLE_AppDefined,
+                    "Cannot compute bounding box of cutline. Cannot find "
+                    "source SRS");
+        return CE_Failure;
     }
 
     if ( pszThisTargetSRS != NULL )
@@ -357,14 +382,16 @@ static CPLErr CropToCutline( OGRGeometryH hCutline, char** papszTO, int nSrcCoun
             CPLError(CE_Failure, CPLE_AppDefined, "Cannot compute bounding box of cutline.");
             OSRDestroySpatialReference(hSrcSRS);
             OSRDestroySpatialReference(hDstSRS);
-            OGR_G_DestroyGeometry(hCutlineGeom);
             return CE_Failure;
         }
     }
     else
         hDstSRS = OSRClone(hSrcSRS);
 
+    OGRGeometryH hCutlineGeom = OGR_G_Clone( hCutline );
     OGRSpatialReferenceH hCutlineOrTargetSRS = hCutlineSRS ? hCutlineSRS : hDstSRS;
+    OGRCoordinateTransformationH hCTCutlineToSrc = NULL;
+    OGRCoordinateTransformationH hCTSrcToDst = NULL;
 
     if( !OSRIsSame(hCutlineOrTargetSRS, hSrcSRS) )
         hCTCutlineToSrc = OCTNewCoordinateTransformation(hCutlineOrTargetSRS, hSrcSRS);
@@ -407,7 +434,7 @@ static CPLErr CropToCutline( OGRGeometryH hCutline, char** papszTO, int nSrcCoun
             double dfAverageSegmentLength = GetAverageSegmentLength(hGeomInSrcSRS);
             OGR_G_Segmentize(hGeomInSrcSRS, dfAverageSegmentLength/4);
 
-            memcpy(&sLastEnvelope, &sCurEnvelope, sizeof(OGREnvelope));
+            sLastEnvelope = sCurEnvelope;
         }
 
         OGR_G_DestroyGeometry(hGeomInSrcSRS);
@@ -2023,8 +2050,6 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
 
     for( iSrc = 0; iSrc < nSrcCount; iSrc++ )
     {
-        const char *pszThisSourceSRS = CSLFetchNameValue(papszTO,"SRC_SRS");
-
         if( pahSrcDS[iSrc] == NULL )
         {
             if( hCT != NULL )
@@ -2073,25 +2098,10 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
 /* -------------------------------------------------------------------- */
 /*      Get the sourcesrs from the dataset, if not set already.         */
 /* -------------------------------------------------------------------- */
+        const char* pszThisSourceSRS = GetSrcDSProjection(
+                                                    pahSrcDS[iSrc], papszTO );
         if( pszThisSourceSRS == NULL )
-        {
-            const char *pszMethod = CSLFetchNameValue( papszTO, "METHOD" );
-
-            if( GDALGetProjectionRef( pahSrcDS[iSrc] ) != NULL
-                && strlen(GDALGetProjectionRef( pahSrcDS[iSrc] )) > 0
-                && (pszMethod == NULL || EQUAL(pszMethod,"GEOTRANSFORM")) )
-                pszThisSourceSRS = GDALGetProjectionRef( pahSrcDS[iSrc] );
-
-            else if( GDALGetGCPProjection( pahSrcDS[iSrc] ) != NULL
-                     && strlen(GDALGetGCPProjection(pahSrcDS[iSrc])) > 0
-                     && GDALGetGCPCount( pahSrcDS[iSrc] ) > 1
-                     && (pszMethod == NULL || STARTS_WITH_CI(pszMethod, "GCP_")) )
-                pszThisSourceSRS = GDALGetGCPProjection( pahSrcDS[iSrc] );
-            else if( pszMethod != NULL && EQUAL(pszMethod,"RPC") )
-                pszThisSourceSRS = SRS_WKT_WGS84;
-            else
-                pszThisSourceSRS = "";
-        }
+            pszThisSourceSRS = "";
 
         if( osThisTargetSRS.empty() )
             osThisTargetSRS = pszThisSourceSRS;
@@ -2255,8 +2265,8 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
         adfDstGeoTransform[4] = 0.0;
         adfDstGeoTransform[5] = -1 * dfWrkResY;
 
-        nPixels = (int) ((dfWrkMaxX - dfWrkMinX) / dfWrkResX + 0.5);
-        nLines = (int) ((dfWrkMaxY - dfWrkMinY) / dfWrkResY + 0.5);
+        nPixels = static_cast<int>((dfWrkMaxX - dfWrkMinX) / dfWrkResX + 0.5);
+        nLines = static_cast<int>((dfWrkMaxY - dfWrkMinY) / dfWrkResY + 0.5);
     }
 
 /* -------------------------------------------------------------------- */
@@ -2280,8 +2290,12 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
             psOptions->dfMaxY = ceil(psOptions->dfMaxY / psOptions->dfYRes) * psOptions->dfYRes;
         }
 
-        nPixels = (int) ((psOptions->dfMaxX - psOptions->dfMinX + (psOptions->dfXRes/2.0)) / psOptions->dfXRes);
-        nLines = (int) ((psOptions->dfMaxY - psOptions->dfMinY + (psOptions->dfYRes/2.0)) / psOptions->dfYRes);
+        nPixels = static_cast<int>(
+            (psOptions->dfMaxX - psOptions->dfMinX + (psOptions->dfXRes/2.0)) /
+            psOptions->dfXRes);
+        nLines = static_cast<int>(
+            (psOptions->dfMaxY - psOptions->dfMinY + (psOptions->dfYRes/2.0)) /
+            psOptions->dfYRes);
         adfDstGeoTransform[0] = psOptions->dfMinX;
         adfDstGeoTransform[3] = psOptions->dfMaxY;
         adfDstGeoTransform[1] = psOptions->dfXRes;
@@ -2329,7 +2343,9 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
         adfDstGeoTransform[5] = -psOptions->dfYRes;
 
         nPixels = psOptions->nForcePixels;
-        nLines = (int) ((psOptions->dfMaxY - psOptions->dfMinY + (psOptions->dfYRes/2.0)) / psOptions->dfYRes);
+        nLines = static_cast<int>(
+            (psOptions->dfMaxY - psOptions->dfMinY + (psOptions->dfYRes/2.0)) /
+            psOptions->dfYRes);
     }
 
     else if( psOptions->nForceLines != 0 )
@@ -2350,7 +2366,9 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
         adfDstGeoTransform[1] = psOptions->dfXRes;
         adfDstGeoTransform[5] = -psOptions->dfYRes;
 
-        nPixels = (int) ((psOptions->dfMaxX - psOptions->dfMinX + (psOptions->dfXRes/2.0)) / psOptions->dfXRes);
+        nPixels = static_cast<int>(
+            (psOptions->dfMaxX - psOptions->dfMinX + (psOptions->dfXRes/2.0)) /
+            psOptions->dfXRes);
         nLines = psOptions->nForceLines;
     }
 
@@ -2359,8 +2377,12 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
         psOptions->dfXRes = adfDstGeoTransform[1];
         psOptions->dfYRes = fabs(adfDstGeoTransform[5]);
 
-        nPixels = (int) ((psOptions->dfMaxX - psOptions->dfMinX + (psOptions->dfXRes/2.0)) / psOptions->dfXRes);
-        nLines = (int) ((psOptions->dfMaxY - psOptions->dfMinY + (psOptions->dfYRes/2.0)) / psOptions->dfYRes);
+        nPixels = static_cast<int>(
+            (psOptions->dfMaxX - psOptions->dfMinX + (psOptions->dfXRes/2.0)) /
+            psOptions->dfXRes);
+        nLines = static_cast<int>(
+            (psOptions->dfMaxY - psOptions->dfMinY + (psOptions->dfYRes/2.0)) /
+            psOptions->dfYRes);
 
         psOptions->dfXRes = (psOptions->dfMaxX - psOptions->dfMinX) / nPixels;
         psOptions->dfYRes = (psOptions->dfMaxY - psOptions->dfMinY) / nLines;
@@ -2449,7 +2471,7 @@ GDALWarpCreateOutput( int nSrcCount, GDALDatasetH *pahSrcDS, const char *pszFile
 /* -------------------------------------------------------------------- */
     if( bVRT || bSetColorInterpretation )
     {
-        int nBandsToCopy = (int)apeColorInterpretations.size();
+        int nBandsToCopy = static_cast<int>(apeColorInterpretations.size());
         if ( psOptions->bEnableSrcAlpha )
             nBandsToCopy --;
         for(int iBand = 0; iBand < nBandsToCopy; iBand++)
@@ -2583,22 +2605,7 @@ TransformCutlineToSource( GDALDatasetH hSrcDS, OGRGeometryH hCutline,
 /*      one.                                                            */
 /* -------------------------------------------------------------------- */
     OGRSpatialReferenceH  hRasterSRS = NULL;
-    const char *pszProjection = CSLFetchNameValue( papszTO_In, "SRC_SRS" );
-    if( pszProjection == NULL )
-    {
-        char** papszMD;
-        if( GDALGetProjectionRef( hSrcDS ) != NULL
-            && strlen(GDALGetProjectionRef( hSrcDS )) > 0 )
-            pszProjection = GDALGetProjectionRef( hSrcDS );
-        else if( GDALGetGCPProjection( hSrcDS ) != NULL
-            && strlen(GDALGetGCPProjection( hSrcDS )) > 0 )
-            pszProjection = GDALGetGCPProjection( hSrcDS );
-        else if( GDALGetMetadata( hSrcDS, "RPC" ) != NULL )
-            pszProjection = SRS_WKT_WGS84;
-        else if( (papszMD = GDALGetMetadata( hSrcDS, "GEOLOCATION" )) != NULL )
-            pszProjection = CSLFetchNameValue( papszMD, "SRS" );
-    }
-
+    const char *pszProjection = GetSrcDSProjection( hSrcDS, papszTO_In);
     if( pszProjection != NULL )
     {
         hRasterSRS = OSRNewSpatialReference(NULL);
@@ -3014,7 +3021,7 @@ GDALWarpAppOptions *GDALWarpAppOptionsNew(char** papszArgv,
         {
             psOptions->bDisableSrcAlpha = true;
         }
-        else if( EQUAL(papszArgv[i],"-of") && i+1 < argc )
+        else if( (EQUAL(papszArgv[i],"-of") || EQUAL(papszArgv[i],"-f")) && i+1 < argc )
         {
             CPLFree(psOptions->pszFormat);
             psOptions->pszFormat = CPLStrdup(papszArgv[++i]);

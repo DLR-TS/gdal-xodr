@@ -54,7 +54,7 @@
 
 //! @cond Doxygen_Suppress
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*
 ** Notes on Multithreading:
@@ -315,6 +315,10 @@ int VSIMemHandle::Seek( vsi_l_offset nOffset, int nWhence )
     bExtendFileAtNextWrite = false;
     if( nWhence == SEEK_CUR )
     {
+        if( nOffset > INT_MAX )
+        {
+            //printf("likely negative offset intended\n");
+        }
         m_nOffset += nOffset;
     }
     else if( nWhence == SEEK_SET )
@@ -377,14 +381,13 @@ size_t VSIMemHandle::Read( void * pBuffer, size_t nSize, size_t nCount )
     // FIXME: Integer overflow check should be placed here:
     size_t nBytesToRead = nSize * nCount;
 
+    if( poFile->nLength < m_nOffset )
+    {
+        bEOF = true;
+        return 0;
+    }
     if( nBytesToRead + m_nOffset > poFile->nLength )
     {
-        if( poFile->nLength < m_nOffset )
-        {
-            bEOF = true;
-            return 0;
-        }
-
         nBytesToRead = static_cast<size_t>(poFile->nLength - m_nOffset);
         nCount = nBytesToRead / nSize;
         bEOF = true;
@@ -821,12 +824,11 @@ int VSIMemFilesystemHandler::Rename( const char *pszOldPath,
 void VSIMemFilesystemHandler::NormalizePath( CPLString &oPath )
 
 {
-    const size_t nSize = oPath.size();
-
-    for( size_t i = 0; i < nSize; i++ )
+    size_t nPos = 0;
+    while( (nPos = oPath.find('\\', nPos)) != std::string::npos )
     {
-        if( oPath[i] == '\\' )
-            oPath[i] = '/';
+        oPath[nPos] = '/';
+        nPos ++;
     }
 }
 

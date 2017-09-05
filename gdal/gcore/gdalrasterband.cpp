@@ -50,8 +50,9 @@
 #include "cpl_vsi.h"
 #include "gdal.h"
 #include "gdal_rat.h"
+#include "gdal_priv_templates.hpp"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           GDALRasterBand()                           */
@@ -984,7 +985,10 @@ int GDALRasterBand::InitBlockInfo()
             (poDS->nOpenFlags & GDAL_OF_BLOCK_ACCESS_MASK) ==
                                             GDAL_OF_DEFAULT_BLOCK_ACCESS )
         {
-            bUseArray = ( static_cast<GIntBig>(nBlocksPerRow) * nBlocksPerColumn < 1024 * 1024  );
+            GUIntBig nBlockCount = static_cast<GIntBig>(nBlocksPerRow) * nBlocksPerColumn;
+            if( poDS != NULL )
+                nBlockCount *= poDS->GetRasterCount();
+            bUseArray = ( nBlockCount  < 1024 * 1024  );
         }
         else if( (poDS->nOpenFlags & GDAL_OF_BLOCK_ACCESS_MASK) ==
                                             GDAL_OF_HASHSET_BLOCK_ACCESS )
@@ -1324,6 +1328,7 @@ GDALRasterBlock * GDALRasterBand::GetLockedBlockRef( int nXBlockOff,
 
         if( !bJustInitialize )
         {
+            const GUInt32 nErrorCounter = CPLGetErrorCounter();
             int bCallLeaveReadWrite = EnterReadWrite(GF_Read);
             eErr = IReadBlock(nXBlockOff,nYBlockOff,poBlock->GetDataRef());
             if( bCallLeaveReadWrite) LeaveReadWrite();
@@ -1332,8 +1337,10 @@ GDALRasterBlock * GDALRasterBand::GetLockedBlockRef( int nXBlockOff,
                 poBlock->DropLock();
                 FlushBlock( nXBlockOff, nYBlockOff );
                 ReportError( CE_Failure, CPLE_AppDefined,
-                    "IReadBlock failed at X offset %d, Y offset %d",
-                    nXBlockOff, nYBlockOff );
+                    "IReadBlock failed at X offset %d, Y offset %d%s",
+                    nXBlockOff, nYBlockOff,
+                    (nErrorCounter != CPLGetErrorCounter()) ?
+                        CPLSPrintf(": %s", CPLGetLastErrorMsg()) : "");
                 return NULL;
             }
 
@@ -2955,8 +2962,7 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
     bool bGotFloatNoDataValue = false;
     float fNoDataValue = 0.0f;
     if( eDataType == GDT_Float32 && bGotNoDataValue &&
-        (fabs(dfNoDataValue) <= std::numeric_limits<float>::max() ||
-         CPLIsInf(dfNoDataValue)) )
+        GDALIsValueInRange<float>(dfNoDataValue) )
     {
         fNoDataValue = static_cast<float>(dfNoDataValue);
         bGotFloatNoDataValue = true;
@@ -3039,7 +3045,7 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
                   {
                     const float fValue = static_cast<float *>(pData)[iOffset];
                     if( CPLIsNan(fValue) ||
-                        (bGotFloatNoDataValue && fValue == fNoDataValue) )
+                        (bGotFloatNoDataValue && ARE_REAL_EQUAL(fValue, fNoDataValue)) )
                         continue;
                     dfValue = fValue;
                     break;
@@ -3097,7 +3103,8 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
                     CPLAssert( false );
                 }
 
-                if( bGotNoDataValue && ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
+                if( eDataType != GDT_Float32 &&
+                    bGotNoDataValue && ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
                     continue;
 
                 const int nIndex =
@@ -3231,7 +3238,7 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
                       {
                         const float fValue = static_cast<float *>(pData)[iOffset];
                         if( CPLIsNan(fValue) ||
-                            (bGotFloatNoDataValue && fValue == fNoDataValue) )
+                            (bGotFloatNoDataValue && ARE_REAL_EQUAL(fValue, fNoDataValue)) )
                             continue;
                         dfValue = fValue;
                         break;
@@ -3286,7 +3293,7 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
                         return CE_Failure;
                     }
 
-                    if( bGotNoDataValue &&
+                    if( eDataType != GDT_Float32 && bGotNoDataValue &&
                         ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
                         continue;
 
@@ -4502,6 +4509,14 @@ void ComputeStatisticsInternal<GByte>( int nXCheck,
     }
 }
 
+CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW
+static void UnshiftSumSquare( GUIntBig& nSumSquare,
+                              GUIntBig  nSumThis,
+                              GUIntBig  i )
+{
+    nSumSquare += 32768 * (2 * nSumThis - i * 32768);
+}
+
 // AVX2/SSE2 optimization for GUInt16 case
 template<>
 void ComputeStatisticsInternal<GUInt16>( int nXCheck,
@@ -4635,7 +4650,7 @@ void ComputeStatisticsInternal<GUInt16>( int nXCheck,
                         anSumSquare[1] + anSumSquare[2] + anSumSquare[3];
 #ifndef naive_version
         // Unshift the sum of squares
-        nSumSquare += 32768 * (2 * nSumThis - static_cast<GUIntBig>(i) * 32768);
+        UnshiftSumSquare(nSumSquare, nSumThis, static_cast<GUIntBig>(i));
 #endif
         nSum += nSumThis;
 
@@ -4759,8 +4774,7 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
     bool bGotFloatNoDataValue = false;
     float fNoDataValue = 0.0f;
     if( eDataType == GDT_Float32 && bGotNoDataValue &&
-        (fabs(dfNoDataValue) <= std::numeric_limits<float>::max() ||
-         CPLIsInf(dfNoDataValue)) )
+        GDALIsValueInRange<float>(dfNoDataValue) )
     {
         fNoDataValue = static_cast<float>(dfNoDataValue);
         bGotFloatNoDataValue = true;
@@ -4847,7 +4861,7 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
                   {
                     const float fValue = static_cast<float *>(pData)[iOffset];
                     if( CPLIsNan(fValue) ||
-                        (bGotFloatNoDataValue && fValue == fNoDataValue) )
+                        (bGotFloatNoDataValue && ARE_REAL_EQUAL(fValue, fNoDataValue)) )
                         continue;
                     dfValue = fValue;
                     break;
@@ -4877,7 +4891,8 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
                     CPLAssert( false );
                 }
 
-                if( bGotNoDataValue && ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
+                if( eDataType != GDT_Float32 &&
+                    bGotNoDataValue && ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
                     continue;
 
                 if( bFirstValue )
@@ -4964,7 +4979,7 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
                 GDALRasterBlock * const poBlock =
                     GetLockedBlockRef( iXBlock, iYBlock );
                 if( poBlock == NULL )
-                    continue;
+                    return CE_Failure;
 
                 void* const pData = poBlock->GetDataRef();
 
@@ -5073,7 +5088,7 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
 
             GDALRasterBlock * const poBlock = GetLockedBlockRef( iXBlock, iYBlock );
             if( poBlock == NULL )
-                continue;
+                return CE_Failure;
 
             void* const pData = poBlock->GetDataRef();
 
@@ -5120,7 +5135,7 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
                       {
                         const float fValue = static_cast<float *>(pData)[iOffset];
                         if( CPLIsNan(fValue) ||
-                            (bGotFloatNoDataValue && fValue == fNoDataValue) )
+                            (bGotFloatNoDataValue && ARE_REAL_EQUAL(fValue, fNoDataValue)) )
                             continue;
                         dfValue = fValue;
                         break;
@@ -5150,7 +5165,7 @@ GDALRasterBand::ComputeStatistics( int bApproxOK,
                         CPLAssert( false );
                     }
 
-                    if( bGotNoDataValue &&
+                    if( eDataType != GDT_Float32 && bGotNoDataValue &&
                         ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
                         continue;
 
@@ -5478,7 +5493,7 @@ CPLErr GDALRasterBand::ComputeRasterMinMax( int bApproxOK,
                   {
                     const float fValue = static_cast<float *>(pData)[iOffset];
                     if( CPLIsNan(fValue) ||
-                        (bGotFloatNoDataValue && fValue == fNoDataValue) )
+                        (bGotFloatNoDataValue && ARE_REAL_EQUAL(fValue, fNoDataValue)) )
                         continue;
                     dfValue = fValue;
                     break;
@@ -5508,7 +5523,8 @@ CPLErr GDALRasterBand::ComputeRasterMinMax( int bApproxOK,
                     CPLAssert( false );
                 }
 
-                if( bGotNoDataValue && ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
+                if( eDataType != GDT_Float32 &&
+                    bGotNoDataValue && ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
                     continue;
 
                 if( bFirstValue )
@@ -5561,7 +5577,7 @@ CPLErr GDALRasterBand::ComputeRasterMinMax( int bApproxOK,
 
             GDALRasterBlock *poBlock = GetLockedBlockRef( iXBlock, iYBlock );
             if( poBlock == NULL )
-                continue;
+                return CE_Failure;
 
             void * const pData = poBlock->GetDataRef();
 
@@ -5607,7 +5623,7 @@ CPLErr GDALRasterBand::ComputeRasterMinMax( int bApproxOK,
                       {
                           const float fValue = static_cast<float *>(pData)[iOffset];
                           if( CPLIsNan(fValue) ||
-                              (bGotFloatNoDataValue && fValue == fNoDataValue) )
+                              (bGotFloatNoDataValue && ARE_REAL_EQUAL(fValue, fNoDataValue)) )
                               continue;
                           dfValue = fValue;
                           break;
@@ -5637,7 +5653,7 @@ CPLErr GDALRasterBand::ComputeRasterMinMax( int bApproxOK,
                         CPLAssert( false );
                     }
 
-                    if( bGotNoDataValue &&
+                    if( eDataType != GDT_Float32 && bGotNoDataValue &&
                         ARE_REAL_EQUAL(dfValue, dfNoDataValue) )
                         continue;
 

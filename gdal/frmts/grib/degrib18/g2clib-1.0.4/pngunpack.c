@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include "grib2.h"
 
 g2int pngunpack(unsigned char *cpack,g2int len,g2int *idrstmpl,g2int ndpts,
@@ -56,7 +57,13 @@ g2int pngunpack(unsigned char *cpack,g2int len,g2int *idrstmpl,g2int ndpts,
 //
       if (nbits != 0) {
          int nbytes = nbits/8;
+         if( ndpts != 0 && nbytes > INT_MAX / ndpts )
+         {
+             return 1;
+         }
          ifld=(g2int *)calloc(ndpts,sizeof(g2int));
+         // Was checked just before
+         // coverity[integer_overflow]
          ctemp=(unsigned char *)calloc(ndpts*nbytes,1);
          if ( ifld == NULL || ctemp == NULL) {
             fprintf(stderr, "Could not allocate space in jpcunpack.\n"
@@ -66,7 +73,7 @@ g2int pngunpack(unsigned char *cpack,g2int len,g2int *idrstmpl,g2int ndpts,
             return(1);
          }
          iret=(g2int)dec_png(cpack,len,&width,&height,ctemp, ndpts, nbits);
-         gbits(ctemp,ifld,0,nbits,0,ndpts);
+         gbits(ctemp,ndpts*nbytes,ifld,0,nbits,0,ndpts);
          for (j=0;j<ndpts;j++) {
             fld[j] = refD + bscale*(g2float)(ifld[j]);
          }

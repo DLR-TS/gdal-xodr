@@ -69,7 +69,7 @@ CPL_C_END
 #include "memdataset.h"
 #include "vsidataio.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const int TIFF_VERSION = 42;
 
@@ -294,7 +294,6 @@ void JPGDatasetCommon::ReadICCProfile()
 
     const vsi_l_offset nCurOffset = VSIFTellL(fpImage);
 
-    int nTotalSize = 0;
     int nChunkCount = -1;
     int anChunkSize[256] = {};
     char *apChunk[256] = {};
@@ -339,6 +338,13 @@ void JPGDatasetCommon::ReadICCProfile()
             // Segment index: 1 bytes
             // Total segments: 1 bytes
             const int nICCChunkLength = nChunkLength - 16;
+            if( nICCChunkLength < 0 )
+            {
+                CPLError(CE_Failure, CPLE_FileIO,
+                         "nICCChunkLength unreasonable: %d", nICCChunkLength);
+                bOk = false;
+                break;
+            }
             const int nICCChunkID = abyChunkHeader[16];
             const int nICCMaxChunkID = abyChunkHeader[17];
 
@@ -370,6 +376,11 @@ void JPGDatasetCommon::ReadICCProfile()
             // Load it.
             apChunk[nICCChunkID - 1] =
                 static_cast<char *>(VSIMalloc(nICCChunkLength));
+            if( apChunk[nICCChunkID - 1] == NULL )
+            {
+                bOk = false;
+                break;
+            }
             anChunkSize[nICCChunkID - 1] = nICCChunkLength;
 
             if( VSIFReadL(apChunk[nICCChunkID - 1], nICCChunkLength, 1,
@@ -383,6 +394,8 @@ void JPGDatasetCommon::ReadICCProfile()
         nChunkLoc += 2 + nChunkLength;
     }
 
+    int nTotalSize = 0;
+
     // Get total size and verify that there are no missing segments.
     if (bOk)
     {
@@ -394,36 +407,60 @@ void JPGDatasetCommon::ReadICCProfile()
                 bOk = false;
                 break;
             }
+            const int nSize = anChunkSize[i];
+            if( nSize < 0 ||
+                nTotalSize > std::numeric_limits<int>::max() - nSize )
+            {
+                CPLError(CE_Failure, CPLE_FileIO, "nTotalSize nonsensical");
+                bOk = false;
+                break;
+            }
             nTotalSize += anChunkSize[i];
         }
+    }
+
+    // TODO(schwehr): Can we know what the maximum reasonable size is?
+    if( nTotalSize > 2 << 28 )
+    {
+        CPLError(CE_Failure, CPLE_FileIO,
+                 "nTotalSize unreasonable: %d", nTotalSize);
+        bOk = false;
     }
 
     // Merge all segments together and set metadata.
     if (bOk && nChunkCount > 0)
     {
         char *pBuffer = static_cast<char *>(VSIMalloc(nTotalSize));
-        char *pBufferPtr = pBuffer;
-        for(int i = 0; i < nChunkCount; i++)
+        if( pBuffer == NULL )
         {
-            memcpy(pBufferPtr, apChunk[i], anChunkSize[i]);
-            pBufferPtr += anChunkSize[i];
+            CPLError(CE_Failure, CPLE_OutOfMemory,
+                     "ICCProfile too large.  nTotalSize: %d", nTotalSize);
         }
+        else
+        {
+            char *pBufferPtr = pBuffer;
+            for(int i = 0; i < nChunkCount; i++)
+            {
+                memcpy(pBufferPtr, apChunk[i], anChunkSize[i]);
+                pBufferPtr += anChunkSize[i];
+            }
 
-        // Escape the profile.
-        char *pszBase64Profile =
-            CPLBase64Encode(nTotalSize, reinterpret_cast<GByte *>(pBuffer));
+            // Escape the profile.
+            char *pszBase64Profile =
+                CPLBase64Encode(nTotalSize, reinterpret_cast<GByte *>(pBuffer));
 
-        // Avoid setting the PAM dirty bit just for that.
-        const int nOldPamFlags = nPamFlags;
+            // Avoid setting the PAM dirty bit just for that.
+            const int nOldPamFlags = nPamFlags;
 
-        // Set ICC profile metadata.
-        SetMetadataItem("SOURCE_ICC_PROFILE", pszBase64Profile,
-                        "COLOR_PROFILE");
+            // Set ICC profile metadata.
+            SetMetadataItem("SOURCE_ICC_PROFILE", pszBase64Profile,
+                            "COLOR_PROFILE");
 
-        nPamFlags = nOldPamFlags;
+            nPamFlags = nOldPamFlags;
 
-        VSIFree(pBuffer);
-        CPLFree(pszBase64Profile);
+            VSIFree(pBuffer);
+            CPLFree(pszBase64Profile);
+        }
     }
 
     for(int i = 0; i < nChunkCount; i++)
@@ -996,7 +1033,7 @@ GDALDataset* JPGDatasetCommon::InitEXIFOverview()
     }
 
     if (bSwabflag)
-        TIFFSwabShort(&nEntryCount);
+        CPL_SWAP16PTR(&nEntryCount);
 
     // Some files are corrupt, a large entry count is a sign of this.
     if( nEntryCount > 125 )
@@ -1017,7 +1054,7 @@ GDALDataset* JPGDatasetCommon::InitEXIFOverview()
         return NULL;
     if( bSwabflag )
         CPL_SWAP32PTR(&nNextDirOff);
-    if( nNextDirOff == 0 || nNextDirOff > 0xFFFFFFFFU - nTIFFHEADER )
+    if( nNextDirOff == 0 || nNextDirOff > UINT_MAX - nTIFFHEADER )
         return NULL;
 
     // Seek to IFD1.
@@ -1031,7 +1068,7 @@ GDALDataset* JPGDatasetCommon::InitEXIFOverview()
     }
 
     if (bSwabflag)
-        TIFFSwabShort(&nEntryCount);
+        CPL_SWAP16PTR(&nEntryCount);
     if( nEntryCount > 125 )
     {
         CPLError(CE_Warning, CPLE_AppDefined,
@@ -1059,10 +1096,10 @@ GDALDataset* JPGDatasetCommon::InitEXIFOverview()
         }
         if (bSwabflag)
         {
-            TIFFSwabShort(&sEntry.tdir_tag);
-            TIFFSwabShort(&sEntry.tdir_type);
-            TIFFSwabLong(&sEntry.tdir_count);
-            TIFFSwabLong(&sEntry.tdir_offset);
+            CPL_SWAP16PTR(&sEntry.tdir_tag);
+            CPL_SWAP16PTR(&sEntry.tdir_type);
+            CPL_SWAP32PTR(&sEntry.tdir_count);
+            CPL_SWAP32PTR(&sEntry.tdir_offset);
         }
 
 #ifdef DEBUG_VERBOSE
@@ -1100,7 +1137,7 @@ GDALDataset* JPGDatasetCommon::InitEXIFOverview()
         nImageWidth >= nRasterXSize ||
         nImageHeight >= nRasterYSize ||
         nJpegIFOffset == 0 ||
-        nJpegIFOffset > 0xFFFFFFFFU - nTIFFHEADER ||
+        nJpegIFOffset > UINT_MAX - nTIFFHEADER ||
         static_cast<int>(nJpegIFByteCount) <= 0 )
     {
         return NULL;
@@ -1280,6 +1317,7 @@ JPGDataset::JPGDataset() : nQLevel(0)
     sDInfo.data_precision = 8;
 
     memset(&sJErr, 0, sizeof(sJErr));
+    memset(&sJProgress, 0, sizeof(sJProgress));
 }
 
 /************************************************************************/
@@ -1331,6 +1369,49 @@ CPLErr JPGDataset::LoadScanline( int iLine )
 
     if (!bHasDoneJpegStartDecompress)
     {
+
+        /* In some cases, libjpeg needs to allocate a lot of memory */
+        /* http://www.libjpeg-turbo.org/pmwiki/uploads/About/TwoIssueswiththeJPEGStandard.pdf */
+        if( jpeg_has_multiple_scans(&(sDInfo)) )
+        {
+            /* In this case libjpeg will need to allocate memory or backing */
+            /* store for all coefficients */
+            /* See call to jinit_d_coef_controller() from master_selection() */
+            /* in libjpeg */
+            vsi_l_offset nRequiredMemory =
+                static_cast<vsi_l_offset>(sDInfo.image_width) *
+                sDInfo.image_height * sDInfo.num_components *
+                ((sDInfo.data_precision+7)/8);
+            /* BLOCK_SMOOTHING_SUPPORTED is generally defined, so we need */
+            /* to replicate the logic of jinit_d_coef_controller() */
+            if( sDInfo.progressive_mode )
+                nRequiredMemory *= 3;
+
+    #ifndef GDAL_LIBJPEG_LARGEST_MEM_ALLOC
+    #define GDAL_LIBJPEG_LARGEST_MEM_ALLOC (100 * 1024 * 1024)
+    #endif
+
+            if( nRequiredMemory > GDAL_LIBJPEG_LARGEST_MEM_ALLOC &&
+                CPLGetConfigOption("GDAL_ALLOW_LARGE_LIBJPEG_MEM_ALLOC", NULL) == NULL )
+            {
+                    CPLError(CE_Failure, CPLE_NotSupported,
+                        "Reading this image would require libjpeg to allocate "
+                        "at least " CPL_FRMT_GUIB " bytes. "
+                        "This is disabled since above the " CPL_FRMT_GUIB " threshold. "
+                        "You may override this restriction by defining the "
+                        "GDAL_ALLOW_LARGE_LIBJPEG_MEM_ALLOC environment variable, "
+                        "or recompile GDAL by defining the "
+                        "GDAL_LIBJPEG_LARGEST_MEM_ALLOC macro to a value greater "
+                        "than " CPL_FRMT_GUIB,
+                        static_cast<GUIntBig>(nRequiredMemory),
+                        static_cast<GUIntBig>(GDAL_LIBJPEG_LARGEST_MEM_ALLOC),
+                        static_cast<GUIntBig>(GDAL_LIBJPEG_LARGEST_MEM_ALLOC));
+                    return CE_Failure;
+            }
+        }
+
+        sDInfo.progress = &sJProgress;
+        sJProgress.progress_monitor = JPGDataset::ProgressMonitor;
         jpeg_start_decompress(&sDInfo);
         bHasDoneJpegStartDecompress = true;
     }
@@ -1635,6 +1716,8 @@ CPLErr JPGDataset::Restart()
     }
     else
     {
+        sDInfo.progress = &sJProgress;
+        sJProgress.progress_monitor = JPGDataset::ProgressMonitor;
         jpeg_start_decompress(&sDInfo);
         bHasDoneJpegStartDecompress = true;
     }
@@ -1896,8 +1979,11 @@ int JPGDatasetCommon::Identify( GDALOpenInfo *poOpenInfo )
 GDALDataset *JPGDatasetCommon::Open( GDALOpenInfo *poOpenInfo )
 
 {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    // During fuzzing, do not use Identify to reject crazy content.
     if( !Identify(poOpenInfo) )
         return NULL;
+#endif
 
     if( poOpenInfo->eAccess == GA_Update )
     {
@@ -2526,6 +2612,36 @@ void JPGDataset::EmitMessage(j_common_ptr cinfo, int msg_level)
 
         // Always count warnings in num_warnings.
         err->num_warnings++;
+    }
+}
+
+
+/************************************************************************/
+/*                          ProgressMonitor()                           */
+/************************************************************************/
+
+/* Avoid the risk of denial-of-service on crafted JPEGs with an insane */
+/* number of scans. */
+/* See http://www.libjpeg-turbo.org/pmwiki/uploads/About/TwoIssueswiththeJPEGStandard.pdf */
+void JPGDataset::ProgressMonitor(j_common_ptr cinfo)
+{
+    if (cinfo->is_decompressor)
+    {
+        const int scan_no =
+            reinterpret_cast<j_decompress_ptr>(cinfo)->input_scan_number;
+        const int MAX_SCANS = atoi(
+            CPLGetConfigOption("GDAL_JPEG_MAX_ALLOWED_SCAN_NUMBER", "100"));
+        if (scan_no >= MAX_SCANS)
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Scan number %d exceeds maximum scans (%d)",
+                     scan_no, MAX_SCANS);
+
+            GDALJPEGErrorStruct *psErrorStruct =
+                static_cast<GDALJPEGErrorStruct *>(cinfo->client_data);
+            // Return control to the setjmp point.
+            longjmp(psErrorStruct->setjmp_buffer, 1);
+        }
     }
 }
 

@@ -40,7 +40,7 @@
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const char * const apszDefDefn[] = {
     "Edsc_Table",
@@ -184,8 +184,12 @@ HFAType * HFADictionary::FindType( const char * pszName )
             HFAType *poNewType = new HFAType();
 
             poNewType->Initialize(apszDefDefn[i + 1]);
+            if( !poNewType->CompleteDefn(this) )
+            {
+                delete poNewType;
+                return NULL;
+            }
             AddType(poNewType);
-            poNewType->CompleteDefn(this);
 
             if( !osDictionaryText.empty() )
                 osDictionaryText.erase(osDictionaryText.size() - 1, 1);

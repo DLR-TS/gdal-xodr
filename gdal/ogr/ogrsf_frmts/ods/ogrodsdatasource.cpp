@@ -34,7 +34,7 @@
 #include "ods_formula.h"
 #include <set>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 namespace OGRODS {
 
@@ -314,6 +314,7 @@ int OGRODSDataSource::Open( const char * pszFilename,
                             int bUpdatableIn)
 
 {
+    SetDescription(pszFilename);
     bUpdatable = CPL_TO_BOOL(bUpdatableIn);
 
     pszName = CPLStrdup( pszFilename );

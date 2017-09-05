@@ -44,7 +44,7 @@
 
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           GDALWMSDataset()                           */
@@ -119,7 +119,7 @@ CPLErr GDALWMSDataset::Initialize(CPLXMLNode *config, char **l_papszOpenOptions)
     if (pszReferer[0] != '\0')
         m_osReferer = pszReferer;
 
-    if (ret == CE_None) {
+    {
         const char *pszHttpZeroBlockCodes = CPLGetXMLValue(config, "ZeroBlockHttpCodes", "");
         if (pszHttpZeroBlockCodes[0] == '\0') {
             m_http_zeroblock_codes.insert(204);
@@ -525,7 +525,8 @@ CPLErr GDALWMSDataset::Initialize(CPLXMLNode *config, char **l_papszOpenOptions)
                 double scale = 0.5;
                 for (int j = 0; j < nOverviews; ++j)
                 {
-                    band->AddOverview(scale);
+                    if( !band->AddOverview(scale) )
+                        break;
                     band->m_color_interp = color_interp;
                     scale *= 0.5;
                 }

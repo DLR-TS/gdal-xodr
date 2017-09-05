@@ -44,7 +44,7 @@
 #include "gmlutils.h"
 #include "ogr_geometry.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                            ~IGMLReader()                             */
@@ -349,7 +349,7 @@ bool GMLReader::SetupParserXerces()
     }
 
     if (m_GMLInputSource == NULL && fpGML != NULL)
-        m_GMLInputSource = new GMLInputSource(fpGML);
+        m_GMLInputSource = OGRCreateXercesInputSource(fpGML);
 
     return true;
 }
@@ -406,7 +406,7 @@ void GMLReader::CleanupParser()
 #ifdef HAVE_XERCES
     delete m_poSAXReader;
     m_poSAXReader = NULL;
-    delete m_GMLInputSource;
+    OGRDestroyXercesInputSource(m_GMLInputSource);
     m_GMLInputSource = NULL;
     delete m_poCompleteFeature;
     m_poCompleteFeature = NULL;
@@ -433,38 +433,6 @@ void GMLReader::CleanupParser()
 
     m_bReadStarted = false;
 }
-
-#ifdef HAVE_XERCES
-
-GMLBinInputStream::GMLBinInputStream(VSILFILE *fpIn) :
-    fp(fpIn),
-    emptyString(0)
-{}
-
-GMLBinInputStream::~GMLBinInputStream() {}
-
-XMLFilePos GMLBinInputStream::curPos() const
-{
-    return (XMLFilePos)VSIFTellL(fp);
-}
-
-XMLSize_t GMLBinInputStream::readBytes(XMLByte* const toFill, const XMLSize_t maxToRead)
-{
-    return (XMLSize_t)VSIFReadL(toFill, 1, maxToRead, fp);
-}
-
-const XMLCh *GMLBinInputStream::getContentType() const { return &emptyString; }
-
-GMLInputSource::GMLInputSource(VSILFILE *fp, MemoryManager *const manager) :
-    InputSource(manager),
-    binInputStream(new GMLBinInputStream(fp))
-{}
-
-GMLInputSource::~GMLInputSource() {}
-
-BinInputStream *GMLInputSource::makeStream() const { return binInputStream; }
-
-#endif  // HAVE_XERCES
 
 /************************************************************************/
 /*                        NextFeatureXerces()                           */
@@ -734,19 +702,19 @@ int GMLReader::GetFeatureElementIndex( const char *pszElement,
 
         // Begin of CSW SearchResults.
         else if (nElementLength == (int)strlen("BriefRecord") &&
-                 nLenLast == (int)strlen("SearchResults") &&
+                 nLenLast == strlen("SearchResults") &&
                  strcmp(pszElement, "BriefRecord") == 0 &&
                  strcmp(pszLast, "SearchResults") == 0)
         {
         }
         else if (nElementLength == (int)strlen("SummaryRecord") &&
-                 nLenLast == (int)strlen("SearchResults") &&
+                 nLenLast == strlen("SearchResults") &&
                  strcmp(pszElement, "SummaryRecord") == 0 &&
                  strcmp(pszLast, "SearchResults") == 0)
         {
         }
         else if (nElementLength == (int)strlen("Record") &&
-                 nLenLast == (int)strlen("SearchResults") &&
+                 nLenLast == strlen("SearchResults") &&
                  strcmp(pszElement, "Record") == 0 &&
                  strcmp(pszLast, "SearchResults") == 0)
         {
@@ -897,6 +865,11 @@ void GMLReader::PopState()
             m_poCompleteFeature == NULL )
         {
             m_poCompleteFeature = m_poState->m_poFeature;
+            m_poState->m_poFeature = NULL;
+        }
+        else if( !bUseExpatReader && m_poState->m_poFeature != NULL )
+        {
+            delete m_poState->m_poFeature;
             m_poState->m_poFeature = NULL;
         }
 #endif
@@ -1124,7 +1097,7 @@ void GMLReader::SetFeaturePropertyDirectly( const char *pszElement,
 /* -------------------------------------------------------------------- */
 /*      Do we need to update the property type?                         */
 /* -------------------------------------------------------------------- */
-    if( !poClass->IsSchemaLocked() )
+    if( !poClass->IsSchemaLocked() && !EQUAL(pszValue, OGR_GML_NULL) )
     {
         poClass->GetProperty(iProperty)->AnalysePropertyValue(
             poFeature->GetProperty(iProperty), m_bSetWidthFlag );
@@ -1303,8 +1276,8 @@ bool GMLReader::SaveClasses( const char *pszFile )
 /************************************************************************/
 
 bool GMLReader::PrescanForSchema( bool bGetExtents,
-                                 bool bAnalyzeSRSPerFeature,
-                                 bool bOnlyDetectSRS )
+                                  bool bAnalyzeSRSPerFeature,
+                                  bool bOnlyDetectSRS )
 
 {
     if( m_pszFilename == NULL )

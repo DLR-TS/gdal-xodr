@@ -107,19 +107,20 @@ public:
                                   GDALProgressFunc pfnProgress,
                                   void *pProgressData ) = 0;
 
-    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char * ) = 0;
+    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char *, void* ) = 0;
     virtual CPLXMLNode *SerializeToXML( const char *pszVRTPath ) = 0;
 
     virtual void   GetFileList(char*** ppapszFileList, int *pnSize,
                                int *pnMaxSize, CPLHashSet* hSetFiles);
 
     virtual int    IsSimpleSource() { return FALSE; }
+    virtual CPLErr FlushCache() { return CE_None; }
 };
 
-typedef VRTSource *(*VRTSourceParser)(CPLXMLNode *, const char *);
+typedef VRTSource *(*VRTSourceParser)(CPLXMLNode *, const char *, void* pUniqueHandle);
 
-VRTSource *VRTParseCoreSources( CPLXMLNode *psTree, const char * );
-VRTSource *VRTParseFilterSources( CPLXMLNode *psTree, const char * );
+VRTSource *VRTParseCoreSources( CPLXMLNode *psTree, const char *, void* pUniqueHandle );
+VRTSource *VRTParseFilterSources( CPLXMLNode *psTree, const char *, void* pUniqueHandle );
 
 /************************************************************************/
 /*                              VRTDataset                              */
@@ -400,7 +401,7 @@ class CPL_DLL VRTRasterBand : public GDALRasterBand
                     VRTRasterBand();
     virtual        ~VRTRasterBand();
 
-    virtual CPLErr         XMLInit( CPLXMLNode *, const char * );
+    virtual CPLErr         XMLInit( CPLXMLNode *, const char *, void* );
     virtual CPLXMLNode *   SerializeToXML( const char *pszVRTPath );
 
     virtual CPLErr SetNoDataValue( double ) CPL_OVERRIDE;
@@ -517,7 +518,7 @@ class CPL_DLL VRTSourcedRasterBand : public VRTRasterBand
                                          const char * pszValue,
                                          const char * pszDomain = "" ) CPL_OVERRIDE;
 
-    virtual CPLErr         XMLInit( CPLXMLNode *, const char * ) CPL_OVERRIDE;
+    virtual CPLErr         XMLInit( CPLXMLNode *, const char *, void* ) CPL_OVERRIDE;
     virtual CPLXMLNode *   SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual double GetMinimum( int *pbSuccess = NULL ) CPL_OVERRIDE;
@@ -579,6 +580,8 @@ class CPL_DLL VRTSourcedRasterBand : public VRTRasterBand
     virtual int         CloseDependentDatasets() CPL_OVERRIDE;
 
     virtual int         IsSourcedRasterBand() CPL_OVERRIDE { return TRUE; }
+
+    virtual CPLErr      FlushCache() CPL_OVERRIDE;
 };
 
 /************************************************************************/
@@ -592,7 +595,6 @@ class CPL_DLL VRTWarpedRasterBand : public VRTRasterBand
                                         GDALDataType eType = GDT_Unknown );
     virtual        ~VRTWarpedRasterBand();
 
-    virtual CPLErr         XMLInit( CPLXMLNode *, const char * ) CPL_OVERRIDE;
     virtual CPLXMLNode *   SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual CPLErr IReadBlock( int, int, void * ) CPL_OVERRIDE;
@@ -615,7 +617,6 @@ class VRTPansharpenedRasterBand : public VRTRasterBand
                        GDALDataType eDataType = GDT_Unknown );
     virtual        ~VRTPansharpenedRasterBand();
 
-    virtual CPLErr         XMLInit( CPLXMLNode *, const char * ) CPL_OVERRIDE;
     virtual CPLXMLNode *   SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual CPLErr IReadBlock( int, int, void * ) CPL_OVERRIDE;
@@ -675,7 +676,7 @@ class CPL_DLL VRTDerivedRasterBand : public VRTSourcedRasterBand
     void SetPixelFunctionName( const char *pszFuncName );
     void SetSourceTransferType( GDALDataType eDataType );
 
-    virtual CPLErr         XMLInit( CPLXMLNode *, const char * ) CPL_OVERRIDE;
+    virtual CPLErr         XMLInit( CPLXMLNode *, const char *, void* ) CPL_OVERRIDE;
     virtual CPLXMLNode *   SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual double GetMinimum( int *pbSuccess = NULL ) CPL_OVERRIDE;
@@ -713,7 +714,7 @@ class CPL_DLL VRTRawRasterBand : public VRTRasterBand
                                      GDALDataType eType = GDT_Unknown );
     virtual        ~VRTRawRasterBand();
 
-    virtual CPLErr         XMLInit( CPLXMLNode *, const char * ) CPL_OVERRIDE;
+    virtual CPLErr         XMLInit( CPLXMLNode *, const char *, void* ) CPL_OVERRIDE;
     virtual CPLXMLNode *   SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual CPLErr IRasterIO( GDALRWFlag, int, int, int, int,
@@ -754,7 +755,8 @@ class VRTDriver : public GDALDriver
     virtual CPLErr      SetMetadata( char ** papszMetadata,
                                      const char * pszDomain = "" ) CPL_OVERRIDE;
 
-    VRTSource   *ParseSource( CPLXMLNode *psSrc, const char *pszVRTPath );
+    VRTSource   *ParseSource( CPLXMLNode *psSrc, const char *pszVRTPath,
+                              void* pUniqueHandle );
     void         AddSourceParser( const char *pszElementName,
                                   VRTSourceParser pfnParser );
 };
@@ -792,6 +794,7 @@ protected:
 
     int                 m_bRelativeToVRTOri;
     CPLString           m_osSourceFileNameOri;
+    int                 m_nExplicitSharedStatus; // -1 unknown, 0 = unshared, 1 = shared
 
     int                 NeedMaxValAdjustment() const;
 
@@ -801,7 +804,7 @@ public:
                              double dfXDstRatio, double dfYDstRatio );
     virtual ~VRTSimpleSource();
 
-    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char * ) CPL_OVERRIDE;
+    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char *, void* ) CPL_OVERRIDE;
     virtual CPLXMLNode *SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     void           SetSrcBand( GDALRasterBand * );
@@ -851,6 +854,7 @@ public:
 
     virtual int    IsSimpleSource() CPL_OVERRIDE { return TRUE; }
     virtual const char* GetType() { return "SimpleSource"; }
+    virtual CPLErr FlushCache() CPL_OVERRIDE;
 
     GDALRasterBand* GetBand();
     int             IsSameExceptBandNumber( VRTSimpleSource* poOtherSource );
@@ -970,7 +974,7 @@ public:
                                   void *pProgressData ) CPL_OVERRIDE;
 
     virtual CPLXMLNode *SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
-    virtual CPLErr XMLInit( CPLXMLNode *, const char * ) CPL_OVERRIDE;
+    virtual CPLErr XMLInit( CPLXMLNode *, const char *, void* ) CPL_OVERRIDE;
     virtual const char* GetType() CPL_OVERRIDE { return "ComplexSource"; }
 
     double  LookupValue( double dfInput );
@@ -1039,7 +1043,7 @@ public:
             VRTKernelFilteredSource();
     virtual ~VRTKernelFilteredSource();
 
-    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char * ) CPL_OVERRIDE;
+    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char *, void* ) CPL_OVERRIDE;
     virtual CPLXMLNode *SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual CPLErr  FilterData( int nXSize, int nYSize, GDALDataType eType,
@@ -1059,7 +1063,7 @@ public:
             explicit VRTAverageFilteredSource( int nKernelSize );
     virtual ~VRTAverageFilteredSource();
 
-    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char * ) CPL_OVERRIDE;
+    virtual CPLErr  XMLInit( CPLXMLNode *psTree, const char *, void* ) CPL_OVERRIDE;
     virtual CPLXMLNode *SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 };
 
@@ -1072,7 +1076,7 @@ public:
             VRTFuncSource();
     virtual ~VRTFuncSource();
 
-    virtual CPLErr  XMLInit( CPLXMLNode *, const char *) CPL_OVERRIDE { return CE_Failure; }
+    virtual CPLErr  XMLInit( CPLXMLNode *, const char *, void* ) CPL_OVERRIDE { return CE_Failure; }
     virtual CPLXMLNode *SerializeToXML( const char *pszVRTPath ) CPL_OVERRIDE;
 
     virtual CPLErr  RasterIO( int nXOff, int nYOff, int nXSize, int nYSize,

@@ -41,7 +41,7 @@
 #include "../../ogr/ogrsf_frmts/mitab/mitab.h"
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #define NODATA -1.e37f
 #define SCALE16BIT 65534.0
@@ -224,6 +224,9 @@ CPLErr NWT_GRDRasterBand::IWriteBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
     // Each block is an entire row of the dataset, so the x offset should always be 0
     CPLAssert(nBlockXOff == 0);
     NWT_GRDDataset *poGDS = reinterpret_cast<NWT_GRDDataset *>(poDS);
+
+    if( dfScale == 0.0 )
+        return CE_Failure;
 
     // Ensure the blocksize is not beyond the system limits and
     // initialise the size of the record

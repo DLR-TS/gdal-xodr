@@ -49,7 +49,7 @@ extern "C" void GDALRegister_WMTS();
 
 #define WMTS_WGS84_DEG_PER_METER    (180 / M_PI / SRS_WGS84_SEMIMAJOR)
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 typedef enum
 {
@@ -719,6 +719,12 @@ int WMTSDataset::ReadTMS(CPLXMLNode* psContents,
             oTM.osIdentifier = l_pszIdentifier;
             oTM.dfScaleDenominator = CPLAtof(pszScaleDenominator);
             oTM.dfPixelSize = oTM.dfScaleDenominator * WMTS_PITCH;
+            if( oTM.dfPixelSize <= 0.0 )
+            {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "Invalid ScaleDenominator");
+                return FALSE;
+            }
             if( oTMS.oSRS.IsGeographic() )
                 oTM.dfPixelSize *= WMTS_WGS84_DEG_PER_METER;
             double dfVal1 = CPLAtof(pszTopLeftCorner);
@@ -1137,8 +1143,10 @@ GDALDataset* WMTSDataset::Open(GDALOpenInfo* poOpenInfo)
 
     if( STARTS_WITH(osGetCapabilitiesURL, "/vsimem/") )
     {
-        if( CPLGetXMLValue(psXML, "=Capabilities.ServiceMetadataURL.href", NULL) )
-            osGetCapabilitiesURL = CPLGetXMLValue(psXML, "=Capabilities.ServiceMetadataURL.href", NULL);
+        const char* pszHref = CPLGetXMLValue(psXML,
+                            "=Capabilities.ServiceMetadataURL.href", NULL);
+        if( pszHref )
+            osGetCapabilitiesURL = pszHref;
         else
         {
             osGetCapabilitiesURL = GetOperationKVPURL(psXML, "GetCapabilities");

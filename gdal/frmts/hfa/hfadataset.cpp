@@ -62,7 +62,7 @@
 #include "ogr_spatialref.h"
 #include "ogr_srs_api.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const double R2D = 180.0 / M_PI;
 static const double D2R = M_PI / 180.0;
@@ -2247,24 +2247,24 @@ void HFARasterBand::ReadHistogramMetadata()
     {
         int nMaxValue = 0;
         int nMinValue = 1000000;
-        bool bAllInteger = true;
 
         for( int i = 0; i < nNumBins; i++ )
         {
-            if( padfBinValues[i] != floor(padfBinValues[i]) )
-                bAllInteger = false;
+            const double dfCurrent = padfBinValues[i];
 
-            nMaxValue = std::max(nMaxValue, static_cast<int>(padfBinValues[i]));
-            nMinValue = std::min(nMinValue, static_cast<int>(padfBinValues[i]));
-        }
+            if( dfCurrent != floor(dfCurrent) || /* not an integer value */
+                dfCurrent < 0.0 || dfCurrent > 1000.0 )
+            {
+                CPLFree(padfBinValues);
+                CPLFree(panHistValues);
+                CPLDebug(
+                    "HFA", "Unable to offer histogram because unique values "
+                    "list is not convenient to reform as HISTOBINVALUES.");
+                return;
+            }
 
-        if( nMinValue < 0 || nMaxValue > 1000 || !bAllInteger )
-        {
-            CPLFree(padfBinValues);
-            CPLFree(panHistValues);
-            CPLDebug("HFA", "Unable to offer histogram because unique values "
-                     "list is not convenient to reform as HISTOBINVALUES.");
-            return;
+            nMaxValue = std::max(nMaxValue, static_cast<int>(dfCurrent));
+            nMinValue = std::min(nMinValue, static_cast<int>(dfCurrent));
         }
 
         const int nNewBins = nMaxValue + 1;
@@ -4101,7 +4101,9 @@ int WritePeStringIfNeeded( OGRSpatialReference* poSRS, HFAHandle hHFA )
         if( !ret )
         {
             OGR_SRSNode *poAUnits = poSRS->GetAttrNode("GEOGCS|UNIT");
-            name = poAUnits->GetChild(0)->GetValue();
+            OGR_SRSNode *poChild =
+                poAUnits == NULL ? NULL : poAUnits->GetChild(0);
+            name = poChild == NULL ? NULL : poChild->GetValue();
             if( name && !EQUAL(name, "Degree") )
                 ret = true;
         }

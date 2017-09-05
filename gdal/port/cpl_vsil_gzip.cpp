@@ -108,7 +108,7 @@
 #include "cpl_vsi_virtual.h"
 
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const int Z_BUFSIZE = 65536;  // Original size is 16384
 static const int gz_magic[2] = {0x1f, 0x8b};  // gzip magic header
@@ -138,7 +138,7 @@ static const int gz_magic[2] = {0x1f, 0x8b};  // gzip magic header
 
 typedef struct
 {
-    vsi_l_offset  uncompressed_pos;
+    vsi_l_offset  posInBaseHandle;
     z_stream      stream;
     uLong         crc;
     int           transparent;
@@ -215,12 +215,14 @@ class VSIGZipHandle CPL_FINAL : public VSIVirtualHandle
     vsi_l_offset      GetUncompressedSize() { return m_uncompressed_size; }
 
     void              SaveInfo_unlocked();
+    void              UnsetCanSaveInfo() { m_bCanSaveInfo = false; }
 };
 
 class VSIGZipFilesystemHandler CPL_FINAL : public VSIFilesystemHandler
 {
     CPLMutex* hMutex;
     VSIGZipHandle* poHandleLastGZipFile;
+    bool           m_bInSaveInfo;
 
 public:
     VSIGZipFilesystemHandler();
@@ -283,10 +285,10 @@ VSIGZipHandle* VSIGZipHandle::Duplicate()
          i < m_compressed_size / snapshot_byte_interval + 1;
          i++ )
     {
-        if( snapshots[i].uncompressed_pos == 0 )
+        if( snapshots[i].posInBaseHandle == 0 )
             break;
 
-        poHandle->snapshots[i].uncompressed_pos = snapshots[i].uncompressed_pos;
+        poHandle->snapshots[i].posInBaseHandle = snapshots[i].posInBaseHandle;
         inflateCopy( &poHandle->snapshots[i].stream, &snapshots[i].stream);
         poHandle->snapshots[i].crc = snapshots[i].crc;
         poHandle->snapshots[i].transparent = snapshots[i].transparent;
@@ -440,7 +442,7 @@ VSIGZipHandle::~VSIGZipHandle()
              i < m_compressed_size / snapshot_byte_interval + 1;
              i++ )
         {
-            if( snapshots[i].uncompressed_pos )
+            if( snapshots[i].posInBaseHandle )
             {
                 inflateEnd(&(snapshots[i].stream));
             }
@@ -750,7 +752,7 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
          i < m_compressed_size / snapshot_byte_interval + 1;
          i++ )
     {
-        if( snapshots[i].uncompressed_pos == 0 )
+        if( snapshots[i].posInBaseHandle == 0 )
             break;
         if( snapshots[i].out <= out + offset &&
             (i == m_compressed_size / snapshot_byte_interval ||
@@ -762,17 +764,17 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
 #ifdef ENABLE_DEBUG
             CPLDebug(
                 "SNAPSHOT", "using snapshot %d : "
-                "uncompressed_pos(snapshot)=" CPL_FRMT_GUIB
+                "posInBaseHandle(snapshot)=" CPL_FRMT_GUIB
                 " in(snapshot)=" CPL_FRMT_GUIB
                 " out(snapshot)=" CPL_FRMT_GUIB
                 " out=" CPL_FRMT_GUIB
                 " offset=" CPL_FRMT_GUIB,
-                i, snapshots[i].uncompressed_pos, snapshots[i].in,
+                i, snapshots[i].posInBaseHandle, snapshots[i].in,
                 snapshots[i].out, out, offset);
 #endif
             offset = out + offset - snapshots[i].out;
             if( VSIFSeekL((VSILFILE*)m_poBaseHandle,
-                          snapshots[i].uncompressed_pos, SEEK_SET) != 0 )
+                          snapshots[i].posInBaseHandle, SEEK_SET) != 0 )
                 CPLError(CE_Failure, CPLE_FileIO, "Seek() failed");
 
             inflateEnd(&stream);
@@ -836,7 +838,9 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
     {
         m_uncompressed_size = out;
 
-        if( m_pszBaseFileName )
+        if( m_pszBaseFileName &&
+            !STARTS_WITH_CI(m_pszBaseFileName, "/vsicurl/") &&
+            CPLTestBool(CPLGetConfigOption("CPL_VSIL_GZIP_WRITE_PROPERTIES", "YES")) )
         {
             CPLString osCacheFilename (m_pszBaseFileName);
             osCacheFilename += ".properties";
@@ -959,12 +963,27 @@ size_t VSIGZipHandle::Read( void * const buf, size_t const nSize,
         }
         if( stream.avail_in == 0 && !z_eof )
         {
-            vsi_l_offset uncompressed_pos =
+            vsi_l_offset posInBaseHandle =
                 VSIFTellL((VSILFILE*)m_poBaseHandle);
+            if( posInBaseHandle - startOff > m_compressed_size )
+            {
+                // If we reach here, file size has changed (because at
+                // construction time startOff + m_compressed_size marked the
+                // end of file).
+                // We should probably have a better fix than that, by detecting
+                // at open time that the saved snapshot is not valid and
+                // discarding it.
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "File size of underlying /vsigzip/ file has changed");
+                z_eof = 1;
+                in = 0;
+                CPL_VSIL_GZ_RETURN(0);
+                return 0;
+            }
             GZipSnapshot* snapshot =
-                &snapshots[(uncompressed_pos - startOff) /
+                &snapshots[(posInBaseHandle - startOff) /
                            snapshot_byte_interval];
-            if( snapshot->uncompressed_pos == 0 )
+            if( snapshot->posInBaseHandle == 0 )
             {
                 snapshot->crc =
                     crc32(crc, pStart,
@@ -972,16 +991,16 @@ size_t VSIGZipHandle::Read( void * const buf, size_t const nSize,
 #ifdef ENABLE_DEBUG
                 CPLDebug("SNAPSHOT",
                          "creating snapshot %d : "
-                         "uncompressed_pos=" CPL_FRMT_GUIB
+                         "posInBaseHandle=" CPL_FRMT_GUIB
                          " in=" CPL_FRMT_GUIB
                          " out=" CPL_FRMT_GUIB
                          " crc=%X",
-                         static_cast<int>((uncompressed_pos - startOff) /
+                         static_cast<int>((posInBaseHandle - startOff) /
                                           snapshot_byte_interval),
-                         uncompressed_pos, in, out,
+                         posInBaseHandle, in, out,
                          static_cast<unsigned int>(snapshot->crc));
 #endif
-                snapshot->uncompressed_pos = uncompressed_pos;
+                snapshot->posInBaseHandle = posInBaseHandle;
                 inflateCopy(&snapshot->stream, &stream);
                 snapshot->transparent = m_transparent;
                 snapshot->in = in;
@@ -1005,9 +1024,9 @@ size_t VSIGZipHandle::Read( void * const buf, size_t const nSize,
                 CPLDebug("GZIP", "avail_in before = %d", stream.avail_in);
 #endif
                 stream.avail_in =
-                    stream.avail_in +
-                    static_cast<uInt>(offsetEndCompressedData -
-                                      VSIFTellL((VSILFILE*)m_poBaseHandle));
+                    stream.avail_in -
+                    static_cast<uInt>(VSIFTellL((VSILFILE*)m_poBaseHandle) -
+                                      offsetEndCompressedData);
                 if( VSIFSeekL((VSILFILE*)m_poBaseHandle,
                               offsetEndCompressedData, SEEK_SET) != 0 )
                     CPLError(CE_Failure, CPLE_FileIO, "Seek() failed");
@@ -1024,10 +1043,6 @@ size_t VSIGZipHandle::Read( void * const buf, size_t const nSize,
                     z_err = Z_ERRNO;
                     break;
                 }
-                // if( ferror (file) ) {
-                //    z_err = Z_ERRNO;
-                //    break;
-                // }
             }
             stream.next_in = inbuf;
         }
@@ -1094,7 +1109,7 @@ size_t VSIGZipHandle::Read( void * const buf, size_t const nSize,
     crc = crc32(crc, pStart, static_cast<uInt>(stream.next_out - pStart));
 
     if( len == stream.avail_out &&
-        (z_err == Z_DATA_ERROR || z_err == Z_ERRNO) )
+        (z_err == Z_DATA_ERROR || z_err == Z_ERRNO || z_err == Z_BUF_ERROR) )
     {
         z_eof = 1;
         in = 0;
@@ -1462,6 +1477,7 @@ VSIGZipFilesystemHandler::VSIGZipFilesystemHandler()
     hMutex = NULL;
 
     poHandleLastGZipFile = NULL;
+    m_bInSaveInfo = false;
 }
 
 /************************************************************************/
@@ -1471,7 +1487,10 @@ VSIGZipFilesystemHandler::VSIGZipFilesystemHandler()
 VSIGZipFilesystemHandler::~VSIGZipFilesystemHandler()
 {
     if( poHandleLastGZipFile )
+    {
+        poHandleLastGZipFile->UnsetCanSaveInfo();
         delete poHandleLastGZipFile;
+    }
 
     if( hMutex != NULL )
         CPLDestroyMutex( hMutex );
@@ -1490,37 +1509,32 @@ void VSIGZipFilesystemHandler::SaveInfo( VSIGZipHandle* poHandle )
 
 void VSIGZipFilesystemHandler::SaveInfo_unlocked( VSIGZipHandle* poHandle )
 {
+    if( m_bInSaveInfo )
+        return;
+    m_bInSaveInfo = true;
+
+    CPLAssert( poHandle != poHandleLastGZipFile );
     CPLAssert(poHandle->GetBaseFileName() != NULL);
 
-    if( poHandleLastGZipFile &&
+    if( poHandleLastGZipFile == NULL ||
         strcmp(poHandleLastGZipFile->GetBaseFileName(),
-               poHandle->GetBaseFileName()) == 0 )
-    {
-        if( poHandle->GetLastReadOffset() >
+               poHandle->GetBaseFileName()) != 0 ||
+        poHandle->GetLastReadOffset() >
             poHandleLastGZipFile->GetLastReadOffset() )
-        {
-            VSIGZipHandle* poTmp = poHandleLastGZipFile;
-            poHandleLastGZipFile = NULL;
-            poTmp->SaveInfo_unlocked();
-            delete poTmp;
-            poHandleLastGZipFile = poHandle->Duplicate();
-            if( poHandleLastGZipFile )
-                poHandleLastGZipFile->CloseBaseHandle();
-        }
-    }
-    else
     {
         VSIGZipHandle* poTmp = poHandleLastGZipFile;
         poHandleLastGZipFile = NULL;
         if( poTmp )
         {
-            poTmp->SaveInfo_unlocked();
+            poTmp->UnsetCanSaveInfo();
             delete poTmp;
         }
+        CPLAssert(poHandleLastGZipFile == NULL);
         poHandleLastGZipFile = poHandle->Duplicate();
         if( poHandleLastGZipFile )
             poHandleLastGZipFile->CloseBaseHandle();
     }
+    m_bInSaveInfo = false;
 }
 
 /************************************************************************/
@@ -1589,6 +1603,11 @@ VSIGZipHandle* VSIGZipFilesystemHandler::OpenGZipReadOnly(
 
     CPLMutexHolder oHolder(&hMutex);
 
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    // Disable caching in fuzzing mode as the /vsigzip/ file is likely to
+    // change very often
+    // TODO: filename-based logic isn't enough. We should probably check
+    // timestamp and/or file size.
     if( poHandleLastGZipFile != NULL &&
         strcmp(pszFilename + strlen("/vsigzip/"),
                poHandleLastGZipFile->GetBaseFileName()) == 0 &&
@@ -1598,6 +1617,9 @@ VSIGZipHandle* VSIGZipFilesystemHandler::OpenGZipReadOnly(
         if( poHandle )
             return poHandle;
     }
+#else
+    CPL_IGNORE_RET_VAL(pszAccess);
+#endif
 
     VSIVirtualHandle* poVirtualHandle =
         poFSHandler->Open( pszFilename + strlen("/vsigzip/"), "rb" );
@@ -1609,13 +1631,14 @@ VSIGZipHandle* VSIGZipFilesystemHandler::OpenGZipReadOnly(
     if( VSIFReadL(signature, 1, 2, (VSILFILE*)poVirtualHandle) != 2 ||
         signature[0] != gz_magic[0] || signature[1] != gz_magic[1] )
     {
+        poVirtualHandle->Close();
         delete poVirtualHandle;
         return NULL;
     }
 
     if( poHandleLastGZipFile )
     {
-        poHandleLastGZipFile->SaveInfo_unlocked();
+        poHandleLastGZipFile->UnsetCanSaveInfo();
         delete poHandleLastGZipFile;
         poHandleLastGZipFile = NULL;
     }
@@ -2033,7 +2056,7 @@ class VSIZipWriteHandle CPL_FINAL : public VSIVirtualHandle
     void  StartNewFile( VSIZipWriteHandle* poSubFile );
     void  StopCurrentFile();
     void* GetHandle() { return m_hZIP; }
-    VSIZipWriteHandle* GetChildInWriting() { return poChildInWriting; };
+    VSIZipWriteHandle* GetChildInWriting() { return poChildInWriting; }
     void SetAutoDeleteParent() { bAutoDeleteParent = true; }
 };
 
@@ -2607,7 +2630,7 @@ void VSIZipWriteHandle::StartNewFile( VSIZipWriteHandle* poSubFile )
  *
  * Starting with GDAL 2.2, an alternate syntax is available so as to enable
  * chaining and not being dependent on .zip extension :
- * /vsitar/{/path/to/the/archive}/path/inside/the/zip/file.
+ * /vsizip/{/path/to/the/archive}/path/inside/the/zip/file.
  * Note that /path/to/the/archive may also itself this alternate syntax.
  *
  * If the path is absolute, it should begin with a / on a Unix-like OS (or C:\

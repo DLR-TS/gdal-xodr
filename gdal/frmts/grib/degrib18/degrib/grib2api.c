@@ -389,9 +389,13 @@ static int TransferInt (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
          }
       }
    } else {
-      if (nx * ny != ngrdpts) {
+      if( nx <= 0 || ny <= 0 )
+      {
+          return 1;
+      }
+      if (ny != ngrdpts / nx) {
 #ifdef DEBUG
-         printf ("nx * ny (%d) != ngrdpts(%d)\n", nx * ny, ngrdpts);
+         printf ("nx(%d) * ny(%d) != ngrdpts(%d)\n", nx, ny, ngrdpts);
 #endif
          return 2;
       }
@@ -400,7 +404,8 @@ static int TransferInt (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
             ScanIndex2XY (i, &x, &y, *scan, nx, ny);
             /* ScanIndex returns value as if scan was 0100(0000) */
             curIndex = (x - 1) + (y - 1) * nx;
-            myAssert (curIndex < nd2x3);
+            if( curIndex < 0 || curIndex >= nd2x3 )
+                return 1;
             ib[curIndex] = bmap[i];
             /* Check if we are supposed to insert xmissp into the field */
             if ((iclean != 0) && (ib[curIndex] == 0)) {
@@ -414,7 +419,8 @@ static int TransferInt (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
             ScanIndex2XY (i, &x, &y, *scan, nx, ny);
             /* ScanIndex returns value as if scan was 0100(0000) */
             curIndex = (x - 1) + (y - 1) * nx;
-            myAssert (curIndex < nd2x3);
+            if( curIndex < 0 || curIndex >= nd2x3 )
+                return 1;
             iain[curIndex] = (sInt4)fld[i];
          }
       }
@@ -469,7 +475,7 @@ static int TransferFloat (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
 {
    int i;               /* loop counter over all grid points. */
    sInt4 x, y;       /* Where we are in a grid of scan value 0100???? */
-   int curIndex;        /* Where in ain to store the current data. */
+   uInt4 curIndex;        /* Where in ain to store the current data. */
 
    if (nd2x3 < ngrdpts) {
 #ifdef DEBUG
@@ -494,9 +500,13 @@ static int TransferFloat (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
          }
       }
    } else {
-      if (nx * ny != ngrdpts) {
+      if( nx <= 0 || ny <= 0 )
+      {
+          return 1;
+      }
+      if (ny != ngrdpts / nx) {
 #ifdef DEBUG
-         printf ("nx * ny (%d) != ngrdpts(%d)\n", nx * ny, ngrdpts);
+         printf ("nx(%d) * ny(%d) != ngrdpts(%d)\n", nx, ny, ngrdpts);
 #endif
          return 2;
       }
@@ -504,8 +514,9 @@ static int TransferFloat (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
          for (i = 0; i < ngrdpts; i++) {
             ScanIndex2XY (i, &x, &y, *scan, nx, ny);
             /* ScanIndex returns value as if scan was 0100(0000) */
-            curIndex = (x - 1) + (y - 1) * nx;
-            myAssert (curIndex < nd2x3);
+            curIndex = (uInt4)(x - 1) + (uInt4)(y - 1) * (uInt4)nx;
+            if (curIndex >= (uInt4)nd2x3)
+                return 1;
             ib[curIndex] = bmap[i];
             /* Check if we are supposed to insert xmissp into the field */
             if ((iclean != 0) && (ib[curIndex] == 0)) {
@@ -518,8 +529,9 @@ static int TransferFloat (float * fld, sInt4 ngrdpts, sInt4 ibitmap,
          for (i = 0; i < ngrdpts; i++) {
             ScanIndex2XY (i, &x, &y, *scan, nx, ny);
             /* ScanIndex returns value as if scan was 0100(0000) */
-            curIndex = (x - 1) + (y - 1) * nx;
-            myAssert (curIndex < nd2x3);
+            curIndex = (uInt4)(x - 1) + (uInt4)(y - 1) * (uInt4)nx;
+            if( curIndex >= (uInt4)nd2x3 )
+                return 1;
             ain[curIndex] = fld[i];
          }
       }
@@ -745,7 +757,7 @@ void unpk_g2ncep (CPL_UNUSED sInt4 * kfildo, float * ain, sInt4 * iain, sInt4 * 
                   sInt4 * idat, sInt4 * nidat, float * rdat, sInt4 * nrdat,
                   sInt4 * is0, CPL_UNUSED sInt4 * ns0, sInt4 * is1, CPL_UNUSED sInt4 * ns1,
                   sInt4 * is2, sInt4 * ns2, sInt4 * is3, CPL_UNUSED sInt4 * ns3,
-                  sInt4 * is4, CPL_UNUSED sInt4 * ns4, sInt4 * is5, CPL_UNUSED sInt4 * ns5,
+                  sInt4 * is4, sInt4 * ns4, sInt4 * is5, CPL_UNUSED sInt4 * ns5,
                   sInt4 * is6, CPL_UNUSED sInt4 * ns6, sInt4 * is7, CPL_UNUSED sInt4 * ns7,
                   sInt4 * ib, sInt4 * ibitmap, unsigned char *c_ipack,
                   sInt4 * nd5, float * xmissp, float * xmisss,
@@ -820,7 +832,8 @@ void unpk_g2ncep (CPL_UNUSED sInt4 * kfildo, float * ain, sInt4 * iain, sInt4 * 
    /* Expand the desired subgrid. */
    unpack = 1;
    expand = 1;
-   ierr = g2_getfld (c_ipack, subgNum + 1, unpack, expand, &gfld);
+   /* The size of c_ipack is *nd5 * sizeof(sInt4) */
+   ierr = g2_getfld (c_ipack, *nd5 * sizeof(sInt4), subgNum + 1, unpack, expand, &gfld);
    if (ierr != 0) {
       switch (ierr) {
          case 1:       /* Beginning characters "GRIB" not found. */
@@ -1030,7 +1043,20 @@ void unpk_g2ncep (CPL_UNUSED sInt4 * kfildo, float * ain, sInt4 * iain, sInt4 * 
    curIndex = 9;
    for (i = 0; i < gfld->ipdtlen; i++) {
       const struct pdstemplate *templatespds = get_templatespds();
+      if( curIndex >= *ns4 )
+      {
+          /* Should we error out instead ? */
+          break;
+      }
       is4[curIndex] = gfld->ipdtmpl[i];
+      if( i == MAXPDSMAPLEN )
+      {
+        jer[8 + *ndjer] = 2;
+        jer[8] = 2004;    /* undefined sect 4 template */
+        *kjer = 9;
+        g2_free (gfld);
+        return;
+      }
       curIndex += abs (templatespds[pdsIndex].mappds[i]);
    }
 
@@ -1383,7 +1409,7 @@ static void clear (float * ain, sInt4 * iain, sInt4 * nd2x3, sInt4 * idat,
  * NOTES
  *****************************************************************************
  */
-static void BigByteCpy (sInt4 * dst, sInt4 * ipack, CPL_UNUSED sInt4 nd5,
+static void BigByteCpy (sInt4 * dst, sInt4 * ipack, sInt4 nd5,
                         unsigned int startInt, unsigned int startByte,
                         int numByte)
 {
@@ -1400,9 +1426,14 @@ static void BigByteCpy (sInt4 * dst, sInt4 * ipack, CPL_UNUSED sInt4 nd5,
    intIndex = startInt;
    byteIndex = startByte;
    for (i = 0; i < numByte; i++) {
+       if( intIndex >= (unsigned)nd5 )
+       {
+           /* TODO should error out */
+           return;
+       }
       curInt = (uInt4) ipack[intIndex];
       curByte = (curInt << Lshift[byteIndex]) >> 24;
-      *dst = (*dst << 8) + curByte;
+      *dst = (sInt4)((unsigned)*dst << 8) + curByte;
       byteIndex++;
       if (byteIndex == 4) {
          byteIndex = 0;
@@ -1627,13 +1658,13 @@ void unpk_grib2 (sInt4 * kfildo, float * ain, sInt4 * iain, sInt4 * nd2x3,
 {
    unsigned char *c_ipack; /* The compressed data as char instead of sInt4
                             * so it is easier to work with. */
-   sInt4 gdsTmpl;
-   sInt4 pdsTmpl;
-   sInt4 drsTmpl;
-   sInt4 numGrps;
+   sInt4 gdsTmpl = 0;
+   sInt4 pdsTmpl = 0;
+   sInt4 drsTmpl = 0;
+   sInt4 numGrps = 0;
    /* char f_useMDL = 0; */   /* Instructed 3/8/2005 10:30 to not use MDL. */
-   uChar f_noBitmap;    /* 0 if bitmap, else no bitmap. */
-   sInt4 orderDiff;
+   uChar f_noBitmap = 0;    /* 0 if bitmap, else no bitmap. */
+   sInt4 orderDiff = 0;
 
    if (FindTemplateIDs (ipack, *nd5, 0, &gdsTmpl, &pdsTmpl, &drsTmpl,
                         &numGrps, &f_noBitmap, &orderDiff) != 0) {

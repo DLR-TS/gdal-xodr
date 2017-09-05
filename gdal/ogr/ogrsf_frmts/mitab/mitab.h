@@ -91,10 +91,12 @@ class IMapInfoFile : public OGRLayer
     virtual TABFileClass GetFileClass() {return TABFC_IMapInfoFile;}
 
     virtual int Open(const char *pszFname, const char* pszAccess,
-                     GBool bTestOpenNoError = FALSE );
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL );
 
     virtual int Open(const char *pszFname, TABAccess eAccess,
-                     GBool bTestOpenNoError = FALSE ) = 0;
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) = 0;
     virtual int Close() = 0;
 
     virtual int SetQuickSpatialIndexMode(CPL_UNUSED GBool bQuickSpatialIndexMode=TRUE) {return -1;}
@@ -164,6 +166,14 @@ class IMapInfoFile : public OGRLayer
 
     virtual int SetCharset(const char* charset);
 
+    virtual const char* GetCharset() const;
+
+    static const char* CharsetToEncoding( const char* );
+    static const char* EncodingToCharset( const char* );
+
+    void SetEncoding( const char* );
+    const char* GetEncoding() const;
+    int TestUtf8Capability() const;
     ///////////////
     // semi-private.
     virtual int  GetProjInfo(TABProjInfo *poPI) = 0;
@@ -230,22 +240,25 @@ class TABFile CPL_FINAL : public IMapInfoFile
     virtual TABFileClass GetFileClass() override {return TABFC_TABFile;}
 
     virtual int Open(const char *pszFname, const char* pszAccess,
-                     GBool bTestOpenNoError = FALSE ) override
-            { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError); }
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override
+            { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError, pszCharset); }
     virtual int Open(const char *pszFname, TABAccess eAccess,
-                     GBool bTestOpenNoError = FALSE ) override
-            { return Open(pszFname, eAccess, bTestOpenNoError, 512); }
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override
+            { return Open(pszFname, eAccess, bTestOpenNoError, 512, pszCharset); }
 
     virtual int Open(const char *pszFname, TABAccess eAccess,
                      GBool bTestOpenNoError,
-                     int nBlockSizeForCreate );
+                     int nBlockSizeForCreate,
+                     const char* pszCharset );
 
     virtual int Close() override;
 
     virtual int SetQuickSpatialIndexMode(GBool bQuickSpatialIndexMode=TRUE) override;
 
     virtual const char *GetTableName() override
-                            {return m_poDefn?m_poDefn->GetName():"";};
+                            {return m_poDefn?m_poDefn->GetName():"";}
 
     virtual void        ResetReading() override;
     virtual int         TestCapability( const char * pszCap ) override;
@@ -291,9 +304,9 @@ class TABFile CPL_FINAL : public IMapInfoFile
                                       GBool bForce = TRUE) override;
 
     virtual GBool IsFieldIndexed(int nFieldId) override;
-    virtual GBool IsFieldUnique(int /*nFieldId*/) override   {return FALSE;};
+    virtual GBool IsFieldUnique(int /*nFieldId*/) override   {return FALSE;}
 
-    virtual int GetVersion() { return m_nVersion; };
+    virtual int GetVersion() { return m_nVersion; }
 
     ///////////////
     // Write access specific stuff
@@ -325,7 +338,7 @@ class TABFile CPL_FINAL : public IMapInfoFile
     TABMAPFile  *GetMAPFileRef() { return m_poMAPFile; }
 
     int         WriteFeature(TABFeature *poFeature);
-
+    virtual int SetCharset(const char* pszCharset) override;
 #ifdef DEBUG
     virtual void Dump(FILE *fpOut = NULL) override;
 #endif
@@ -383,15 +396,17 @@ class TABView CPL_FINAL : public IMapInfoFile
     virtual TABFileClass GetFileClass() override {return TABFC_TABView;}
 
     virtual int Open(const char *pszFname, const char* pszAccess,
-                     GBool bTestOpenNoError = FALSE ) override { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError); }
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError, pszCharset); }
     virtual int Open(const char *pszFname, TABAccess eAccess,
-                     GBool bTestOpenNoError = FALSE ) override;
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override;
     virtual int Close() override;
 
     virtual int SetQuickSpatialIndexMode(GBool bQuickSpatialIndexMode=TRUE) override;
 
     virtual const char *GetTableName() override
-           {return m_poRelation?m_poRelation->GetFeatureDefn()->GetName():"";};
+           {return m_poRelation?m_poRelation->GetFeatureDefn()->GetName():"";}
 
     virtual void        ResetReading() override;
     virtual int         TestCapability( const char * pszCap ) override;
@@ -449,7 +464,8 @@ class TABView CPL_FINAL : public IMapInfoFile
     virtual int  SetProjInfo(TABProjInfo *poPI) override
             { return m_nMainTableIndex!=-1?
                      m_papoTABFiles[m_nMainTableIndex]->SetProjInfo(poPI):-1; }
-    virtual int  SetMIFCoordSys(const char * /*pszMIFCoordSys*/) override {return -1;};
+    virtual int  SetMIFCoordSys(const char * /*pszMIFCoordSys*/) override {return -1;}
+    virtual int SetCharset(const char* pszCharset) override;
 
 #ifdef DEBUG
     virtual void Dump(FILE *fpOut = NULL) override;
@@ -499,13 +515,15 @@ class TABSeamless CPL_FINAL : public IMapInfoFile
     virtual TABFileClass GetFileClass() override {return TABFC_TABSeamless;}
 
     virtual int Open(const char *pszFname, const char* pszAccess,
-                     GBool bTestOpenNoError = FALSE ) override { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError); }
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError, pszCharset); }
     virtual int Open(const char *pszFname, TABAccess eAccess,
-                     GBool bTestOpenNoError = FALSE ) override;
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override;
     virtual int Close() override;
 
     virtual const char *GetTableName() override
-           {return m_poFeatureDefnRef?m_poFeatureDefnRef->GetName():"";};
+           {return m_poFeatureDefnRef?m_poFeatureDefnRef->GetName():"";}
 
     virtual void        SetSpatialFilter( OGRGeometry * ) override;
     virtual void        SetSpatialFilter( int iGeomField, OGRGeometry *poGeom ) override
@@ -569,7 +587,7 @@ class TABSeamless CPL_FINAL : public IMapInfoFile
     virtual int  GetProjInfo(TABProjInfo *poPI) override
             { return m_poIndexTable?m_poIndexTable->GetProjInfo(poPI):-1; }
     virtual int SetProjInfo(CPL_UNUSED TABProjInfo *poPI) override         { return -1; }
-    virtual int SetMIFCoordSys(const char * /*pszMIFCoordSys*/) override {return -1;};
+    virtual int SetMIFCoordSys(const char * /*pszMIFCoordSys*/) override {return -1;}
 
 #ifdef DEBUG
     virtual void Dump(FILE *fpOut = NULL) override;
@@ -655,13 +673,15 @@ class MIFFile CPL_FINAL : public IMapInfoFile
     virtual TABFileClass GetFileClass() override {return TABFC_MIFFile;}
 
     virtual int Open(const char *pszFname, const char* pszAccess,
-                     GBool bTestOpenNoError = FALSE ) override { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError); }
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override { return IMapInfoFile::Open(pszFname, pszAccess, bTestOpenNoError, pszCharset); }
     virtual int Open(const char *pszFname, TABAccess eAccess,
-                     GBool bTestOpenNoError = FALSE ) override;
+                     GBool bTestOpenNoError = FALSE,
+                     const char* pszCharset = NULL ) override;
     virtual int Close() override;
 
     virtual const char *GetTableName() override
-                           {return m_poDefn?m_poDefn->GetName():"";};
+                           {return m_poDefn?m_poDefn->GetName():"";}
 
     virtual int         TestCapability( const char * pszCap ) override ;
     virtual GIntBig     GetFeatureCount (int bForce) override;
@@ -693,7 +713,7 @@ class MIFFile CPL_FINAL : public IMapInfoFile
     virtual GBool IsFieldIndexed(int nFieldId) override;
     virtual GBool IsFieldUnique(int nFieldId) override;
 
-    virtual int GetVersion() { return m_nVersion; };
+    virtual int GetVersion() { return m_nVersion; }
 
     ///////////////
     // Write access specific stuff
@@ -720,9 +740,10 @@ class MIFFile CPL_FINAL : public IMapInfoFile
     virtual int  SetProjInfo(TABProjInfo * /*poPI*/) override{return -1;}
     /*  { return m_poMAPFile->GetHeaderBlock()->SetProjInfo( poPI ); }*/
     virtual int  SetMIFCoordSys(const char * pszMIFCoordSys) override;
+    virtual int SetCharset(const char* pszCharset) override;
 
 #ifdef DEBUG
-    virtual void Dump(FILE * /*fpOut*/ = NULL) override {};
+    virtual void Dump(FILE * /*fpOut*/ = NULL) override {}
 #endif
 };
 
@@ -827,22 +848,22 @@ class ITABFeaturePen
     TABPenDef   m_sPenDef;
   public:
     ITABFeaturePen();
-    ~ITABFeaturePen() {};
-    int         GetPenDefIndex() {return m_nPenDefIndex;};
-    TABPenDef  *GetPenDefRef() {return &m_sPenDef;};
+    ~ITABFeaturePen() {}
+    int         GetPenDefIndex() {return m_nPenDefIndex;}
+    TABPenDef  *GetPenDefRef() {return &m_sPenDef;}
 
     GByte       GetPenWidthPixel();
     double      GetPenWidthPoint();
     int         GetPenWidthMIF();
-    GByte       GetPenPattern() {return m_sPenDef.nLinePattern;};
-    GInt32      GetPenColor()   {return m_sPenDef.rgbColor;};
+    GByte       GetPenPattern() {return m_sPenDef.nLinePattern;}
+    GInt32      GetPenColor()   {return m_sPenDef.rgbColor;}
 
     void        SetPenWidthPixel(GByte val);
     void        SetPenWidthPoint(double val);
     void        SetPenWidthMIF(int val);
 
-    void        SetPenPattern(GByte val) {m_sPenDef.nLinePattern=val;};
-    void        SetPenColor(GInt32 clr)  {m_sPenDef.rgbColor = clr;};
+    void        SetPenPattern(GByte val) {m_sPenDef.nLinePattern=val;}
+    void        SetPenColor(GInt32 clr)  {m_sPenDef.rgbColor = clr;}
 
     const char *GetPenStyleString();
     void        SetPenFromStyleString(const char *pszStyleString);
@@ -857,20 +878,20 @@ class ITABFeatureBrush
     TABBrushDef m_sBrushDef;
   public:
     ITABFeatureBrush();
-    ~ITABFeatureBrush() {};
-    int         GetBrushDefIndex() {return m_nBrushDefIndex;};
-    TABBrushDef *GetBrushDefRef() {return &m_sBrushDef;};
+    ~ITABFeatureBrush() {}
+    int         GetBrushDefIndex() {return m_nBrushDefIndex;}
+    TABBrushDef *GetBrushDefRef() {return &m_sBrushDef;}
 
-    GInt32      GetBrushFGColor()     {return m_sBrushDef.rgbFGColor;};
-    GInt32      GetBrushBGColor()     {return m_sBrushDef.rgbBGColor;};
-    GByte       GetBrushPattern()     {return m_sBrushDef.nFillPattern;};
-    GByte       GetBrushTransparent() {return m_sBrushDef.bTransparentFill;};
+    GInt32      GetBrushFGColor()     {return m_sBrushDef.rgbFGColor;}
+    GInt32      GetBrushBGColor()     {return m_sBrushDef.rgbBGColor;}
+    GByte       GetBrushPattern()     {return m_sBrushDef.nFillPattern;}
+    GByte       GetBrushTransparent() {return m_sBrushDef.bTransparentFill;}
 
-    void        SetBrushFGColor(GInt32 clr)  { m_sBrushDef.rgbFGColor = clr;};
-    void        SetBrushBGColor(GInt32 clr)  { m_sBrushDef.rgbBGColor = clr;};
-    void        SetBrushPattern(GByte val)   { m_sBrushDef.nFillPattern=val;};
+    void        SetBrushFGColor(GInt32 clr)  { m_sBrushDef.rgbFGColor = clr;}
+    void        SetBrushBGColor(GInt32 clr)  { m_sBrushDef.rgbBGColor = clr;}
+    void        SetBrushPattern(GByte val)   { m_sBrushDef.nFillPattern=val;}
     void        SetBrushTransparent(GByte val)
-                                          {m_sBrushDef.bTransparentFill=val;};
+                                          {m_sBrushDef.bTransparentFill=val;}
 
     const char *GetBrushStyleString();
     void        SetBrushFromStyleString(const char *pszStyleString);
@@ -885,11 +906,11 @@ class ITABFeatureFont
     TABFontDef  m_sFontDef;
   public:
     ITABFeatureFont();
-    ~ITABFeatureFont() {};
-    int         GetFontDefIndex() {return m_nFontDefIndex;};
-    TABFontDef *GetFontDefRef() {return &m_sFontDef;};
+    ~ITABFeatureFont() {}
+    int         GetFontDefIndex() {return m_nFontDefIndex;}
+    TABFontDef *GetFontDefRef() {return &m_sFontDef;}
 
-    const char *GetFontNameRef() {return m_sFontDef.szFontName;};
+    const char *GetFontNameRef() {return m_sFontDef.szFontName;}
 
     void        SetFontName(const char *pszName);
 
@@ -903,17 +924,17 @@ class ITABFeatureSymbol
     TABSymbolDef m_sSymbolDef;
   public:
     ITABFeatureSymbol();
-    ~ITABFeatureSymbol() {};
-    int         GetSymbolDefIndex() {return m_nSymbolDefIndex;};
-    TABSymbolDef *GetSymbolDefRef() {return &m_sSymbolDef;};
+    ~ITABFeatureSymbol() {}
+    int         GetSymbolDefIndex() {return m_nSymbolDefIndex;}
+    TABSymbolDef *GetSymbolDefRef() {return &m_sSymbolDef;}
 
-    GInt16      GetSymbolNo()    {return m_sSymbolDef.nSymbolNo;};
-    GInt16      GetSymbolSize()  {return m_sSymbolDef.nPointSize;};
-    GInt32      GetSymbolColor() {return m_sSymbolDef.rgbColor;};
+    GInt16      GetSymbolNo()    {return m_sSymbolDef.nSymbolNo;}
+    GInt16      GetSymbolSize()  {return m_sSymbolDef.nPointSize;}
+    GInt32      GetSymbolColor() {return m_sSymbolDef.rgbColor;}
 
-    void        SetSymbolNo(GInt16 val)     { m_sSymbolDef.nSymbolNo = val;};
-    void        SetSymbolSize(GInt16 val)   { m_sSymbolDef.nPointSize = val;};
-    void        SetSymbolColor(GInt32 clr)  { m_sSymbolDef.rgbColor = clr;};
+    void        SetSymbolNo(GInt16 val)     { m_sSymbolDef.nSymbolNo = val;}
+    void        SetSymbolSize(GInt16 val)   { m_sSymbolDef.nPointSize = val;}
+    void        SetSymbolColor(GInt32 clr)  { m_sSymbolDef.rgbColor = clr;}
 
     const char *GetSymbolStyleString(double dfAngle = 0.0);
     void        SetSymbolFromStyleString(const char *pszStyleString);
@@ -971,13 +992,13 @@ class TABFeature : public OGRFeature
                                                   OGRFeatureDefn *poDefn);
 
     virtual TABFeature     *CloneTABFeature(OGRFeatureDefn *pNewDefn = NULL);
-    virtual TABFeatureClass GetFeatureClass() { return TABFCNoGeomFeature; };
-    virtual TABGeomType     GetMapInfoType()  { return m_nMapInfoType; };
+    virtual TABFeatureClass GetFeatureClass() { return TABFCNoGeomFeature; }
+    virtual TABGeomType     GetMapInfoType()  { return m_nMapInfoType; }
     virtual TABGeomType     ValidateMapInfoType(CPL_UNUSED TABMAPFile *poMapFile = NULL)
                                                 {m_nMapInfoType=TAB_GEOM_NONE;
-                                                 return m_nMapInfoType;};
-    GBool       IsRecordDeleted() { return m_bDeletedFlag; };
-    void        SetRecordDeleted(GBool bDeleted) { m_bDeletedFlag=bDeleted; };
+                                                 return m_nMapInfoType;}
+    GBool       IsRecordDeleted() { return m_bDeletedFlag; }
+    void        SetRecordDeleted(GBool bDeleted) { m_bDeletedFlag=bDeleted; }
 
     /*-----------------------------------------------------------------
      * TAB Support
@@ -1051,7 +1072,7 @@ class TABPoint: public TABFeature,
     explicit TABPoint(OGRFeatureDefn *poDefnIn);
     virtual ~TABPoint();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCPoint; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCPoint; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1098,7 +1119,7 @@ class TABFontPoint CPL_FINAL : public TABPoint,
     explicit TABFontPoint(OGRFeatureDefn *poDefnIn);
     virtual ~TABFontPoint();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCFontPoint; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCFontPoint; }
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
 
@@ -1119,11 +1140,11 @@ class TABFontPoint CPL_FINAL : public TABPoint,
 
     int         GetFontStyleMIFValue();
     void        SetFontStyleMIFValue(int nStyle);
-    int         GetFontStyleTABValue()           {return m_nFontStyle;};
-    void        SetFontStyleTABValue(int nStyle){m_nFontStyle=(GInt16)nStyle;};
+    int         GetFontStyleTABValue()           {return m_nFontStyle;}
+    void        SetFontStyleTABValue(int nStyle){m_nFontStyle=(GInt16)nStyle;}
 
     // GetSymbolAngle(): Return angle in degrees counterclockwise
-    double      GetSymbolAngle()        {return m_dAngle;};
+    double      GetSymbolAngle()        {return m_dAngle;}
     void        SetSymbolAngle(double dAngle);
 };
 
@@ -1154,7 +1175,7 @@ class TABCustomPoint CPL_FINAL : public TABPoint,
     explicit TABCustomPoint(OGRFeatureDefn *poDefnIn);
     virtual ~TABCustomPoint();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCCustomPoint; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCCustomPoint; }
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
 
@@ -1170,8 +1191,8 @@ class TABCustomPoint CPL_FINAL : public TABPoint,
 
     virtual const char *GetStyleString() override;
 
-    const char *GetSymbolNameRef()      { return GetFontNameRef(); };
-    void        SetSymbolName(const char *pszName) {SetFontName(pszName);};
+    const char *GetSymbolNameRef()      { return GetFontNameRef(); }
+    void        SetSymbolName(const char *pszName) {SetFontName(pszName);}
 
     GByte       GetCustomSymbolStyle()              {return m_nCustomStyle;}
     void        SetCustomSymbolStyle(GByte nStyle)  {m_nCustomStyle = nStyle;}
@@ -1206,7 +1227,7 @@ class TABPolyline CPL_FINAL : public TABFeature,
     explicit TABPolyline(OGRFeatureDefn *poDefnIn);
     virtual ~TABPolyline();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCPolyline; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCPolyline; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1281,7 +1302,7 @@ class TABRegion CPL_FINAL : public TABFeature,
     explicit TABRegion(OGRFeatureDefn *poDefnIn);
     virtual ~TABRegion();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCRegion; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCRegion; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1338,7 +1359,7 @@ class TABRectangle CPL_FINAL : public TABFeature,
     explicit TABRectangle(OGRFeatureDefn *poDefnIn);
     virtual ~TABRectangle();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCRectangle; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCRectangle; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1397,7 +1418,7 @@ class TABEllipse CPL_FINAL : public TABFeature,
     explicit TABEllipse(OGRFeatureDefn *poDefnIn);
     virtual ~TABEllipse();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCEllipse; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCEllipse; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1457,7 +1478,7 @@ class TABArc CPL_FINAL : public TABFeature,
     explicit TABArc(OGRFeatureDefn *poDefnIn);
     virtual ~TABArc();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCArc; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCArc; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1476,8 +1497,8 @@ class TABArc CPL_FINAL : public TABFeature,
 
     virtual void DumpMIF(FILE *fpOut = NULL) override;
 
-    double      GetStartAngle() { return m_dStartAngle; };
-    double      GetEndAngle()   { return m_dEndAngle; };
+    double      GetStartAngle() { return m_dStartAngle; }
+    double      GetEndAngle()   { return m_dEndAngle; }
     void        SetStartAngle(double dAngle);
     void        SetEndAngle(double dAngle);
 
@@ -1535,7 +1556,7 @@ class TABText CPL_FINAL : public TABFeature,
     explicit TABText(OGRFeatureDefn *poDefnIn);
     virtual ~TABText();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCText; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCText; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1592,8 +1613,8 @@ class TABText CPL_FINAL : public TABFeature,
     GBool       IsFontBold();
     GBool       IsFontItalic();
     GBool       IsFontUnderline();
-    int         GetFontStyleTABValue()           {return m_nFontStyle;};
-    void        SetFontStyleTABValue(int nStyle){m_nFontStyle=(GInt16)nStyle;};
+    int         GetFontStyleTABValue()           {return m_nFontStyle;}
+    void        SetFontStyleTABValue(int nStyle){m_nFontStyle=(GInt16)nStyle;}
 };
 
 /*---------------------------------------------------------------------
@@ -1623,7 +1644,7 @@ class TABMultiPoint CPL_FINAL : public TABFeature,
     explicit TABMultiPoint(OGRFeatureDefn *poDefnIn);
     virtual ~TABMultiPoint();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCMultiPoint; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCMultiPoint; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1702,7 +1723,7 @@ class TABCollection CPL_FINAL : public TABFeature,
     explicit TABCollection(OGRFeatureDefn *poDefnIn);
     virtual ~TABCollection();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCCollection; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCCollection; }
     virtual TABGeomType     ValidateMapInfoType(TABMAPFile *poMapFile = NULL) override;
 
     virtual TABFeature *CloneTABFeature(OGRFeatureDefn *poNewDefn = NULL ) override;
@@ -1721,9 +1742,9 @@ class TABCollection CPL_FINAL : public TABFeature,
 
     virtual void DumpMIF(FILE *fpOut = NULL) override;
 
-    TABRegion           *GetRegionRef()         {return m_poRegion; };
-    TABPolyline         *GetPolylineRef()       {return m_poPline; };
-    TABMultiPoint       *GetMultiPointRef()     {return m_poMpoint; };
+    TABRegion           *GetRegionRef()         {return m_poRegion; }
+    TABPolyline         *GetPolylineRef()       {return m_poPline; }
+    TABMultiPoint       *GetMultiPointRef()     {return m_poMpoint; }
 
     int                 SetRegionDirectly(TABRegion *poRegion);
     int                 SetPolylineDirectly(TABPolyline *poPline);
@@ -1749,7 +1770,7 @@ class TABDebugFeature CPL_FINAL : public TABFeature
     explicit TABDebugFeature(OGRFeatureDefn *poDefnIn);
     virtual ~TABDebugFeature();
 
-    virtual TABFeatureClass GetFeatureClass() override { return TABFCDebugFeature; };
+    virtual TABFeatureClass GetFeatureClass() override { return TABFCDebugFeature; }
 
     virtual int ReadGeometryFromMAPFile(TABMAPFile *poMapFile, TABMAPObjHdr *,
                                         GBool bCoordDataOnly=FALSE,

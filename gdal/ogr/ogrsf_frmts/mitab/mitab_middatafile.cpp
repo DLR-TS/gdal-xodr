@@ -41,14 +41,14 @@
 #include "cpl_vsi.h"
 #include "mitab_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class MIDDATAFile
  *
  *====================================================================*/
 
-MIDDATAFile::MIDDATAFile() :
+MIDDATAFile::MIDDATAFile( const char* pszEncoding ) :
     m_fp(NULL),
     m_pszDelimiter("\t"),  // Encom 2003 (was NULL).
     m_pszFname(NULL),
@@ -59,7 +59,8 @@ MIDDATAFile::MIDDATAFile() :
     m_dfYMultiplier(1.0),
     m_dfXDisplacement(0.0),
     m_dfYDisplacement(0.0),
-    m_bEof(FALSE)
+    m_bEof(FALSE),
+    m_osEncoding(pszEncoding)
 {
     m_szLastRead[0] = '\0';
     m_szSavedLine[0] = '\0';
@@ -266,5 +267,15 @@ GBool MIDDATAFile::IsValidFeature(const char *pszString)
 }
 
 GBool MIDDATAFile::GetEof() { return m_bEof; }
+
+const CPLString& MIDDATAFile::GetEncoding() const
+{
+    return m_osEncoding;
+}
+
+void MIDDATAFile::SetEncoding( const CPLString& osEncoding )
+{
+    m_osEncoding = osEncoding;
+}
 
 void MIDDATAFile::SetEof(GBool bEof) { m_bEof = bEof; }

@@ -54,7 +54,7 @@
 #include "ogr_core.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                    GDALCreatePansharpenedVRT()                       */
@@ -1623,17 +1623,6 @@ CPLErr VRTPansharpenedRasterBand::IRasterIO( GDALRWFlag eRWFlag,
             nPixelSpace, nLineSpace, psExtraArg);
 
     return eErr;
-}
-
-/************************************************************************/
-/*                              XMLInit()                               */
-/************************************************************************/
-
-CPLErr VRTPansharpenedRasterBand::XMLInit( CPLXMLNode * psTree,
-                                  const char *pszVRTPathIn )
-
-{
-    return VRTRasterBand::XMLInit( psTree, pszVRTPathIn );
 }
 
 /************************************************************************/

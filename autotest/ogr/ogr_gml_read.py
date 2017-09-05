@@ -528,22 +528,25 @@ def ogr_gml_13():
     if not gdaltest.have_gml_reader:
         return 'skip'
 
-    ds = ogr.Open('data/testlistfields.gml')
-    lyr = ds.GetLayer(0)
-    feat = lyr.GetNextFeature()
-    if feat.GetFieldAsStringList(feat.GetFieldIndex('attrib1')) != ['value1','value2']:
-        gdaltest.post_reason('did not get expected value for attrib1')
-        return 'fail'
-    if feat.GetField(feat.GetFieldIndex('attrib2')) != 'value3':
-        gdaltest.post_reason('did not get expected value for attrib2')
-        return 'fail'
-    if feat.GetFieldAsIntegerList(feat.GetFieldIndex('attrib3')) != [4,5]:
-        gdaltest.post_reason('did not get expected value for attrib3')
-        return 'fail'
-    if feat.GetFieldAsDoubleList(feat.GetFieldIndex('attrib4')) != [6.1,7.1]:
-        gdaltest.post_reason('did not get expected value for attrib4')
-        return 'fail'
-    ds = None
+    for i in range(2):
+        ds = ogr.Open('data/testlistfields.gml')
+        lyr = ds.GetLayer(0)
+        feat = lyr.GetNextFeature()
+        if feat.GetFieldAsStringList(feat.GetFieldIndex('attrib1')) != ['value1','value2']:
+            gdaltest.post_reason('did not get expected value for attrib1')
+            return 'fail'
+        if feat.GetField(feat.GetFieldIndex('attrib2')) != 'value3':
+            gdaltest.post_reason('did not get expected value for attrib2')
+            return 'fail'
+        if feat.GetFieldAsIntegerList(feat.GetFieldIndex('attrib3')) != [4,5]:
+            gdaltest.post_reason('did not get expected value for attrib3')
+            return 'fail'
+        if feat.GetFieldAsDoubleList(feat.GetFieldIndex('attrib4')) != [6.1,7.1]:
+            gdaltest.post_reason('did not get expected value for attrib4')
+            return 'fail'
+        ds = None
+    gdal.Unlink('data/testlistfields.gfs')
+
     return 'success'
 
 ###############################################################################
@@ -4137,6 +4140,27 @@ def ogr_gml_80():
 
 
 ###############################################################################
+# Test building a .gfs with a field with xsi:nil="true" (#7027)
+
+def ogr_gml_81():
+
+    if not gdaltest.have_gml_reader:
+        return 'skip'
+
+    gdal.Unlink('data/test_xsi_nil_gfs.gfs')
+    ds = ogr.Open('data/test_xsi_nil_gfs.gml')
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    if f.GetField('intval') != 1:
+        f.DumpReadable()
+        return 'fail'
+    ds = None
+
+    gdal.Unlink('data/test_xsi_nil_gfs.gfs')
+
+    return 'success'
+
+###############################################################################
 #  Cleanup
 
 def ogr_gml_cleanup():
@@ -4265,6 +4289,7 @@ def ogr_gml_clean_files():
     for filename in files:
         if len(filename) > 13 and filename[-13:] == '.resolved.gml':
             os.unlink('data/' + filename)
+    gdal.Unlink('data/test_xsi_nil_gfs.gfs')
 
     return 'success'
 
@@ -4352,6 +4377,7 @@ gdaltest_list = [
     ogr_gml_78,
     ogr_gml_79,
     ogr_gml_80,
+    ogr_gml_81,
     ogr_gml_cleanup ]
 
 disabled_gdaltest_list = [

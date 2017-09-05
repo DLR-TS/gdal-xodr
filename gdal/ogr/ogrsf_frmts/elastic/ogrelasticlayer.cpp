@@ -37,12 +37,12 @@
 #include "../geojson/ogrgeojsonwriter.h"
 #include "../geojson/ogrgeojsonreader.h"
 #include "../geojson/ogrgeojsonutils.h"
-#include "../xplane/ogr_xplane_geo_utils.h"
+#include "ogr_geo_utils.h"
 
 #include <cstdlib>
 #include <set>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           OGRElasticLayer()                          */
@@ -1393,7 +1393,7 @@ void OGRElasticLayer::BuildFeature(OGRFeature* poFeature, json_object* poSource,
                         {
                             double dfLat = 0.0;
                             double dfLon = 0.0;
-                            OGRXPlane_ExtendPosition(dfY, dfX, dfRadius,
+                            OGR_GreatCircle_ExtendPosition(dfY, dfX, dfRadius,
                                                       dfStep, &dfLat, &dfLon);
                             poRing->addPoint(dfLon, dfLat);
                         }

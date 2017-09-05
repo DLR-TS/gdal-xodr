@@ -40,7 +40,7 @@
 
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 typedef enum {                  // File formats
     L1B_NONE,           // Not a L1B format
@@ -842,7 +842,7 @@ int L1BDataset::FetchGCPs( GDAL_GCP *pasGCPListRow,
 
 void L1BDataset::ProcessRecordHeaders()
 {
-    void    *pRecordHeader = CPLMalloc( nRecordDataStart );
+    void    *pRecordHeader = CPLCalloc( 1, nRecordDataStart );
 
     CPL_IGNORE_RET_VAL(VSIFSeekL(fp, nDataStartOffset, SEEK_SET));
     CPL_IGNORE_RET_VAL(VSIFReadL(pRecordHeader, 1, nRecordDataStart, fp));
@@ -861,7 +861,7 @@ void L1BDataset::ProcessRecordHeaders()
 /*      but the longest swaths.                                         */
 /* -------------------------------------------------------------------- */
     int nTargetLines;
-    double dfLineStep;
+    double dfLineStep = 0.0;
 
     if( bHighGCPDensityStrategy )
     {
@@ -888,19 +888,24 @@ void L1BDataset::ProcessRecordHeaders()
     {
         nTargetLines = std::min(DESIRED_LINES_OF_GCPS, nRasterYSize);
     }
-    dfLineStep = 1.0 * (nRasterYSize - 1) / ( nTargetLines - 1 );
+    if( nTargetLines > 1 )
+        dfLineStep = 1.0 * (nRasterYSize - 1) / ( nTargetLines - 1 );
 
 /* -------------------------------------------------------------------- */
 /*      Initialize the GCP list.                                        */
 /* -------------------------------------------------------------------- */
-    pasGCPList = (GDAL_GCP *)VSI_CALLOC_VERBOSE( nTargetLines * nGCPsPerLine,
-                                        sizeof(GDAL_GCP) );
-    if (pasGCPList == NULL)
+    const int nExpectedGCPs = nTargetLines * nGCPsPerLine;
+    if( nExpectedGCPs > 0 )
     {
-        CPLFree( pRecordHeader );
-        return;
+        pasGCPList = (GDAL_GCP *)VSI_CALLOC_VERBOSE(
+                                    nExpectedGCPs, sizeof(GDAL_GCP) );
+        if (pasGCPList == NULL)
+        {
+            CPLFree( pRecordHeader );
+            return;
+        }
+        GDALInitGCPs( nExpectedGCPs, pasGCPList );
     }
-    GDALInitGCPs( nTargetLines * nGCPsPerLine, pasGCPList );
 
 /* -------------------------------------------------------------------- */
 /*      Fetch the GCPs for each selected line.  We force the last       */
@@ -966,10 +971,15 @@ void L1BDataset::ProcessRecordHeaders()
         }
     }
 
-    if( nGCPCount < nTargetLines * nGCPsPerLine )
+    if( nGCPCount < nExpectedGCPs )
     {
-        GDALDeinitGCPs( nTargetLines * nGCPsPerLine - nGCPCount,
+        GDALDeinitGCPs( nExpectedGCPs - nGCPCount,
                         pasGCPList + nGCPCount );
+        if( nGCPCount == 0 )
+        {
+            CPLFree( pasGCPList );
+            pasGCPList = NULL;
+        }
     }
 
     CPLFree( pRecordHeader );

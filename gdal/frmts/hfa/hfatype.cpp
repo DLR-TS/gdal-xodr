@@ -40,7 +40,7 @@
 #include "cpl_error.h"
 #include "cpl_vsi.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /* ==================================================================== */
@@ -125,7 +125,10 @@ const char *HFAType::Initialize( const char *pszInput )
     int i = 0;  // Used after for.
     for( ; pszInput[i] != '\0' && pszInput[i] != ','; i++ ) {}
     if( pszInput[i] == '\0' )
+    {
+        pszTypeName = CPLStrdup(pszInput);
         return NULL;
+    }
 
     pszTypeName = static_cast<char *>(CPLMalloc(i + 1));
     strncpy(pszTypeName, pszInput, i);
@@ -140,27 +143,32 @@ const char *HFAType::Initialize( const char *pszInput )
 /*                            CompleteDefn()                            */
 /************************************************************************/
 
-void HFAType::CompleteDefn( HFADictionary * poDict )
+bool HFAType::CompleteDefn( HFADictionary * poDict )
 
 {
     // This may already be done, if an earlier object required this
     // object (as a field), and forced an early computation of the size.
     if( nBytes != 0 )
-        return;
+        return true;
 
     if( bInCompleteDefn )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "Recursion detected in HFAType::CompleteDefn()");
-        return;
+        return false;
     }
     bInCompleteDefn = true;
 
     // Complete each of the fields, totaling up the sizes.  This
     // isn't really accurate for object with variable sized subobjects.
+    bool bRet = true;
     for( int i = 0; i < nFields; i++ )
     {
-        papoFields[i]->CompleteDefn(poDict);
+        if( !papoFields[i]->CompleteDefn(poDict) )
+        {
+            bRet = false;
+            break;
+        }
         if( papoFields[i]->nBytes < 0 || nBytes == -1 )
             nBytes = -1;
         else if( nBytes < INT_MAX - papoFields[i]->nBytes )
@@ -170,6 +178,7 @@ void HFAType::CompleteDefn( HFADictionary * poDict )
     }
 
     bInCompleteDefn = false;
+    return bRet;
 }
 
 /************************************************************************/

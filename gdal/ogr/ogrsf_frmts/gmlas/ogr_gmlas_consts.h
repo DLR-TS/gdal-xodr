@@ -36,9 +36,9 @@
 #define BOOL_CONST(x,y)      const bool x = y
 #define INT_CONST(x,y)       const int x = y
 #else
-#define STRING_CONST(x,y)    extern const char* const x;
-#define BOOL_CONST(x,y)      extern const bool x;
-#define INT_CONST(x,y)       extern const int x;
+#define STRING_CONST(x,y)    extern const char* const x
+#define BOOL_CONST(x,y)      extern const bool x
+#define INT_CONST(x,y)       extern const int x
 #endif
 
 namespace GMLASConstants
@@ -290,6 +290,7 @@ namespace GMLASConstants
     STRING_CONST(szXS_DOUBLE, "double");
     STRING_CONST(szXS_DECIMAL, "decimal");
     STRING_CONST(szXS_DATE, "date");
+    STRING_CONST(szXS_GYEAR, "gYear");
     STRING_CONST(szXS_TIME, "time");
     STRING_CONST(szXS_DATETIME, "dateTime");
     STRING_CONST(szXS_ANY_URI, "anyURI");
@@ -305,7 +306,7 @@ namespace GMLASConstants
     STRING_CONST(szAT_ANY_ATTR, "@*");
     STRING_CONST(szMATCH_ALL, "/*");
     STRING_CONST(szEXTRA_SUFFIX, ";extra=");
-};
+}
 
 #undef STRING_CONST
 #undef INT_CONST

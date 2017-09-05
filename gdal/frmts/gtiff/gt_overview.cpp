@@ -50,7 +50,7 @@
 #include "tifvsi.h"
 #include "xtiffio.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // TODO(schwehr): Explain why 128 and not 127.
 static const int knMaxOverviews = 128;
@@ -593,7 +593,7 @@ GTIFFBuildOverviews( const char * pszFilename,
         const char *pszBIGTIFF = CPLGetConfigOption( "BIGTIFF_OVERVIEW", NULL );
 
         if( pszBIGTIFF == NULL )
-            pszBIGTIFF = "IF_NEEDED";
+            pszBIGTIFF = "IF_SAFER";
 
         bool bCreateBigTIFF = false;
         if( EQUAL(pszBIGTIFF,"IF_NEEDED") )

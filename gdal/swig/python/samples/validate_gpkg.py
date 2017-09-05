@@ -277,7 +277,7 @@ class GPKGChecker:
         rows = c.fetchall()
         for (table_name, last_change, srs_id) in rows:
             c.execute("SELECT 1 FROM sqlite_master WHERE "
-                      "name = ? AND type IN ('table', 'view')", (table_name,))
+                      "lower(name) = lower(?) AND type IN ('table', 'view')", (table_name,))
             self._assert(c.fetchone() is not None, 14,
                          ('table_name=%s in gpkg_contents is not a ' +
                           'table or view') % table_name)
@@ -324,7 +324,7 @@ class GPKGChecker:
         found_geom = False
         count_pkid = 0
         for (_, name, type, notnull, default, pk) in cols:
-            if name == geom_column_name:
+            if name.lower() == geom_column_name.lower():
                 found_geom = True
                 self._assert(
                     type in base_geom_types or
@@ -739,10 +739,7 @@ class GPKGChecker:
                              "Invalid tile_row in %s" % table_name)
 
         c.execute("SELECT tile_data FROM %s" % _esc_id(table_name))
-        found_jpeg = False
-        found_png = False
         found_webp = False
-        found_tiff = False
         for (blob,) in c.fetchall():
             self._assert(blob is not None and len(blob) >= 12, 19,
                          'Invalid blob')
@@ -765,20 +762,10 @@ class GPKGChecker:
                 self._assert(is_png or is_tiff, 36,
                              'Unrecognized image mime type')
 
-            if is_jpeg:
-                found_jpeg = True
-            if is_png:
-                found_png = True
             if is_webp:
                 found_webp = True
-            if is_tiff:
-                found_tiff = True
 
         if found_webp:
-            self._assert(not found_png and not found_jpeg and not found_tiff,
-                         92,
-                         "Table %s should contain only webp tiles" %
-                         table_name)
             c.execute("SELECT 1 FROM gpkg_extensions WHERE "
                       "table_name = ? AND column_name = 'tile_data' AND "
                       "extension_name = 'gpkg_webp' AND "
@@ -1281,7 +1268,7 @@ class GPKGChecker:
                   "WHERE extension_name = 'gpkg_rtree_index' ")
         rows = c.fetchall()
         for (table_name, scope) in rows:
-            c.execute("SELECT 1 FROM gpkg_contents WHERE table_name = ? "
+            c.execute("SELECT 1 FROM gpkg_contents WHERE lower(table_name) = lower(?) "
                       "AND data_type = 'features'", (table_name,))
             self._assert(c.fetchone() is not None, 75,
                          ('gpkg_extensions declares gpkg_rtree_index for %s,' +

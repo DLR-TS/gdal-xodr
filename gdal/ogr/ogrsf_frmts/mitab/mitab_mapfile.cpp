@@ -46,7 +46,7 @@
 #include "mitab_priv.h"
 #include "ogr_feature.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class TABMAPFile
@@ -144,6 +144,8 @@ int TABMAPFile::Open(const char *pszFname, TABAccess eAccess,
                      GBool bNoErrorMsg /* = FALSE */,
                      int nBlockSizeForCreate /* = 512 */)
 {
+    CPLErrorReset();
+
     VSILFILE    *fp=NULL;
     TABRawBinBlock *poBlock=NULL;
 
@@ -500,7 +502,7 @@ GUInt32 TABMAPFile::GetFileSize()
     VSIFSeekL(m_fp, 0, SEEK_END);
     vsi_l_offset nSize = VSIFTellL(m_fp);
     VSIFSeekL(m_fp, nCurPos, SEEK_SET);
-    return nSize > 0xFFFFFFFFU ? 0xFFFFFFFFU : static_cast<GUInt32>(nSize);
+    return nSize > UINT_MAX ? UINT_MAX : static_cast<GUInt32>(nSize);
 }
 
 /************************************************************************/

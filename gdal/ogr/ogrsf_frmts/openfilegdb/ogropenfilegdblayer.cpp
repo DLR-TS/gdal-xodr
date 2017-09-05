@@ -30,7 +30,7 @@
 #include "cpl_minixml.h"
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                      OGROpenFileGDBGeomFieldDefn                     */
@@ -45,7 +45,7 @@ class OGROpenFileGDBGeomFieldDefn: public OGRGeomFieldDefn
                                     OGRwkbGeometryType eGeomTypeIn) :
             OGRGeomFieldDefn(pszNameIn, eGeomTypeIn),
             m_poLayer(poLayer)
-        {};
+        {}
 
         ~OGROpenFileGDBGeomFieldDefn() {}
 

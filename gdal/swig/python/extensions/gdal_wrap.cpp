@@ -3206,6 +3206,53 @@ typedef int RETURN_NONE;
 typedef int VSI_RETVAL;
 
 
+
+/* This is quite annoying but the data member of a string/buffer object */
+/* is sometimes not 8-byte aligned (Linux 64bit at least) given that it is */
+/* part of the object structure, and so has an offset. So we will allocate */
+/* a bit more, do the RasterIO() on a properly aligned buffer, and then move */
+/* back if necessary to the original buffer */
+
+#define ALIGNMENT_EXTRA 63
+#define ALIGNMENT_SHIFT 32
+
+static
+char* get_aligned_buffer(char* data, GDALDataType ntype)
+{
+    int alignment_needed = ntype == GDT_Byte ? 1:
+                           ntype == GDT_Int16 ? 2:
+                           ntype == GDT_UInt16 ? 2:
+                           ntype == GDT_Int32 ? 4:
+                           ntype == GDT_UInt32 ? 4:
+                           ntype == GDT_Float32 ? 4:
+                           ntype == GDT_Float64 ? 8:
+                           ntype == GDT_CInt16 ? 2:
+                           ntype == GDT_CInt32 ? 4:
+                           ntype == GDT_CFloat32 ? 4:
+                           ntype == GDT_CFloat64 ? 8: 8;
+    char* data_aligned = data + (alignment_needed - (size_t)data % alignment_needed) % alignment_needed;
+    if( data_aligned != data )
+        data_aligned += ALIGNMENT_SHIFT;
+    return data_aligned;
+}
+
+static void update_buffer_size(void* obj, char* data, char* data_aligned, size_t buf_size)
+{
+    if( data != data_aligned )
+        memmove(data, data_aligned, buf_size);
+
+#if PY_VERSION_HEX >= 0x03000000
+    PyBytesObject* stringobj = (PyBytesObject *) obj;
+#else
+    PyStringObject* stringobj = (PyStringObject *) obj;
+#endif
+    Py_SIZE(stringobj) = buf_size;
+    stringobj->ob_sval[buf_size] = '\0';
+    stringobj->ob_shash = -1;          /* invalidate cached hash value */
+}
+
+
+
 #define MODULE_NAME           "gdal"
 
 
@@ -4870,14 +4917,14 @@ SWIGINTERN CPLErr GDALDatasetShadow_ReadRaster1(GDALDatasetShadow *self,int xoff
                                     pband_list, band_list,
                                     pixel_space, line_space, band_space,
                                     FALSE));
-    if (buf_size == 0)
+    if (buf_size == 0 || buf_size + ALIGNMENT_EXTRA < buf_size)
     {
         *buf = NULL;
         return CE_Failure;
     }
 
 #if PY_VERSION_HEX >= 0x03000000
-    *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size );
+    *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         if( !bUseExceptions ) PyErr_Clear();
@@ -4886,7 +4933,7 @@ SWIGINTERN CPLErr GDALDatasetShadow_ReadRaster1(GDALDatasetShadow *self,int xoff
     }
     char *data = PyBytes_AsString( (PyObject *)*buf );
 #else
-    *buf = (void *)PyString_FromStringAndSize( NULL, buf_size );
+    *buf = (void *)PyString_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         if( !bUseExceptions ) PyErr_Clear();
@@ -4895,19 +4942,20 @@ SWIGINTERN CPLErr GDALDatasetShadow_ReadRaster1(GDALDatasetShadow *self,int xoff
     }
     char *data = PyString_AsString( (PyObject *)*buf );
 #endif
+    char* data_aligned = get_aligned_buffer(data, ntype);
 
     /* Should we clear the buffer in case there are hole in it ? */
     if( line_space != 0 && pixel_space != 0 && line_space > pixel_space * nxsize )
     {
-        memset(data, 0, buf_size);
+        memset(data_aligned, 0, buf_size);
     }
     else if( band_list > 1 && band_space != 0 )
     {
         if( line_space != 0 && band_space > line_space * nysize )
-            memset(data, 0, buf_size);
+            memset(data_aligned, 0, buf_size);
         else if( pixel_space != 0 && band_space < pixel_space &&
                  pixel_space != GDALGetRasterCount(self) * ntypesize )
-            memset(data, 0, buf_size);
+            memset(data_aligned, 0, buf_size);
     }
 
     GDALRasterIOExtraArg sExtraArg;
@@ -4916,13 +4964,17 @@ SWIGINTERN CPLErr GDALDatasetShadow_ReadRaster1(GDALDatasetShadow *self,int xoff
     sExtraArg.pfnProgress = callback;
     sExtraArg.pProgressData = callback_data;
     CPLErr eErr = GDALDatasetRasterIOEx(self, GF_Read, xoff, yoff, xsize, ysize,
-                               (void*) data, nxsize, nysize, ntype,
+                               (void*) data_aligned, nxsize, nysize, ntype,
                                band_list, pband_list, pixel_space, line_space, band_space,
                                &sExtraArg );
     if (eErr == CE_Failure)
     {
         Py_DECREF((PyObject*)*buf);
         *buf = NULL;
+    }
+    else
+    {
+        update_buffer_size(*buf, data, data_aligned, buf_size);
     }
     return eErr;
 }
@@ -5270,13 +5322,13 @@ SWIGINTERN CPLErr GDALRasterBandShadow_ReadRaster1(GDALRasterBandShadow *self,do
         ComputeBandRasterIOSize( nxsize, nysize,
                                  GDALGetDataTypeSize( ntype ) / 8,
                                  pixel_space, line_space, FALSE ) );
-    if (buf_size == 0)
+    if (buf_size == 0 || buf_size + ALIGNMENT_EXTRA < buf_size)
     {
         *buf = NULL;
         return CE_Failure;
     }
 #if PY_VERSION_HEX >= 0x03000000
-    *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size );
+    *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         *buf = Py_None;
@@ -5286,7 +5338,7 @@ SWIGINTERN CPLErr GDALRasterBandShadow_ReadRaster1(GDALRasterBandShadow *self,do
     }
     char *data = PyBytes_AsString( (PyObject *)*buf );
 #else
-    *buf = (void *)PyString_FromStringAndSize( NULL, buf_size );
+    *buf = (void *)PyString_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         if( !bUseExceptions ) PyErr_Clear();
@@ -5295,11 +5347,12 @@ SWIGINTERN CPLErr GDALRasterBandShadow_ReadRaster1(GDALRasterBandShadow *self,do
     }
     char *data = PyString_AsString( (PyObject *)*buf );
 #endif
+    char* data_aligned = get_aligned_buffer(data, ntype);
 
     /* Should we clear the buffer in case there are hole in it ? */
     if( line_space != 0 && pixel_space != 0 && line_space > pixel_space * nxsize )
     {
-        memset(data, 0, buf_size);
+        memset(data_aligned, 0, buf_size);
     }
 
     GDALRasterIOExtraArg sExtraArg;
@@ -5322,25 +5375,36 @@ SWIGINTERN CPLErr GDALRasterBandShadow_ReadRaster1(GDALRasterBandShadow *self,do
     }
 
     CPLErr eErr = GDALRasterIOEx( self, GF_Read, nXOff, nYOff, nXSize, nYSize,
-                         (void *) data, nxsize, nysize, ntype,
+                         (void *) data_aligned, nxsize, nysize, ntype,
                          pixel_space, line_space, &sExtraArg );
     if (eErr == CE_Failure)
     {
         Py_DECREF((PyObject*)*buf);
         *buf = NULL;
     }
+    else
+    {
+        update_buffer_size(*buf, data, data_aligned, buf_size);
+    }
+
     return eErr;
   }
 SWIGINTERN CPLErr GDALRasterBandShadow_ReadBlock(GDALRasterBandShadow *self,int xoff,int yoff,void **buf){
 
     int nBlockXSize, nBlockYSize;
     GDALGetBlockSize(self, &nBlockXSize, &nBlockYSize);
-    int nDataTypeSize = (GDALGetDataTypeSize(GDALGetRasterDataType(self)) / 8);
+    GDALDataType ntype = GDALGetRasterDataType(self);
+    int nDataTypeSize = (GDALGetDataTypeSize(ntype) / 8);
     size_t buf_size = static_cast<size_t>(nBlockXSize) *
                                                 nBlockYSize * nDataTypeSize;
+    if( buf_size + ALIGNMENT_EXTRA < buf_size)
+    {
+        *buf = NULL;
+        return CE_Failure;
+    }
 
 #if PY_VERSION_HEX >= 0x03000000
-    *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size );
+    *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         *buf = Py_None;
@@ -5350,7 +5414,7 @@ SWIGINTERN CPLErr GDALRasterBandShadow_ReadBlock(GDALRasterBandShadow *self,int 
     }
     char *data = PyBytes_AsString( (PyObject *)*buf );
 #else
-    *buf = (void *)PyString_FromStringAndSize( NULL, buf_size );
+    *buf = (void *)PyString_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         if( !bUseExceptions ) PyErr_Clear();
@@ -5359,12 +5423,19 @@ SWIGINTERN CPLErr GDALRasterBandShadow_ReadBlock(GDALRasterBandShadow *self,int 
     }
     char *data = PyString_AsString( (PyObject *)*buf );
 #endif
-    CPLErr eErr = GDALReadBlock( self, xoff, yoff, (void *) data);
+    char* data_aligned = get_aligned_buffer(data, ntype);
+
+    CPLErr eErr = GDALReadBlock( self, xoff, yoff, (void *) data_aligned);
     if (eErr == CE_Failure)
     {
         Py_DECREF((PyObject*)*buf);
         *buf = NULL;
     }
+    else
+    {
+        update_buffer_size(*buf, data, data_aligned, buf_size);
+    }
+
     return eErr;
   }
 
@@ -7272,6 +7343,26 @@ fail:
 }
 
 
+SWIGINTERN PyObject *_wrap_GetErrorCounter(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0; int bLocalUseExceptionsCode = bUseExceptions;
+  unsigned int result;
+  
+  if (!PyArg_ParseTuple(args,(char *)":GetErrorCounter")) SWIG_fail;
+  {
+#ifdef SED_HACKS
+    if( bUseExceptions ) bLocalUseExceptionsCode = FALSE;
+#endif
+    
+    result = CPLGetErrorCounter();
+  }
+  resultobj = SWIG_From_unsigned_SS_int(static_cast< unsigned int >(result));
+  if ( ReturnSame(bLocalUseExceptionsCode) ) { CPLErr eclass = CPLGetLastErrorType(); if ( eclass == CE_Failure || eclass == CE_Fatal ) { Py_XDECREF(resultobj); SWIG_Error( SWIG_RuntimeError, CPLGetLastErrorMsg() ); return NULL; } }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
 SWIGINTERN PyObject *_wrap_VSIGetLastErrorNo(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
   PyObject *resultobj = 0; int bLocalUseExceptionsCode = bUseExceptions;
   int result;
@@ -8666,7 +8757,10 @@ SWIGINTERN PyObject *_wrap_VSIStatL(PyObject *SWIGUNUSEDPARM(self), PyObject *ar
     if (result == 0)
     resultobj = SWIG_NewPointerObj((void*)new_StatBuf( arg2 ),SWIGTYPE_p_StatBuf,1);
     else
-    resultobj = Py_None;
+    {
+      resultobj = Py_None;
+      Py_INCREF(resultobj);
+    }
   }
   {
     /* %typemap(freearg) (const char *utf8_path) */
@@ -8824,6 +8918,49 @@ fail:
     GDALPythonFreeCStr(arg1, bToFree1);
   }
   if (alloc2 == SWIG_NEWOBJ) delete[] buf2;
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_VSIFEofL(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0; int bLocalUseExceptionsCode = bUseExceptions;
+  VSILFILE *arg1 = (VSILFILE *) 0 ;
+  int res1 ;
+  PyObject * obj0 = 0 ;
+  int result;
+  
+  if (!PyArg_ParseTuple(args,(char *)"O:VSIFEofL",&obj0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj0,SWIG_as_voidptrptr(&arg1), 0, 0);
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "VSIFEofL" "', argument " "1"" of type '" "VSILFILE *""'"); 
+  }
+  {
+    if (!arg1) {
+      SWIG_exception(SWIG_ValueError,"Received a NULL pointer.");
+    }
+  }
+  {
+    if ( bUseExceptions ) {
+      CPLErrorReset();
+    }
+    {
+      SWIG_PYTHON_THREAD_BEGIN_ALLOW;
+      result = (int)VSIFEofL(arg1);
+      SWIG_PYTHON_THREAD_END_ALLOW;
+    }
+#ifndef SED_HACKS
+    if ( bUseExceptions ) {
+      CPLErr eclass = CPLGetLastErrorType();
+      if ( eclass == CE_Failure || eclass == CE_Fatal ) {
+        SWIG_exception( SWIG_RuntimeError, CPLGetLastErrorMsg() );
+      }
+    }
+#endif
+  }
+  resultobj = SWIG_From_int(static_cast< int >(result));
+  if ( ReturnSame(bLocalUseExceptionsCode) ) { CPLErr eclass = CPLGetLastErrorType(); if ( eclass == CE_Failure || eclass == CE_Fatal ) { Py_XDECREF(resultobj); SWIG_Error( SWIG_RuntimeError, CPLGetLastErrorMsg() ); return NULL; } }
+  return resultobj;
+fail:
   return NULL;
 }
 
@@ -9310,6 +9447,36 @@ fail:
       delete[] arg2;
     }
   }
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_VSICurlClearCache(PyObject *SWIGUNUSEDPARM(self), PyObject *args) {
+  PyObject *resultobj = 0; int bLocalUseExceptionsCode = bUseExceptions;
+  
+  if (!PyArg_ParseTuple(args,(char *)":VSICurlClearCache")) SWIG_fail;
+  {
+    if ( bUseExceptions ) {
+      CPLErrorReset();
+    }
+    {
+      SWIG_PYTHON_THREAD_BEGIN_ALLOW;
+      VSICurlClearCache();
+      SWIG_PYTHON_THREAD_END_ALLOW;
+    }
+#ifndef SED_HACKS
+    if ( bUseExceptions ) {
+      CPLErr eclass = CPLGetLastErrorType();
+      if ( eclass == CE_Failure || eclass == CE_Fatal ) {
+        SWIG_exception( SWIG_RuntimeError, CPLGetLastErrorMsg() );
+      }
+    }
+#endif
+  }
+  resultobj = SWIG_Py_Void();
+  if ( ReturnSame(bLocalUseExceptionsCode) ) { CPLErr eclass = CPLGetLastErrorType(); if ( eclass == CE_Failure || eclass == CE_Fatal ) { Py_XDECREF(resultobj); SWIG_Error( SWIG_RuntimeError, CPLGetLastErrorMsg() ); return NULL; } }
+  return resultobj;
+fail:
   return NULL;
 }
 
@@ -10509,6 +10676,17 @@ SWIGINTERN PyObject *_wrap_Driver_CreateCopy(PyObject *SWIGUNUSEDPARM(self), PyO
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -13980,6 +14158,17 @@ SWIGINTERN PyObject *_wrap_Dataset_BuildOverviews(PyObject *SWIGUNUSEDPARM(self)
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -16222,6 +16411,17 @@ SWIGINTERN PyObject *_wrap_Dataset_GetNextFeature(PyObject *SWIGUNUSEDPARM(self)
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -17001,6 +17201,17 @@ SWIGINTERN PyObject *_wrap_Dataset_ReadRaster1(PyObject *SWIGUNUSEDPARM(self), P
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj13) || PyInt_Check(obj13) )
+      {
+        if( PyLong_AsLong(obj13) == 0 )
+        {
+          obj13 = Py_None;
+        }
+      }
+      
       if (obj13 && obj13 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj13,
@@ -18511,6 +18722,17 @@ SWIGINTERN PyObject *_wrap_Band_ComputeStatistics(PyObject *SWIGUNUSEDPARM(self)
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj2) || PyInt_Check(obj2) )
+      {
+        if( PyLong_AsLong(obj2) == 0 )
+        {
+          obj2 = Py_None;
+        }
+      }
+      
       if (obj2 && obj2 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj2,
@@ -19818,6 +20040,17 @@ SWIGINTERN PyObject *_wrap_Band_GetHistogram(PyObject *SWIGUNUSEDPARM(self), PyO
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj6) || PyInt_Check(obj6) )
+      {
+        if( PyLong_AsLong(obj6) == 0 )
+        {
+          obj6 = Py_None;
+        }
+      }
+      
       if (obj6 && obj6 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj6,
@@ -20014,6 +20247,17 @@ SWIGINTERN PyObject *_wrap_Band_GetDefaultHistogram(PyObject *SWIGUNUSEDPARM(sel
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj6) || PyInt_Check(obj6) )
+      {
+        if( PyLong_AsLong(obj6) == 0 )
+        {
+          obj6 = Py_None;
+        }
+      }
+      
       if (obj6 && obj6 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj6,
@@ -21157,6 +21401,17 @@ SWIGINTERN PyObject *_wrap_Band_ReadRaster1(PyObject *SWIGUNUSEDPARM(self), PyOb
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj11) || PyInt_Check(obj11) )
+      {
+        if( PyLong_AsLong(obj11) == 0 )
+        {
+          obj11 = Py_None;
+        }
+      }
+      
       if (obj11 && obj11 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj11,
@@ -23139,6 +23394,17 @@ SWIGINTERN PyObject *_wrap_ComputeMedianCutPCT(PyObject *SWIGUNUSEDPARM(self), P
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -23294,6 +23560,17 @@ SWIGINTERN PyObject *_wrap_DitherRGB2PCT(PyObject *SWIGUNUSEDPARM(self), PyObjec
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -23486,6 +23763,17 @@ SWIGINTERN PyObject *_wrap_ReprojectImage(PyObject *SWIGUNUSEDPARM(self), PyObje
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj7) || PyInt_Check(obj7) )
+      {
+        if( PyLong_AsLong(obj7) == 0 )
+        {
+          obj7 = Py_None;
+        }
+      }
+      
       if (obj7 && obj7 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj7,
@@ -23718,6 +24006,17 @@ SWIGINTERN PyObject *_wrap_ComputeProximity(PyObject *SWIGUNUSEDPARM(self), PyOb
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -23970,6 +24269,17 @@ SWIGINTERN PyObject *_wrap_RasterizeLayer(PyObject *SWIGUNUSEDPARM(self), PyObje
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj7) || PyInt_Check(obj7) )
+      {
+        if( PyLong_AsLong(obj7) == 0 )
+        {
+          obj7 = Py_None;
+        }
+      }
+      
       if (obj7 && obj7 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj7,
@@ -24190,6 +24500,17 @@ SWIGINTERN PyObject *_wrap_Polygonize(PyObject *SWIGUNUSEDPARM(self), PyObject *
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -24386,6 +24707,17 @@ SWIGINTERN PyObject *_wrap_FPolygonize(PyObject *SWIGUNUSEDPARM(self), PyObject 
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -24582,6 +24914,17 @@ SWIGINTERN PyObject *_wrap_FillNodata(PyObject *SWIGUNUSEDPARM(self), PyObject *
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -24784,6 +25127,17 @@ SWIGINTERN PyObject *_wrap_SieveFilter(PyObject *SWIGUNUSEDPARM(self), PyObject 
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj6) || PyInt_Check(obj6) )
+      {
+        if( PyLong_AsLong(obj6) == 0 )
+        {
+          obj6 = Py_None;
+        }
+      }
+      
       if (obj6 && obj6 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj6,
@@ -24948,6 +25302,17 @@ SWIGINTERN PyObject *_wrap_RegenerateOverviews(PyObject *SWIGUNUSEDPARM(self), P
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -25083,6 +25448,17 @@ SWIGINTERN PyObject *_wrap_RegenerateOverview(PyObject *SWIGUNUSEDPARM(self), Py
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -25284,6 +25660,17 @@ SWIGINTERN PyObject *_wrap_ContourGenerate(PyObject *SWIGUNUSEDPARM(self), PyObj
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj9) || PyInt_Check(obj9) )
+      {
+        if( PyLong_AsLong(obj9) == 0 )
+        {
+          obj9 = Py_None;
+        }
+      }
+      
       if (obj9 && obj9 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj9,
@@ -26138,6 +26525,17 @@ SWIGINTERN PyObject *_wrap_Transformer_TransformGeolocations(PyObject *SWIGUNUSE
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj4) || PyInt_Check(obj4) )
+      {
+        if( PyLong_AsLong(obj4) == 0 )
+        {
+          obj4 = Py_None;
+        }
+      }
+      
       if (obj4 && obj4 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj4,
@@ -28900,6 +29298,17 @@ SWIGINTERN PyObject *_wrap_TranslateInternal(PyObject *SWIGUNUSEDPARM(self), PyO
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -29193,6 +29602,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALWarpDestDS(PyObject *SWIGUNUSEDPARM(self)
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -29344,6 +29764,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALWarpDestName(PyObject *SWIGUNUSEDPARM(sel
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -29614,6 +30045,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALVectorTranslateDestDS(PyObject *SWIGUNUSE
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -29731,6 +30173,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALVectorTranslateDestName(PyObject *SWIGUNU
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -30016,6 +30469,17 @@ SWIGINTERN PyObject *_wrap_DEMProcessingInternal(PyObject *SWIGUNUSEDPARM(self),
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj5) || PyInt_Check(obj5) )
+      {
+        if( PyLong_AsLong(obj5) == 0 )
+        {
+          obj5 = Py_None;
+        }
+      }
+      
       if (obj5 && obj5 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj5,
@@ -30292,6 +30756,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALNearblackDestDS(PyObject *SWIGUNUSEDPARM(
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -30409,6 +30884,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALNearblackDestName(PyObject *SWIGUNUSEDPAR
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -30674,6 +31160,17 @@ SWIGINTERN PyObject *_wrap_GridInternal(PyObject *SWIGUNUSEDPARM(self), PyObject
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -30941,6 +31438,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALRasterizeDestDS(PyObject *SWIGUNUSEDPARM(
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -31058,6 +31566,17 @@ SWIGINTERN PyObject *_wrap_wrapper_GDALRasterizeDestName(PyObject *SWIGUNUSEDPAR
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -31349,6 +31868,17 @@ SWIGINTERN PyObject *_wrap_BuildVRTInternalObjects(PyObject *SWIGUNUSEDPARM(self
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -31528,6 +32058,17 @@ SWIGINTERN PyObject *_wrap_BuildVRTInternalNames(PyObject *SWIGUNUSEDPARM(self),
     {
       /* %typemap(in) (GDALProgressFunc callback = NULL) */
       /* callback_func typemap */
+      
+      /* In some cases 0 is passed instead of None. */
+      /* See https://github.com/OSGeo/gdal/pull/219 */
+      if ( PyLong_Check(obj3) || PyInt_Check(obj3) )
+      {
+        if( PyLong_AsLong(obj3) == 0 )
+        {
+          obj3 = Py_None;
+        }
+      }
+      
       if (obj3 && obj3 != Py_None ) {
         void* cbfunction = NULL;
         CPL_IGNORE_RET_VAL(SWIG_ConvertPtr( obj3,
@@ -31635,6 +32176,7 @@ static PyMethodDef SwigMethods[] = {
 	 { (char *)"GetLastErrorNo", _wrap_GetLastErrorNo, METH_VARARGS, (char *)"GetLastErrorNo() -> int"},
 	 { (char *)"GetLastErrorType", _wrap_GetLastErrorType, METH_VARARGS, (char *)"GetLastErrorType() -> int"},
 	 { (char *)"GetLastErrorMsg", _wrap_GetLastErrorMsg, METH_VARARGS, (char *)"GetLastErrorMsg() -> char const *"},
+	 { (char *)"GetErrorCounter", _wrap_GetErrorCounter, METH_VARARGS, (char *)"GetErrorCounter() -> unsigned int"},
 	 { (char *)"VSIGetLastErrorNo", _wrap_VSIGetLastErrorNo, METH_VARARGS, (char *)"VSIGetLastErrorNo() -> int"},
 	 { (char *)"VSIGetLastErrorMsg", _wrap_VSIGetLastErrorMsg, METH_VARARGS, (char *)"VSIGetLastErrorMsg() -> char const *"},
 	 { (char *)"PushFinderLocation", _wrap_PushFinderLocation, METH_VARARGS, (char *)"PushFinderLocation(char const * utf8_path)"},
@@ -31666,6 +32208,7 @@ static PyMethodDef SwigMethods[] = {
 	 { (char *)"VSIStatL", _wrap_VSIStatL, METH_VARARGS, (char *)"VSIStatL(char const * utf8_path, int nFlags=0) -> int"},
 	 { (char *)"VSIFOpenL", _wrap_VSIFOpenL, METH_VARARGS, (char *)"VSIFOpenL(char const * utf8_path, char const * pszMode) -> VSILFILE *"},
 	 { (char *)"VSIFOpenExL", _wrap_VSIFOpenExL, METH_VARARGS, (char *)"VSIFOpenExL(char const * utf8_path, char const * pszMode, int bSetError) -> VSILFILE *"},
+	 { (char *)"VSIFEofL", _wrap_VSIFEofL, METH_VARARGS, (char *)"VSIFEofL(VSILFILE * fp) -> int"},
 	 { (char *)"VSIFCloseL", _wrap_VSIFCloseL, METH_VARARGS, (char *)"VSIFCloseL(VSILFILE * fp) -> VSI_RETVAL"},
 	 { (char *)"VSIFSeekL", _wrap_VSIFSeekL, METH_VARARGS, (char *)"VSIFSeekL(VSILFILE * fp, GIntBig offset, int whence) -> int"},
 	 { (char *)"VSIFTellL", _wrap_VSIFTellL, METH_VARARGS, (char *)"VSIFTellL(VSILFILE * fp) -> GIntBig"},
@@ -31676,6 +32219,7 @@ static PyMethodDef SwigMethods[] = {
 	 { (char *)"VSI_RANGE_STATUS_HOLE_swigconstant", VSI_RANGE_STATUS_HOLE_swigconstant, METH_VARARGS, NULL},
 	 { (char *)"VSIFGetRangeStatusL", _wrap_VSIFGetRangeStatusL, METH_VARARGS, (char *)"VSIFGetRangeStatusL(VSILFILE * fp, GIntBig offset, GIntBig length) -> int"},
 	 { (char *)"VSIFWriteL", _wrap_VSIFWriteL, METH_VARARGS, (char *)"VSIFWriteL(int nLen, int size, int memb, VSILFILE * fp) -> int"},
+	 { (char *)"VSICurlClearCache", _wrap_VSICurlClearCache, METH_VARARGS, (char *)"VSICurlClearCache()"},
 	 { (char *)"ParseCommandLine", _wrap_ParseCommandLine, METH_VARARGS, (char *)"ParseCommandLine(char const * utf8_path) -> char **"},
 	 { (char *)"MajorObject_GetDescription", _wrap_MajorObject_GetDescription, METH_VARARGS, (char *)"MajorObject_GetDescription(MajorObject self) -> char const *"},
 	 { (char *)"MajorObject_SetDescription", _wrap_MajorObject_SetDescription, METH_VARARGS, (char *)"MajorObject_SetDescription(MajorObject self, char const * pszNewDesc)"},

@@ -31,9 +31,11 @@
 #include "iso8211.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #define N_ELEMENTS(x)  (sizeof(x)/sizeof(x[0]))
+
+#define DIGIT_ZERO '0'
 
 class ADRGDataset : public GDALPamDataset
 {
@@ -224,27 +226,27 @@ CPLErr ADRGRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
     }
     CPLDebug("ADRG", "(%d,%d) -> nBlock = %d", nBlockXOff, nBlockYOff, nBlock);
 
-    int offset;
+    vsi_l_offset offset;
     if( l_poDS->TILEINDEX )
     {
-        if( l_poDS->TILEINDEX[nBlock] == 0 )
+        if( l_poDS->TILEINDEX[nBlock] <= 0 )
         {
             memset(pImage, 0, 128 * 128);
             return CE_None;
         }
-        offset = l_poDS->offsetInIMG + (l_poDS->TILEINDEX[nBlock] - 1) * 128 * 128 * 3 + (nBand - 1) * 128 * 128;
+        offset = l_poDS->offsetInIMG + static_cast<vsi_l_offset>(l_poDS->TILEINDEX[nBlock] - 1) * 128 * 128 * 3 + (nBand - 1) * 128 * 128;
     }
     else
-        offset = l_poDS->offsetInIMG + nBlock * 128 * 128 * 3 + (nBand - 1) * 128 * 128;
+        offset = l_poDS->offsetInIMG + static_cast<vsi_l_offset>(nBlock) * 128 * 128 * 3 + (nBand - 1) * 128 * 128;
 
     if( VSIFSeekL(l_poDS->fdIMG, offset, SEEK_SET) != 0 )
     {
-        CPLError(CE_Failure, CPLE_FileIO, "Cannot seek to offset %d", offset);
+        CPLError(CE_Failure, CPLE_FileIO, "Cannot seek to offset " CPL_FRMT_GUIB, offset);
         return CE_Failure;
     }
     if( VSIFReadL(pImage, 1, 128 * 128, l_poDS->fdIMG) != 128 * 128 )
     {
-        CPLError(CE_Failure, CPLE_FileIO, "Cannot read data at offset %d", offset);
+        CPLError(CE_Failure, CPLE_FileIO, "Cannot read data at offset " CPL_FRMT_GUIB, offset);
         return CE_Failure;
     }
 
@@ -949,6 +951,8 @@ ADRGDataset* ADRGDataset::OpenDataset(
 
         BRV = record->GetIntSubfield("GEN", 0, "BRV", 0);
         CPLDebug("ADRG", "BRV=%d", BRV);
+        if( ARV <= 0 || (ZNA != 9 && ZNA != 18 && BRV <= 0) )
+            return NULL;
 
         const char* pszLSO = record->GetStringSubfield("GEN", 0, "LSO", 0);
         if( pszLSO == NULL || strlen(pszLSO) != 11 )
@@ -1665,7 +1669,7 @@ GDALDataset *ADRGDataset::Create( const char* pszFilename,
 
     CPLString osBaseFileName(CPLGetBasename(pszFilename));
     if( osBaseFileName.size() != 8 ||
-        osBaseFileName[6] != '0' ||
+        osBaseFileName[6] != DIGIT_ZERO ||
         osBaseFileName[7] != '1' )
     {
         CPLError( CE_Failure, CPLE_NotSupported,

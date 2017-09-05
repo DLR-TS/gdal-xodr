@@ -30,7 +30,7 @@
 
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static DGNElemCore *DGNParseTCB( DGNInfo * );
 static DGNElemCore *DGNParseColorTable( DGNInfo * );
@@ -74,7 +74,7 @@ int DGNGotoElement( DGNHandle hDGN, int element_id )
     if( element_id < 0 || element_id >= psDGN->element_count )
         return FALSE;
 
-    if( VSIFSeek( psDGN->fp, psDGN->element_index[element_id].offset,
+    if( VSIFSeekL( psDGN->fp, psDGN->element_index[element_id].offset,
                   SEEK_SET ) != 0 )
         return FALSE;
 
@@ -95,7 +95,7 @@ int DGNLoadRawElement( DGNInfo *psDGN, int *pnType, int *pnLevel )
 /*      Read the first four bytes to get the level, type, and word      */
 /*      count.                                                          */
 /* -------------------------------------------------------------------- */
-    if( VSIFRead( psDGN->abyElem, 1, 4, psDGN->fp ) != 4 )
+    if( VSIFReadL( psDGN->abyElem, 1, 4, psDGN->fp ) != 4 )
         return FALSE;
 
     /* Is this an 0xFFFF endof file marker? */
@@ -113,7 +113,7 @@ int DGNLoadRawElement( DGNInfo *psDGN, int *pnType, int *pnLevel )
         return FALSE;
 
     /* coverity[tainted_data] */
-    if( (int) VSIFRead( psDGN->abyElem + 4, 2, nWords, psDGN->fp ) != nWords )
+    if( (int) VSIFReadL( psDGN->abyElem + 4, 2, nWords, psDGN->fp ) != nWords )
         return FALSE;
 
     psDGN->nElemBytes = nWords * 2 + 4;
@@ -426,7 +426,7 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
       case DGNT_LINE:
       {
           DGNElemMultiPoint *psLine = static_cast<DGNElemMultiPoint *>(
-              CPLCalloc(sizeof(DGNElemMultiPoint), 1));
+              CPLCalloc(sizeof(DGNElemMultiPoint) + sizeof(DGNPoint), 1));
           psElement = (DGNElemCore *) psLine;
           psElement->stype = DGNST_MULTIPOINT;
           DGNParseCore( psDGN, psElement );
@@ -465,7 +465,8 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
               psLine->vertices[1].z = DGN_INT32( psDGN->abyElem + 56 );
           }
 
-          if (deltaStart && deltaLength)
+          if (deltaStart && deltaLength &&
+              deltaStart + 1 * 4 + 2 + 2 <= psLine->core.attr_bytes)
           {
               for (int i=0; i<2; i++)
               {
@@ -495,7 +496,7 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
               return NULL;
           }
           DGNElemMultiPoint *psLine = static_cast<DGNElemMultiPoint *>(
-              CPLCalloc(sizeof(DGNElemMultiPoint)+(count-2)*sizeof(DGNPoint),
+              CPLCalloc(sizeof(DGNElemMultiPoint)+(count-1)*sizeof(DGNPoint),
                         1));
           psElement = (DGNElemCore *) psLine;
           psElement->stype = DGNST_MULTIPOINT;
@@ -532,8 +533,9 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
                     }
               }
           }
-          psLine->num_vertices = count;
-          for( int i = 0; i < psLine->num_vertices; i++ )
+          for( int i = 0; i < count &&
+                          (( psDGN->dimension == 3 ) ? 46 : 42) +
+                                i*pntsize + 4 <= psDGN->nElemBytes; i++ )
           {
               psLine->vertices[i].x =
                   DGN_INT32( psDGN->abyElem + 38 + i*pntsize );
@@ -542,7 +544,8 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
               if( psDGN->dimension == 3 )
                   psLine->vertices[i].z =
                       DGN_INT32( psDGN->abyElem + 46 + i*pntsize );
-              if (deltaStart && deltaLength)
+              if (deltaStart && deltaLength &&
+                  deltaStart + i * 4 + 2 + 2 <= psLine->core.attr_bytes)
               {
                 int dx = DGN_INT16(psLine->core.attr_data + deltaStart + i * 4);
                 int dy = DGN_INT16(psLine->core.attr_data + deltaStart + i * 4 + 2);
@@ -550,6 +553,7 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
                 psLine->vertices[i].y += dy / 32767.0;
               }
               DGNTransformPoint( psDGN, psLine->vertices + i );
+              psLine->num_vertices = i+1;
           }
       }
       break;
@@ -1017,19 +1021,21 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
           }
           // Read B-Spline surface boundary
           psBounds->number = psDGN->abyElem[36] + psDGN->abyElem[37]*256;
-          psBounds->numverts = numverts;
 
-          for (int i=0;i<psBounds->numverts;i++) {
+          for (int i=0;i<numverts &&
+                       44 + i * 8 + 4 <= psDGN->nElemBytes;i++) {
             psBounds->vertices[i].x = DGN_INT32( psDGN->abyElem + 40 + i*8 );
             psBounds->vertices[i].y = DGN_INT32( psDGN->abyElem + 44 + i*8 );
             psBounds->vertices[i].z = 0;
-            if (deltaStart && deltaLength)
+            if (deltaStart && deltaLength &&
+                deltaStart + i * 4 + 2 + 2 <= psBounds->core.attr_bytes)
             {
                 int dx = DGN_INT16(psBounds->core.attr_data + deltaStart + i * 4);
                 int dy = DGN_INT16(psBounds->core.attr_data + deltaStart + i * 4 + 2);
                 psBounds->vertices[i].x += dx / 32767.0;
                 psBounds->vertices[i].y += dy / 32767.0;
             }
+            psBounds->numverts = static_cast<short>(i+1);
           }
         }
       break;
@@ -1100,7 +1106,7 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
     psElement->element_id = psDGN->next_element_id - 1;
 
     psElement->offset =
-        static_cast<int>(VSIFTell( psDGN->fp )) - psDGN->nElemBytes;
+        static_cast<int>(VSIFTellL( psDGN->fp )) - psDGN->nElemBytes;
     psElement->size = psDGN->nElemBytes;
 
     return psElement;
@@ -1600,7 +1606,7 @@ void DGNRewind( DGNHandle hDGN )
 {
     DGNInfo *psDGN = (DGNInfo *) hDGN;
 
-    VSIRewind( psDGN->fp );
+    VSIRewindL( psDGN->fp );
 
     psDGN->next_element_id = 0;
     psDGN->in_complex_group = false;
@@ -1825,7 +1831,7 @@ void DGNBuildIndex( DGNInfo *psDGN )
 
     int nMaxElements = 0;
 
-    long nLastOffset = VSIFTell( psDGN->fp );
+    vsi_l_offset nLastOffset = VSIFTellL( psDGN->fp );
     while( DGNLoadRawElement( psDGN, &nType, &nLevel ) )
     {
         if( psDGN->element_count == nMaxElements )
@@ -1841,7 +1847,7 @@ void DGNBuildIndex( DGNInfo *psDGN )
         psEI->level = (unsigned char) nLevel;
         psEI->type = (unsigned char) nType;
         psEI->flags = 0;
-        psEI->offset = (long) nLastOffset;
+        psEI->offset = nLastOffset;
 
         if( psDGN->abyElem[0] & 0x80 )
             psEI->flags |= DGNEIF_COMPLEX;
@@ -1932,7 +1938,7 @@ void DGNBuildIndex( DGNInfo *psDGN )
 
         psDGN->element_count++;
 
-        nLastOffset = VSIFTell( psDGN->fp );
+        nLastOffset = VSIFTellL( psDGN->fp );
     }
 
     DGNRewind( psDGN );

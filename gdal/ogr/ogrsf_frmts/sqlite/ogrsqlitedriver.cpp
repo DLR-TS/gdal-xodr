@@ -37,7 +37,7 @@
 #include "ogr_sqlite.h"
 #include "cpl_conv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                     OGRSQLiteDriverIdentify()                        */
@@ -91,6 +91,21 @@ static int OGRSQLiteDriverIdentify( GDALOpenInfo* poOpenInfo )
     if( poOpenInfo->nHeaderBytes < 100 )
         return FALSE;
 
+#ifdef ENABLE_SQL_SQLITE_FORMAT
+    if( STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL SQLITE") )
+    {
+        return TRUE;
+    }
+    if( STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL RASTERLITE") )
+    {
+        return -1;
+    }
+    if( STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL MBTILES") )
+    {
+        return -1;
+    }
+#endif
+
     if( !STARTS_WITH((const char*)poOpenInfo->pabyHeader, "SQLite format 3") )
         return FALSE;
 
@@ -103,7 +118,7 @@ static int OGRSQLiteDriverIdentify( GDALOpenInfo* poOpenInfo )
         return FALSE;
     }
 
-    // Could be a Rasterlite file as well
+    // Could be a Rasterlite or MBTiles file as well
     return -1;
 }
 
@@ -168,8 +183,7 @@ static GDALDataset *OGRSQLiteDriverOpen( GDALOpenInfo* poOpenInfo )
 /* -------------------------------------------------------------------- */
     OGRSQLiteDataSource *poDS = new OGRSQLiteDataSource();
 
-    if( !poDS->Open( poOpenInfo->pszFilename, poOpenInfo->eAccess == GA_Update,
-                     poOpenInfo->papszOpenOptions, poOpenInfo->nOpenFlags ) )
+    if( !poDS->Open( poOpenInfo ) )
     {
         delete poDS;
         return NULL;
@@ -350,6 +364,13 @@ void RegisterOGRSQLite()
     poDriver->SetMetadataItem( GDAL_DCAP_DEFAULT_FIELDS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_NOTNULL_GEOMFIELDS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
+
+#ifdef ENABLE_SQL_SQLITE_FORMAT
+    poDriver->SetMetadataItem("ENABLE_SQL_SQLITE_FORMAT", "YES");
+#endif
+#ifdef SQLITE_HAS_COLUMN_METADATA
+    poDriver->SetMetadataItem("SQLITE_HAS_COLUMN_METADATA", "YES");
+#endif
 
     poDriver->pfnOpen = OGRSQLiteDriverOpen;
     poDriver->pfnIdentify = OGRSQLiteDriverIdentify;

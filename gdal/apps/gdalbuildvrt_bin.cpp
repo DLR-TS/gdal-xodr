@@ -31,7 +31,7 @@
 #include "commonutils.h"
 #include "gdal_utils_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                               Usage()                                */
@@ -90,7 +90,8 @@ static void Usage(const char* pszErrorMsg)
 
 static GDALBuildVRTOptionsForBinary *GDALBuildVRTOptionsForBinaryNew(void)
 {
-    return (GDALBuildVRTOptionsForBinary*) CPLCalloc(  1, sizeof(GDALBuildVRTOptionsForBinary) );
+    return static_cast<GDALBuildVRTOptionsForBinary *>(
+        CPLCalloc(1, sizeof(GDALBuildVRTOptionsForBinary)));
 }
 
 /************************************************************************/

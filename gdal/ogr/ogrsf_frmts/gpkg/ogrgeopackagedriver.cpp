@@ -28,7 +28,7 @@
 
 #include "ogr_geopackage.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // g++ -g -Wall -fPIC -shared -o ogr_geopackage.so -Iport -Igcore -Iogr -Iogr/ogrsf_frmts -Iogr/ogrsf_frmts/gpkg ogr/ogrsf_frmts/gpkg/*.c* -L. -lgdal
 
@@ -45,8 +45,17 @@ static int OGRGeoPackageDriverIdentify( GDALOpenInfo* poOpenInfo, bool bEmitWarn
     if( poOpenInfo->fpL == NULL)
         return FALSE;
 
+#ifdef ENABLE_SQL_GPKG_FORMAT
+    if( poOpenInfo->pabyHeader &&
+        STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL GPKG") )
+    {
+        return TRUE;
+    }
+#endif
+
     if ( poOpenInfo->nHeaderBytes < 100 ||
-        !STARTS_WITH((const char*)poOpenInfo->pabyHeader, "SQLite format 3") )
+         poOpenInfo->pabyHeader == NULL ||
+         !STARTS_WITH((const char*)poOpenInfo->pabyHeader, "SQLite format 3") )
     {
         return FALSE;
     }
@@ -397,6 +406,13 @@ COMPRESSION_OPTIONS
     poDriver->SetMetadataItem( GDAL_DCAP_NOTNULL_FIELDS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_DEFAULT_FIELDS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_NOTNULL_GEOMFIELDS, "YES" );
+
+#ifdef ENABLE_SQL_GPKG_FORMAT
+    poDriver->SetMetadataItem("ENABLE_SQL_GPKG_FORMAT", "YES");
+#endif
+#ifdef SQLITE_HAS_COLUMN_METADATA
+    poDriver->SetMetadataItem("SQLITE_HAS_COLUMN_METADATA", "YES");
+#endif
 
     poDriver->pfnOpen = OGRGeoPackageDriverOpen;
     poDriver->pfnIdentify = OGRGeoPackageDriverIdentify;

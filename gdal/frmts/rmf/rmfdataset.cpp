@@ -33,7 +33,7 @@
 
 #include "rmfdataset.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const int RMF_DEFAULT_BLOCKXSIZE = 256;
 static const int RMF_DEFAULT_BLOCKYSIZE = 256;
@@ -271,6 +271,16 @@ CPLErr RMFRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
     }
     else if( poGDS->eRMFType == RMFT_RSW )
     {
+        const GUInt32 nMaxBlockBytes = nBlockBytes * 4; // 4 bands
+        if( nTileBytes > nMaxBlockBytes )
+        {
+            CPLDebug("RMF",
+                     "Only reading %u bytes instead of the %u declared "
+                     "in the tile array",
+                     nMaxBlockBytes, nTileBytes);
+            nTileBytes = nMaxBlockBytes;
+        }
+
         GByte *pabyTile = reinterpret_cast<GByte *>( VSIMalloc( nTileBytes ) );
 
         if( !pabyTile )
@@ -308,9 +318,9 @@ CPLErr RMFRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
 
             if( nRawBytes > nTileBytes )
             {
-                GByte *pszRawBuf = reinterpret_cast<GByte *>(
+                GByte *pabyRawBuf = reinterpret_cast<GByte *>(
                     VSIMalloc( nRawBytes ) );
-                if( pszRawBuf == NULL )
+                if( pabyRawBuf == NULL )
                 {
                     CPLError( CE_Failure, CPLE_FileIO,
                               "Can't allocate a buffer for raw data of "
@@ -323,9 +333,9 @@ CPLErr RMFRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
                 }
 
                 (*poGDS->Decompress)( pabyTile, nTileBytes,
-                                      pszRawBuf, nRawBytes );
+                                      pabyRawBuf, nRawBytes );
                 CPLFree( pabyTile );
-                pabyTile = pszRawBuf;
+                pabyTile = pabyRawBuf;
                 nTileBytes = nRawBytes;
             }
         }
@@ -1272,7 +1282,11 @@ do {                                                                    \
 
     if( poDS->sHeader.nExtHdrOffset && poDS->sHeader.nExtHdrSize )
     {
-        /* coverity[tainted_data] */
+        if( poDS->sHeader.nExtHdrSize > 1000000 )
+        {
+            delete poDS;
+            return NULL;
+        }
         GByte *pabyExtHeader = reinterpret_cast<GByte *>(
             VSICalloc( poDS->sHeader.nExtHdrSize, 1 ) );
         if( pabyExtHeader == NULL )
@@ -1285,9 +1299,12 @@ do {                                                                    \
                    SEEK_SET );
         VSIFReadL( pabyExtHeader, 1, poDS->sHeader.nExtHdrSize, poDS->fp );
 
-        RMF_READ_LONG( pabyExtHeader, poDS->sExtHeader.nEllipsoid, 24 );
-        RMF_READ_LONG( pabyExtHeader, poDS->sExtHeader.nDatum, 32 );
-        RMF_READ_LONG( pabyExtHeader, poDS->sExtHeader.nZone, 36 );
+        if( poDS->sHeader.nExtHdrSize >= 36 + 4 )
+        {
+            RMF_READ_LONG( pabyExtHeader, poDS->sExtHeader.nEllipsoid, 24 );
+            RMF_READ_LONG( pabyExtHeader, poDS->sExtHeader.nDatum, 32 );
+            RMF_READ_LONG( pabyExtHeader, poDS->sExtHeader.nZone, 36 );
+        }
 
         CPLFree( pabyExtHeader );
     }
@@ -1334,18 +1351,40 @@ do {                                                                    \
                 VSIFReadL( &nValue, 1, sizeof(nValue),
                            poDS->fp ) != sizeof(nValue) )
             {
-                delete poDS;
-                return NULL;
+                CPLDebug("RMF", "Cannot read ROI at index %u", i);
+                break;
+                //delete poDS;
+                //return NULL;
             }
 
             CPLDebug( "RMF", "%d", nValue );
         }
     }
 #endif
+    if( poDS->sHeader.nWidth >= INT_MAX ||
+        poDS->sHeader.nHeight >= INT_MAX ||
+        !GDALCheckDatasetDimensions(poDS->sHeader.nWidth, poDS->sHeader.nHeight) )
+    {
+        delete poDS;
+        return NULL;
+    }
 
 /* -------------------------------------------------------------------- */
 /*  Read array of blocks offsets/sizes.                                 */
 /* -------------------------------------------------------------------- */
+
+    // To avoid useless excessive memory allocation
+    if( poDS->sHeader.nTileTblSize > 1000000 )
+    {
+        VSIFSeekL( poDS->fp, 0, SEEK_END );
+        vsi_l_offset nFileSize = VSIFTellL( poDS->fp );
+        if( nFileSize < poDS->sHeader.nTileTblSize )
+        {
+            delete poDS;
+            return NULL;
+        }
+    }
+
     if( VSIFSeekL( poDS->fp,
                    poDS->GetFileOffset( poDS->sHeader.nTileTblOffset ),
                    SEEK_SET ) < 0 )
@@ -1354,7 +1393,6 @@ do {                                                                    \
         return NULL;
     }
 
-    /* coverity[tainted_data] */
     poDS->paiTiles = reinterpret_cast<GUInt32 *>(
         VSIMalloc( poDS->sHeader.nTileTblSize ) );
     if( !poDS->paiTiles )
@@ -1396,7 +1434,7 @@ do {                                                                    \
          i < poDS->sHeader.nTileTblSize / sizeof(GUInt32);
          i += 2 )
     {
-        CPLDebug( "RMF", "    %d / %d",
+        CPLDebug( "RMF", "    %u / %u",
                   poDS->paiTiles[i], poDS->paiTiles[i + 1] );
     }
 #endif
@@ -1408,12 +1446,6 @@ do {                                                                    \
 
     poDS->nRasterXSize = poDS->sHeader.nWidth;
     poDS->nRasterYSize = poDS->sHeader.nHeight;
-
-    if( !GDALCheckDatasetDimensions(poDS->nRasterXSize, poDS->nRasterYSize) )
-    {
-        delete poDS;
-        return NULL;
-    }
 
     if( poDS->eRMFType == RMFT_RSW )
     {
@@ -1430,19 +1462,21 @@ do {                                                                    \
                 {
                     // Allocate memory for colour table and read it
                     poDS->nColorTableSize = 1 << poDS->sHeader.nBitDepth;
-                    if( poDS->nColorTableSize * 4 > poDS->sHeader.nClrTblSize )
+                    GUInt32 nExpectedColorTableBytes = poDS->nColorTableSize * 4;
+                    if(nExpectedColorTableBytes > poDS->sHeader.nClrTblSize )
                     {
+                        // We could probably test for strict equality in
+                        // the above test ???
                         CPLDebug( "RMF",
                                   "Wrong color table size. "
-                                  "Expected %d, got %d.",
-                                  poDS->nColorTableSize * 4,
+                                  "Expected %u, got %u.",
+                                  nExpectedColorTableBytes,
                                   poDS->sHeader.nClrTblSize );
                         delete poDS;
                         return NULL;
                     }
-                    /* coverity[tainted_data] */
                     poDS->pabyColorTable = reinterpret_cast<GByte *>(
-                        VSIMalloc( poDS->sHeader.nClrTblSize ) );
+                        VSIMalloc( nExpectedColorTableBytes ) );
                     if( poDS->pabyColorTable == NULL )
                     {
                         CPLDebug( "RMF", "Can't allocate color table." );
@@ -1459,8 +1493,8 @@ do {                                                                    \
                         return NULL;
                     }
                     if( VSIFReadL( poDS->pabyColorTable, 1,
-                                   poDS->sHeader.nClrTblSize, poDS->fp )
-                        < poDS->sHeader.nClrTblSize )
+                                   nExpectedColorTableBytes, poDS->fp )
+                        < nExpectedColorTableBytes )
                     {
                         CPLDebug( "RMF", "Can't read color table." );
                         delete poDS;

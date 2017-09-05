@@ -71,7 +71,7 @@
 #include "../sqlite/ogrsqliteexecutesql.h"
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 CPL_C_START
 GDALAsyncReader *
@@ -2811,6 +2811,11 @@ GDALDatasetH CPL_STDCALL GDALOpenEx( const char *pszFilename,
             GDALValidateOpenOptions(poDriver, papszOptionsToValidate);
         }
 
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+        const bool bFpAvailableBefore = oOpenInfo.fpL != NULL;
+        CPLErrorReset();
+#endif
+
         GDALDataset *poDS = NULL;
         if ( poDriver->pfnOpen != NULL )
         {
@@ -2922,6 +2927,16 @@ GDALDatasetH CPL_STDCALL GDALOpenEx( const char *pszFilename,
             return poDS;
         }
 
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+        if( bFpAvailableBefore && oOpenInfo.fpL == NULL )
+        {
+            // In case the file descriptor was "consumed" by a driver
+            // that ultimately failed, re-open it for next drivers.
+            oOpenInfo.fpL = VSIFOpenL(
+                pszFilename,
+                (oOpenInfo.eAccess == GA_Update) ? "r+b" : "rb");
+        }
+#else
         if( CPLGetLastErrorNo() != 0 && CPLGetLastErrorType() > CE_Warning)
         {
             int *pnRecCount =
@@ -2932,6 +2947,7 @@ GDALDatasetH CPL_STDCALL GDALOpenEx( const char *pszFilename,
             CSLDestroy(papszOpenOptionsCleaned);
             return NULL;
         }
+#endif
     }
 
     CSLDestroy(papszOpenOptionsCleaned);
@@ -5520,29 +5536,26 @@ GDALDataset::ExecuteSQL( const char *pszStatement,
     if( STARTS_WITH_CI(pszStatement, "ALTER TABLE") )
     {
         char **papszTokens = CSLTokenizeString(pszStatement);
-        if( CSLCount(papszTokens) >= 4 &&
-            EQUAL(papszTokens[3], "ADD") )
+        const int nTokens = CSLCount(papszTokens);
+        if( nTokens >= 4 && EQUAL(papszTokens[3], "ADD") )
         {
             ProcessSQLAlterTableAddColumn(pszStatement);
             CSLDestroy(papszTokens);
             return NULL;
         }
-        else if( CSLCount(papszTokens) >= 4 &&
-                 EQUAL(papszTokens[3], "DROP") )
+        else if( nTokens >= 4 && EQUAL(papszTokens[3], "DROP") )
         {
             ProcessSQLAlterTableDropColumn( pszStatement );
             CSLDestroy(papszTokens);
             return NULL;
         }
-        else if( CSLCount(papszTokens) >= 4 &&
-                 EQUAL(papszTokens[3], "RENAME") )
+        else if( nTokens >= 4 && EQUAL(papszTokens[3], "RENAME") )
         {
             ProcessSQLAlterTableRenameColumn(pszStatement);
             CSLDestroy(papszTokens);
             return NULL;
         }
-        else if( CSLCount(papszTokens) >= 4 &&
-                 EQUAL(papszTokens[3], "ALTER") )
+        else if( nTokens >= 4 && EQUAL(papszTokens[3], "ALTER") )
         {
             ProcessSQLAlterTableAlterColumn(pszStatement);
             CSLDestroy(papszTokens);

@@ -34,12 +34,7 @@
 #include "gdaljp2metadata.h"
 #include "ogr_spatialref.h"
 
-#if ECWSDK_VERSION<50
-/* For NCSStrDup */
-#include "NCSUtil.h"
-#endif
-
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #if defined(FRMT_ecw) && defined(HAVE_COMPRESS)
 

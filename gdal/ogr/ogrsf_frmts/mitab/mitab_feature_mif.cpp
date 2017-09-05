@@ -49,7 +49,7 @@
 #include "ogr_feature.h"
 #include "ogr_geometry.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /*=====================================================================
  *                      class TABFeature
@@ -194,7 +194,16 @@ int TABFeature::ReadRecordFromMIDFile(MIDDATAFile *fp)
                 break;
             }
 #endif
-
+            case OFTString:
+            {
+                CPLString   osValue( papszToken[i] );
+                if( !fp->GetEncoding().empty() )
+                {
+                    osValue.Recode( fp->GetEncoding(), CPL_ENC_UTF8 );
+                }
+                SetField(i,osValue);
+                break;
+            }
           default:
              SetField(i,papszToken[i]);
        }
@@ -246,9 +255,15 @@ int TABFeature::WriteRecordToMIDFile(MIDDATAFile *fp)
         {
           case OFTString:
           {
-            int nStringLen = static_cast<int>(strlen(GetFieldAsString(iField)));
-            char *pszString = (char*)CPLMalloc((nStringLen+1)*sizeof(char));
-            strcpy(pszString, GetFieldAsString(iField));
+            CPLString   osString( GetFieldAsString(iField) );
+
+            if( !fp->GetEncoding().empty() )
+            {
+                osString.Recode( CPL_ENC_UTF8, fp->GetEncoding() );
+            }
+
+            int nStringLen = static_cast<int>( osString.length() );
+            const char *pszString = osString.c_str();
             char *pszWorkString = (char*)CPLMalloc((2*(nStringLen)+1)*sizeof(char));
             int j = 0;
             for (int i =0; i < nStringLen; ++i)
@@ -271,12 +286,8 @@ int TABFeature::WriteRecordToMIDFile(MIDDATAFile *fp)
             }
 
             pszWorkString[j] = '\0';
-            CPLFree(pszString);
-            pszString = (char*)CPLMalloc((strlen(pszWorkString)+1)*sizeof(char));
-            strcpy(pszString, pszWorkString);
+            fp->WriteLine("\"%s\"",pszWorkString);
             CPLFree(pszWorkString);
-            fp->WriteLine("\"%s\"",pszString);
-            CPLFree(pszString);
             break;
           }
 #ifdef MITAB_USE_OFTDATETIME
@@ -998,13 +1009,13 @@ int TABRegion::ReadGeometryFromMIFFile(MIDDATAFile *fp)
 
     OGRPolygon **tabPolygons = NULL;
     const int MAX_INITIAL_SECTIONS = 100000;
-    const int numInitalLineSections =
+    const int numInitialLineSections =
         ( numLineSections < MAX_INITIAL_SECTIONS ) ?
                             numLineSections : MAX_INITIAL_SECTIONS;
     if (numLineSections > 0)
     {
         tabPolygons = static_cast<OGRPolygon**>(
-            VSI_MALLOC2_VERBOSE(numInitalLineSections, sizeof(OGRPolygon*)));
+            VSI_MALLOC2_VERBOSE(numInitialLineSections, sizeof(OGRPolygon*)));
         if( tabPolygons == NULL )
             return -1;
     }
@@ -2238,7 +2249,10 @@ int TABCollection::ReadGeometryFromMIFFile(MIDDATAFile *fp)
             pszLine++;  // skip leading spaces
 
         if (*pszLine == '\0')
+        {
+            pszLine = fp->GetLine();
             continue;  // Skip blank lines
+        }
 
         if (STARTS_WITH_CI(pszLine, "REGION"))
         {

@@ -33,7 +33,7 @@
 #include "ogr_api.h"
 #include <map>
 #include <list>
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static void Usage();
 
@@ -100,7 +100,7 @@ int main( int nArgc, char ** papszArgv )
 
     for( int iArg = 1; iArg < nArgc; iArg++ )
     {
-        if( EQUAL(papszArgv[iArg],"-f") && iArg < nArgc-1 )
+        if( (EQUAL(papszArgv[iArg],"-f") || EQUAL(papszArgv[iArg],"-of")) && iArg < nArgc-1 )
         {
             pszFormat = papszArgv[++iArg];
         }
@@ -1144,7 +1144,7 @@ static int DissolveLayer( OGRDataSource *poSrcDS,
 //                     poDstLayer->CommitTransaction();
 //
 //                 printf( "Failed to transform feature %d.\n",
-//                         (int) poFeature->GetFID() );
+//                         static_cast<int>(poFeature->GetFID()) );
 //                 if( !bSkipFailures )
 //                 {
 //                     OGRFeature::DestroyFeature( poFeature );

@@ -42,7 +42,7 @@
 #include "cpl_vsi_virtual.h"
 #include "cpl_http.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #ifndef HAVE_CURL
 
@@ -57,6 +57,11 @@ void VSIInstallS3FileHandler( void )
 }
 
 void VSIInstallGSFileHandler( void )
+{
+    // Not supported.
+}
+
+void VSICurlClearCache( void )
 {
     // Not supported.
 }
@@ -277,7 +282,7 @@ class VSICurlFilesystemHandler : public VSIFilesystemHandler
 protected:
     CPLMutex       *hMutex;
 
-    virtual VSICurlHandle* CreateFileHandle(const char* pszUnprefixed);
+    virtual VSICurlHandle* CreateFileHandle(const char* pszFilename);
     virtual char** GetFileList(const char *pszFilename,
                                int nMaxFiles,
                                bool* pbGotFileList);
@@ -312,6 +317,7 @@ public:
             void     InvalidateDirContent( const char *pszDirname );
 
     virtual CPLString GetFSPrefix() { return "/vsicurl/"; }
+    virtual bool      AllowCachedDataFor(const char* pszFilename);
 
     const CachedRegion* GetRegion( const char* pszURL,
                                    vsi_l_offset nFileOffsetStart );
@@ -322,13 +328,15 @@ public:
                                    const char *pData );
 
     CachedFileProp*     GetCachedFileProp( const char* pszURL );
-    void                InvalidateCachedFileProp( const char* pszURL );
+    void                InvalidateCachedData( const char* pszURL );
 
     void                AddRegionToCacheDisk( CachedRegion* psRegion );
     const CachedRegion* GetRegionFromCacheDisk( const char* pszURL,
                                                 vsi_l_offset nFileOffsetStart );
 
     CURL               *GetCurlHandleFor( CPLString osURL );
+
+    virtual void        ClearCache();
 };
 
 /************************************************************************/
@@ -341,11 +349,14 @@ class VSICurlHandle : public VSIVirtualHandle
   protected:
     VSICurlFilesystemHandler* poFS;
 
+    bool            m_bCached;
+
     vsi_l_offset    fileSize;
     bool            bHasComputedFileSize;
     ExistStatus     eExists;
     bool            bIsDirectory;
-    char*           m_pszURL;
+    CPLString       m_osFilename; // e.g "/vsicurl/http://example.com/foo"
+    char*           m_pszURL;     // e.g "http://example.com/foo"
 
     char          **m_papszHTTPOptions;
 
@@ -369,6 +380,10 @@ class VSICurlHandle : public VSIVirtualHandle
     time_t              m_nExpireTimestampLocal;
     CPLString           m_osRedirectURL;
 
+    int                 m_nMaxRetry;
+    double              m_dfRetryDelay;
+    bool                m_bUseHead;
+
   protected:
     virtual struct curl_slist* GetCurlHeaders( const CPLString& )
         { return NULL; }
@@ -381,7 +396,9 @@ class VSICurlHandle : public VSIVirtualHandle
 
   public:
 
-    VSICurlHandle( VSICurlFilesystemHandler* poFS, const char* pszURL );
+    VSICurlHandle( VSICurlFilesystemHandler* poFS,
+                   const char* pszFilename,
+                   const char* pszURLIn = NULL );
     virtual ~VSICurlHandle();
 
     virtual int          Seek( vsi_l_offset nOffset, int nWhence ) override;
@@ -411,13 +428,113 @@ class VSICurlHandle : public VSIVirtualHandle
     int                  UninstallReadCbk();
 };
 
+
+/************************************************************************/
+/*                      VSICurlGetURLFromFilename()                     */
+/************************************************************************/
+
+static CPLString VSICurlGetURLFromFilename(const char* pszFilename,
+                                           int* pnMaxRetry,
+                                           double* pdfRetryDelay,
+                                           bool* pbUseHead,
+                                           bool* pbListDir,
+                                           bool* pbEmptyDir,
+                                           char*** ppapszHTTPOptions)
+{
+    if( !STARTS_WITH(pszFilename, "/vsicurl/") )
+        return pszFilename;
+    pszFilename += strlen("/vsicurl/");
+    if( !STARTS_WITH(pszFilename, "http://") &&
+        !STARTS_WITH(pszFilename, "https://") &&
+        !STARTS_WITH(pszFilename, "ftp://") &&
+        !STARTS_WITH(pszFilename, "file://") )
+    {
+        const char* pszURLArg = strstr(pszFilename, ",url=");
+        if( pszURLArg )
+        {
+            CPLString osOptions( pszFilename );
+            osOptions.resize( pszURLArg - pszFilename );
+            char** papszTokens = CSLTokenizeString2( osOptions, ",", 0 );
+            for( int i = 0; papszTokens && papszTokens[i]; i++ )
+            {
+                char* pszKey = NULL;
+                const char* pszValue = CPLParseNameValue(papszTokens[i], &pszKey);
+                if( pszKey && pszValue )
+                {
+                    if( EQUAL(pszKey, "max_retry") )
+                    {
+                        if( pnMaxRetry )
+                            *pnMaxRetry = atoi(pszValue);
+                    }
+                    else if( EQUAL(pszKey, "retry_delay") )
+                    {
+                        if( pdfRetryDelay )
+                            *pdfRetryDelay = CPLAtof(pszValue);
+                    }
+                    else if( EQUAL(pszKey, "use_head") )
+                    {
+                        if( pbUseHead )
+                            *pbUseHead = CPLTestBool(pszValue);
+                    }
+                    else if( EQUAL(pszKey, "list_dir") )
+                    {
+                        if( pbListDir )
+                            *pbListDir = CPLTestBool(pszValue);
+                    }
+                    else if( EQUAL(pszKey, "empty_dir") )
+                    {
+                        /* Undocumented. Used by PLScenes driver */
+                        /* This more or less emulates the behaviour of
+                         * GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR */
+                        if( pbEmptyDir )
+                            *pbEmptyDir = CPLTestBool(pszValue);
+                    }
+                    else if( EQUAL(pszKey, "useragent") ||
+                             EQUAL(pszKey, "referer") ||
+                             EQUAL(pszKey, "cookie") ||
+                             EQUAL(pszKey, "header_file") ||
+                             EQUAL(pszKey, "unsafessl") ||
+                             EQUAL(pszKey, "timeout") ||
+                             EQUAL(pszKey, "connecttimeout") ||
+                             EQUAL(pszKey, "low_speed_time") ||
+                             EQUAL(pszKey, "low_speed_limit") ||
+                             EQUAL(pszKey, "proxy") ||
+                             EQUAL(pszKey, "proxyauth") ||
+                             EQUAL(pszKey, "proxyuserpwd") )
+                    {
+                        // Above names are the ones supported by
+                        // CPLHTTPSetOptions()
+                        if( ppapszHTTPOptions )
+                        {
+                            *ppapszHTTPOptions = CSLSetNameValue(
+                                *ppapszHTTPOptions, pszKey, pszValue);
+                        }
+                    }
+                    else
+                    {
+                        CPLError(CE_Warning, CPLE_NotSupported,
+                                    "Unsupported option: %s", pszKey);
+                    }
+                }
+                CPLFree(pszKey);
+            }
+            CSLDestroy(papszTokens);
+            return pszURLArg + strlen(",url=");
+        }
+    }
+
+    return pszFilename;
+}
+
 /************************************************************************/
 /*                           VSICurlHandle()                            */
 /************************************************************************/
 
 VSICurlHandle::VSICurlHandle( VSICurlFilesystemHandler* poFSIn,
+                              const char* pszFilename,
                               const char* pszURLIn ) :
     poFS(poFSIn),
+    m_bCached(true),
     curOffset(0),
     lastDownloadedOffset(VSI_L_OFFSET_MAX),
     nBlocksToDownload(1),
@@ -427,10 +544,31 @@ VSICurlHandle::VSICurlHandle( VSICurlFilesystemHandler* poFSIn,
     bStopOnInterruptUntilUninstall(false),
     bInterrupted(false),
     m_bS3Redirect(false),
-    m_nExpireTimestampLocal(0)
+    m_nExpireTimestampLocal(0),
+    m_nMaxRetry(atoi(CPLGetConfigOption("GDAL_HTTP_MAX_RETRY",
+                                   CPLSPrintf("%d",CPL_HTTP_MAX_RETRY)))),
+    m_dfRetryDelay(CPLAtof(CPLGetConfigOption("GDAL_HTTP_RETRY_DELAY",
+                                CPLSPrintf("%f", CPL_HTTP_RETRY_DELAY)))),
+    m_bUseHead(CPLTestBool(CPLGetConfigOption("CPL_VSIL_CURL_USE_HEAD",
+                                             "YES")))
 {
-    m_pszURL = CPLStrdup(pszURLIn);
+    m_osFilename = pszFilename;
     m_papszHTTPOptions = CPLHTTPGetOptionsFromEnv();
+    if( pszURLIn )
+    {
+        m_pszURL = CPLStrdup(pszURLIn);
+    }
+    else
+    {
+        m_pszURL = CPLStrdup(VSICurlGetURLFromFilename(pszFilename,
+                                                       &m_nMaxRetry,
+                                                       &m_dfRetryDelay,
+                                                       &m_bUseHead,
+                                                       NULL, NULL,
+                                                       &m_papszHTTPOptions));
+    }
+
+    m_bCached = poFSIn->AllowCachedDataFor(pszFilename);
     CachedFileProp* cachedFileProp = poFS->GetCachedFileProp(m_pszURL);
     eExists = cachedFileProp->eExists;
     fileSize = cachedFileProp->fileSize;
@@ -445,6 +583,11 @@ VSICurlHandle::VSICurlHandle( VSICurlFilesystemHandler* poFSIn,
 
 VSICurlHandle::~VSICurlHandle()
 {
+    if( !m_bCached )
+    {
+        poFS->InvalidateCachedData(m_pszURL);
+        poFS->InvalidateDirContent( CPLGetDirname(m_osFilename) );
+    }
     CPLFree(m_pszURL);
     CSLDestroy(m_papszHTTPOptions);
 }
@@ -754,6 +897,7 @@ vsi_l_offset VSICurlHandle::GetFileSize( bool bSetError )
     CPLString osURL(m_pszURL);
     bool bRetryWithGet = false;
     bool bS3Redirect = false;
+    int nRetryCount = 0;
 
 retry:
     struct curl_slist* headers =
@@ -779,8 +923,7 @@ retry:
     // signed URL for AWS S3.
     else if( strstr(osURL, ".tiles.mapbox.com/") != NULL ||
              VSICurlIsS3SignedURL(osURL) ||
-             !CPLTestBool(CPLGetConfigOption("CPL_VSIL_CURL_USE_HEAD",
-                                             "YES")) )
+             !m_bUseHead )
     {
         sWriteFuncHeaderData.bDownloadHeaderOnly = true;
         osVerb = "GET";
@@ -943,6 +1086,23 @@ retry:
         }
         else if( response_code != 200 )
         {
+            // If HTTP 502, 503 or 504 gateway timeout error retry after a
+            // pause.
+            if( (response_code >= 502 && response_code <= 504) &&
+                nRetryCount < m_nMaxRetry )
+            {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                            "HTTP error code: %d - %s. "
+                            "Retrying again in %.1f secs",
+                            static_cast<int>(response_code), m_pszURL,
+                            m_dfRetryDelay);
+                CPLSleep(m_dfRetryDelay);
+                nRetryCount++;
+                CPLFree(sWriteFuncData.pBuffer);
+                CPLFree(sWriteFuncHeaderData.pBuffer);
+                goto retry;
+            }
+
             if( UseLimitRangeGetInsteadOfHead() &&
                 sWriteFuncData.pBuffer != NULL &&
                 CanRestartOnError(sWriteFuncData.pBuffer,
@@ -1086,6 +1246,7 @@ bool VSICurlHandle::DownloadRegion( const vsi_l_offset startOffset,
 
     WriteFuncStruct sWriteFuncData;
     WriteFuncStruct sWriteFuncHeaderData;
+    int nRetryCount = 0;
 
 retry:
     struct curl_slist* headers =
@@ -1226,6 +1387,23 @@ retry:
             CPLFree(sWriteFuncData.pBuffer);
             CPLFree(sWriteFuncHeaderData.pBuffer);
             return DownloadRegion(startOffset, nBlocks);
+        }
+
+        // If HTTP 502, 503 or 504 gateway timeout error retry after a
+        // pause.
+        if( (response_code >= 502 && response_code <= 504) &&
+            nRetryCount < m_nMaxRetry )
+        {
+            CPLError(CE_Warning, CPLE_AppDefined,
+                        "HTTP error code: %d - %s. "
+                        "Retrying again in %.1f secs",
+                        static_cast<int>(response_code), m_pszURL,
+                        m_dfRetryDelay);
+            CPLSleep(m_dfRetryDelay);
+            nRetryCount++;
+            CPLFree(sWriteFuncData.pBuffer);
+            CPLFree(sWriteFuncHeaderData.pBuffer);
+            goto retry;
         }
 
         if( response_code >= 400 && szCurlErrBuf[0] != '\0' )
@@ -1373,6 +1551,19 @@ size_t VSICurlHandle::Read( void * const pBufferIn, size_t const nSize,
     vsi_l_offset iterOffset = curOffset;
     while( nBufferRequestSize )
     {
+        // Don't try to read after end of file.
+        CachedFileProp* cachedFileProp = poFS->GetCachedFileProp(m_pszURL);
+        if( cachedFileProp->bHasComputedFileSize &&
+            iterOffset >= cachedFileProp->fileSize )
+        {
+            if( iterOffset == curOffset )
+            {
+                CPLDebug("VSICURL", "Request at offset " CPL_FRMT_GUIB
+                         ", after end of file", iterOffset);
+            }
+            break;
+        }
+
         const CachedRegion* psRegion = poFS->GetRegion(m_pszURL, iterOffset);
         if( psRegion == NULL )
         {
@@ -1901,44 +2092,32 @@ VSICurlFilesystemHandler::VSICurlFilesystemHandler()
 
 VSICurlFilesystemHandler::~VSICurlFilesystemHandler()
 {
-    for( int i=0; i < nRegions; i++ )
-    {
-        CPLFree(papsRegions[i]->pData);
-        CPLFree(papsRegions[i]);
-    }
-    CPLFree(papsRegions);
-
-    std::map<CPLString, CachedFileProp*>::const_iterator iterCacheFileSize;
-
-    for( iterCacheFileSize = cacheFileSize.begin();
-         iterCacheFileSize != cacheFileSize.end();
-         ++iterCacheFileSize )
-    {
-        delete iterCacheFileSize->second;
-    }
-
-    std::map<CPLString, CachedDirList*>::const_iterator iterCacheDirList;
-
-    for( iterCacheDirList = cacheDirList.begin();
-         iterCacheDirList != cacheDirList.end();
-         ++iterCacheDirList )
-    {
-        CSLDestroy(iterCacheDirList->second->papszFileList);
-        CPLFree(iterCacheDirList->second);
-    }
-
-    std::map<GIntBig, CachedConnection*>::const_iterator iterConnections;
-    for( iterConnections = mapConnections.begin();
-         iterConnections != mapConnections.end();
-         ++iterConnections )
-    {
-        curl_easy_cleanup(iterConnections->second->hCurlHandle);
-        delete iterConnections->second;
-    }
+    ClearCache();
 
     if( hMutex != NULL )
         CPLDestroyMutex( hMutex );
     hMutex = NULL;
+}
+
+/************************************************************************/
+/*                      AllowCachedDataFor()                            */
+/************************************************************************/
+
+bool VSICurlFilesystemHandler::AllowCachedDataFor(const char* pszFilename)
+{
+    bool bCachedAllowed = true;
+    char** papszTokens = CSLTokenizeString2(
+        CPLGetConfigOption("CPL_VSIL_CURL_NON_CACHED", ""), ":", 0 );
+    for( int i = 0; papszTokens && papszTokens[i]; i++)
+    {
+        if( STARTS_WITH(pszFilename, papszTokens[i]) )
+        {
+            bCachedAllowed = false;
+            break;
+        }
+    }
+    CSLDestroy(papszTokens);
+    return bCachedAllowed;
 }
 
 /************************************************************************/
@@ -2205,10 +2384,10 @@ VSICurlFilesystemHandler::GetCachedFileProp( const char* pszURL )
 }
 
 /************************************************************************/
-/*                    InvalidateCachedFileProp()                        */
+/*                        InvalidateCachedData()                        */
 /************************************************************************/
 
-void VSICurlFilesystemHandler::InvalidateCachedFileProp( const char* pszURL )
+void VSICurlFilesystemHandler::InvalidateCachedData( const char* pszURL )
 {
     CPLMutexHolder oHolder( &hMutex );
 
@@ -2219,6 +2398,75 @@ void VSICurlFilesystemHandler::InvalidateCachedFileProp( const char* pszURL )
         delete oIter->second;
         cacheFileSize.erase(oIter);
     }
+
+    // Invalidate all cached regions for this URL
+    const unsigned long pszURLHash = CPLHashSetHashStr(pszURL);
+    for( int i = 0; i < nRegions; )
+    {
+        CachedRegion* psRegion = papsRegions[i];
+        if( psRegion->pszURLHash == pszURLHash )
+        {
+            CPLFree(psRegion->pData);
+            CPLFree(psRegion);
+            if( i < nRegions - 1 )
+            {
+                memmove(papsRegions, papsRegions + 1,
+                        (nRegions - 1 - i) * sizeof(CachedRegion*));
+            }
+            nRegions --;
+        }
+        else
+        {
+            i ++;
+        }
+    }
+}
+
+/************************************************************************/
+/*                            ClearCache()                              */
+/************************************************************************/
+
+void VSICurlFilesystemHandler::ClearCache()
+{
+    CPLMutexHolder oHolder( &hMutex );
+
+    for( int i=0; i < nRegions; i++ )
+    {
+        CPLFree(papsRegions[i]->pData);
+        CPLFree(papsRegions[i]);
+    }
+    CPLFree(papsRegions);
+    nRegions = 0;
+    papsRegions = NULL;
+
+    std::map<CPLString, CachedFileProp*>::const_iterator iterCacheFileSize;
+    for( iterCacheFileSize = cacheFileSize.begin();
+         iterCacheFileSize != cacheFileSize.end();
+         ++iterCacheFileSize )
+    {
+        delete iterCacheFileSize->second;
+    }
+    cacheFileSize.clear();
+
+    std::map<CPLString, CachedDirList*>::const_iterator iterCacheDirList;
+    for( iterCacheDirList = cacheDirList.begin();
+         iterCacheDirList != cacheDirList.end();
+         ++iterCacheDirList )
+    {
+        CSLDestroy(iterCacheDirList->second->papszFileList);
+        CPLFree(iterCacheDirList->second);
+    }
+    cacheDirList.clear();
+
+    std::map<GIntBig, CachedConnection*>::const_iterator iterConnections;
+    for( iterConnections = mapConnections.begin();
+         iterConnections != mapConnections.end();
+         ++iterConnections )
+    {
+        curl_easy_cleanup(iterConnections->second->hCurlHandle);
+        delete iterConnections->second;
+    }
+    mapConnections.clear();
 }
 
 /************************************************************************/
@@ -2226,9 +2474,9 @@ void VSICurlFilesystemHandler::InvalidateCachedFileProp( const char* pszURL )
 /************************************************************************/
 
 VSICurlHandle* VSICurlFilesystemHandler::CreateFileHandle(
-                                                const char* pszUnprefixed )
+                                                const char* pszFilename )
 {
-    return new VSICurlHandle(this, pszUnprefixed);
+    return new VSICurlHandle(this, pszFilename);
 }
 
 /************************************************************************/
@@ -2308,10 +2556,17 @@ VSIVirtualHandle* VSICurlFilesystemHandler::Open( const char *pszFilename,
     if( !IsAllowedFilename( pszFilename ) )
         return NULL;
 
+    bool bListDir = true;
+    bool bEmptyDir = false;
+    CPLString osURL(
+        VSICurlGetURLFromFilename(pszFilename, NULL, NULL, NULL,
+                                  &bListDir, &bEmptyDir, NULL));
+
     const char* pszOptionVal =
         CPLGetConfigOption( "GDAL_DISABLE_READDIR_ON_OPEN", "NO" );
-    const bool bSkipReadDir =
-        EQUAL(pszOptionVal, "EMPTY_DIR") || CPLTestBool(pszOptionVal);
+    const bool bSkipReadDir = !bListDir || bEmptyDir ||
+        EQUAL(pszOptionVal, "EMPTY_DIR") || CPLTestBool(pszOptionVal) ||
+        !AllowCachedDataFor(pszFilename);
 
     CPLString osFilename(pszFilename);
     bool bGotFileList = true;
@@ -2349,7 +2604,7 @@ VSIVirtualHandle* VSICurlFilesystemHandler::Open( const char *pszFilename,
     }
 
     VSICurlHandle* poHandle =
-        CreateFileHandle(osFilename + strlen(GetFSPrefix()));
+        CreateFileHandle(osFilename);
     if( poHandle == NULL )
         return NULL;
     if( !bGotFileList || bForceExistsCheck )
@@ -2559,13 +2814,9 @@ char** VSICurlFilesystemHandler::ParseHTMLFileList( const char* pszFilename,
 {
     *pbGotFileList = false;
 
-    const char* pszDir;
-    if( STARTS_WITH_CI(pszFilename, "/vsicurl/http://") )
-        pszDir = strchr(pszFilename + strlen("/vsicurl/http://"), '/');
-    else if( STARTS_WITH_CI(pszFilename, "/vsicurl/https://") )
-        pszDir = strchr(pszFilename + strlen("/vsicurl/https://"), '/');
-    else
-        pszDir = strchr(pszFilename + strlen("/vsicurl/ftp://"), '/');
+    CPLString osURL(VSICurlGetURLFromFilename(pszFilename, NULL, NULL, NULL,
+                                              NULL, NULL, NULL));
+    const char* pszDir = strchr(osURL.c_str(), '/');
     if( pszDir == NULL )
         pszDir = "";
 
@@ -3022,7 +3273,7 @@ static bool VSICurlParseFullFTPLine( char* pszLine,
 CPLString
 VSICurlFilesystemHandler::GetURLFromDirname( const CPLString& osDirname )
 {
-    return osDirname.substr(GetFSPrefix().size());
+    return VSICurlGetURLFromFilename(osDirname, NULL, NULL, NULL, NULL, NULL, NULL);
 }
 
 /************************************************************************/
@@ -3038,16 +3289,29 @@ char** VSICurlFilesystemHandler::GetFileList(const char *pszDirname,
 
     *pbGotFileList = false;
 
+    bool bListDir = true;
+    bool bEmptyDir = false;
+    CPLString osURL(
+        VSICurlGetURLFromFilename(pszDirname, NULL, NULL, NULL,
+                                  &bListDir, &bEmptyDir, NULL));
+    if( bEmptyDir )
+    {
+        *pbGotFileList = true;
+        return CSLAddString(NULL, ".");
+    }
+    if( !bListDir )
+        return NULL;
+
     // HACK (optimization in fact) for MBTiles driver.
     if( strstr(pszDirname, ".tiles.mapbox.com") != NULL )
         return NULL;
 
-    if( STARTS_WITH(pszDirname, "/vsicurl/ftp") )
+    if( STARTS_WITH(osURL, "ftp://") )
     {
         WriteFuncStruct sWriteFuncData;
         sWriteFuncData.pBuffer = NULL;
 
-        CPLString osDirname(pszDirname + strlen("/vsicurl/"));
+        CPLString osDirname(osURL);
         osDirname += '/';
 
         char** papszFileList = NULL;
@@ -3211,10 +3475,10 @@ char** VSICurlFilesystemHandler::GetFileList(const char *pszDirname,
 
     // Try to recognize HTML pages that list the content of a directory.
     // Currently this supports what Apache and shttpd can return.
-    else if( STARTS_WITH(pszDirname, "/vsicurl/http://") ||
-             STARTS_WITH(pszDirname, "/vsicurl/https://") )
+    else if( STARTS_WITH(osURL, "http://") ||
+             STARTS_WITH(osURL, "https://") )
     {
-        CPLString osDirname(pszDirname + strlen("/vsicurl/"));
+        CPLString osDirname(osURL);
         osDirname += '/';
 
 #if LIBCURL_VERSION_NUM < 0x070B00
@@ -3304,13 +3568,20 @@ int VSICurlFilesystemHandler::Stat( const char *pszFilename,
     if( !IsAllowedFilename( pszFilename ) )
         return -1;
 
+    bool bListDir = true;
+    bool bEmptyDir = false;
+    CPLString osURL(
+        VSICurlGetURLFromFilename(pszFilename, NULL, NULL, NULL,
+                                  &bListDir, &bEmptyDir, NULL));
+
     const char* pszOptionVal =
         CPLGetConfigOption( "GDAL_DISABLE_READDIR_ON_OPEN", "NO" );
-    const bool bSkipReadDir =
-        EQUAL(pszOptionVal, "EMPTY_DIR") || CPLTestBool(pszOptionVal);
+    const bool bSkipReadDir = !bListDir || bEmptyDir ||
+        EQUAL(pszOptionVal, "EMPTY_DIR") || CPLTestBool(pszOptionVal) ||
+        !AllowCachedDataFor(pszFilename);
 
     // Does it look like a FTP directory?
-    if( STARTS_WITH(osFilename, "/vsicurl/ftp") &&
+    if( STARTS_WITH(osURL, "ftp://") &&
         osFilename.back() == '/' && !bSkipReadDir )
     {
         char** papszFileList = ReadDirEx(osFilename, 0);
@@ -3345,7 +3616,7 @@ int VSICurlFilesystemHandler::Stat( const char *pszFilename,
     }
 
     VSICurlHandle* poHandle =
-        CreateFileHandle( osFilename + strlen(GetFSPrefix()) );
+        CreateFileHandle( osFilename );
     if( poHandle == NULL )
         return -1;
 
@@ -3499,7 +3770,7 @@ class VSIS3FSHandler CPL_FINAL : public VSICurlFilesystemHandler
     std::map< CPLString, VSIS3UpdateParams > oMapBucketsToS3Params;
 
 protected:
-    virtual VSICurlHandle* CreateFileHandle( const char* pszUnprefixed ) override;
+    virtual VSICurlHandle* CreateFileHandle( const char* pszFilename ) override;
     virtual char** GetFileList( const char *pszFilename,
                                 int nMaxFiles,
                                 bool* pbGotFileList ) override;
@@ -3507,6 +3778,7 @@ protected:
 
 public:
         VSIS3FSHandler() {}
+        virtual ~VSIS3FSHandler();
 
         virtual VSIVirtualHandle *Open( const char *pszFilename,
                                         const char *pszAccess,
@@ -3519,6 +3791,8 @@ public:
 
         void UpdateMapFromHandle( VSIS3HandleHelper * poS3HandleHelper );
         void UpdateHandleFromMap( VSIS3HandleHelper * poS3HandleHelper );
+
+        virtual void        ClearCache() override;
 };
 
 /************************************************************************/
@@ -3539,6 +3813,7 @@ class VSIS3Handle CPL_FINAL : public VSICurlHandle
 
     public:
         VSIS3Handle( VSIS3FSHandler* poFS,
+                     const char* pszFilename,
                      VSIS3HandleHelper* poS3HandleHelper );
         virtual ~VSIS3Handle();
 };
@@ -3730,7 +4005,7 @@ bool VSIS3WriteHandle::InitiateMultipartUpload()
         }
         else
         {
-            m_poFS->InvalidateCachedFileProp(
+            m_poFS->InvalidateCachedData(
                 m_poS3HandleHelper->GetURL().c_str());
             m_poFS->InvalidateDirContent( CPLGetDirname(m_osFilename) );
 
@@ -3990,7 +4265,7 @@ bool VSIS3WriteHandle::DoSinglePartPUT()
         }
         else
         {
-            m_poFS->InvalidateCachedFileProp(
+            m_poFS->InvalidateCachedData(
                 m_poS3HandleHelper->GetURL().c_str() );
             m_poFS->InvalidateDirContent( CPLGetDirname(m_osFilename) );
         }
@@ -4210,6 +4485,28 @@ VSIVirtualHandle* VSIS3FSHandler::Open( const char *pszFilename,
 }
 
 /************************************************************************/
+/*                         ~VSIS3FSHandler()                            */
+/************************************************************************/
+
+VSIS3FSHandler::~VSIS3FSHandler()
+{
+    VSIS3HandleHelper::CleanMutex();
+}
+
+/************************************************************************/
+/*                            ClearCache()                              */
+/************************************************************************/
+
+void VSIS3FSHandler::ClearCache()
+{
+    VSICurlFilesystemHandler::ClearCache();
+
+    oMapBucketsToS3Params.clear();
+
+    VSIS3HandleHelper::ClearCache();
+}
+
+/************************************************************************/
 /*                                Stat()                                */
 /************************************************************************/
 
@@ -4229,14 +4526,15 @@ int VSIS3FSHandler::Stat( const char *pszFilename, VSIStatBufL *pStatBuf,
 /*                          CreateFileHandle()                          */
 /************************************************************************/
 
-VSICurlHandle* VSIS3FSHandler::CreateFileHandle(const char* pszUnprefixed)
+VSICurlHandle* VSIS3FSHandler::CreateFileHandle(const char* pszFilename)
 {
     VSIS3HandleHelper* poS3HandleHelper =
-        VSIS3HandleHelper::BuildFromURI(pszUnprefixed, GetFSPrefix().c_str(), false);
+        VSIS3HandleHelper::BuildFromURI(pszFilename + GetFSPrefix().size(),
+                                        GetFSPrefix().c_str(), false);
     if( poS3HandleHelper )
     {
         UpdateHandleFromMap(poS3HandleHelper);
-        return new VSIS3Handle(this, poS3HandleHelper);
+        return new VSIS3Handle(this, pszFilename, poS3HandleHelper);
     }
     return NULL;
 }
@@ -4329,7 +4627,7 @@ int VSIS3FSHandler::Unlink( const char *pszFilename )
         }
         else
         {
-            InvalidateCachedFileProp(poS3HandleHelper->GetURL().c_str());
+            InvalidateCachedData(poS3HandleHelper->GetURL().c_str());
             InvalidateDirContent( CPLGetDirname(pszFilename) );
         }
 
@@ -4506,10 +4804,12 @@ void VSIS3FSHandler::UpdateHandleFromMap( VSIS3HandleHelper * poS3HandleHelper )
 /************************************************************************/
 
 VSIS3Handle::VSIS3Handle( VSIS3FSHandler* poFSIn,
+                          const char* pszFilename,
                           VSIS3HandleHelper* poS3HandleHelper ) :
-        VSICurlHandle(poFSIn, poS3HandleHelper->GetURL()),
+        VSICurlHandle(poFSIn, pszFilename, poS3HandleHelper->GetURL()),
         m_poS3HandleHelper(poS3HandleHelper)
-{}
+{
+}
 
 /************************************************************************/
 /*                            ~VSIS3Handle()                            */
@@ -4563,7 +4863,7 @@ void VSIS3Handle::ProcessGetFileSizeResult( const char* pszContent )
 class VSIGSFSHandler CPL_FINAL : public VSICurlFilesystemHandler
 {
 protected:
-    virtual VSICurlHandle* CreateFileHandle( const char* pszUnprefixed ) override;
+    virtual VSICurlHandle* CreateFileHandle( const char* pszFilename ) override;
     virtual char** GetFileList( const char *pszFilename,
                                 int nMaxFiles,
                                 bool* pbGotFileList ) override;
@@ -4588,7 +4888,8 @@ class VSIGSHandle CPL_FINAL : public VSICurlHandle
             override;
 
     public:
-        VSIGSHandle( VSIGSFSHandler* poFS, VSIGSHandleHelper* poHandleHelper);
+        VSIGSHandle( VSIGSFSHandler* poFS, const char* pszFilename,
+                     VSIGSHandleHelper* poHandleHelper);
         virtual ~VSIGSHandle();
 };
 
@@ -4596,13 +4897,14 @@ class VSIGSHandle CPL_FINAL : public VSICurlHandle
 /*                          CreateFileHandle()                          */
 /************************************************************************/
 
-VSICurlHandle* VSIGSFSHandler::CreateFileHandle(const char* pszUnprefixed)
+VSICurlHandle* VSIGSFSHandler::CreateFileHandle(const char* pszFilename)
 {
     VSIGSHandleHelper* poHandleHelper =
-        VSIGSHandleHelper::BuildFromURI( pszUnprefixed, GetFSPrefix() );
+        VSIGSHandleHelper::BuildFromURI( pszFilename + GetFSPrefix().size(),
+                                         GetFSPrefix() );
     if( poHandleHelper == NULL )
         return NULL;
-    return new VSIGSHandle(this, poHandleHelper);
+    return new VSIGSHandle(this, pszFilename, poHandleHelper);
 }
 
 /************************************************************************/
@@ -4727,6 +5029,7 @@ char** VSIGSFSHandler::GetFileList( const char *pszDirname,
         }
         else
         {
+            CPLFree(sWriteFuncData.pBuffer);
             delete poHandleHelper;
             return NULL;
         }
@@ -4738,10 +5041,12 @@ char** VSIGSFSHandler::GetFileList( const char *pszDirname,
 /************************************************************************/
 
 VSIGSHandle::VSIGSHandle( VSIGSFSHandler* poFSIn,
+                          const char* pszFilename,
                           VSIGSHandleHelper* poHandleHelper ) :
-        VSICurlHandle(poFSIn, poHandleHelper->GetURL()),
+        VSICurlHandle(poFSIn, pszFilename, poHandleHelper->GetURL()),
         m_poHandleHelper(poHandleHelper)
-{}
+{
+}
 
 /************************************************************************/
 /*                            ~VSIGSHandle()                            */
@@ -4867,6 +5172,25 @@ struct curl_slist* VSICurlMergeHeaders( struct curl_slist* poDest,
  * Recognized filenames are of the form /vsicurl/http://path/to/remote/resource
  * or /vsicurl/ftp://path/to/remote/resource where path/to/remote/resource is
  * the URL of a remote resource.
+ * 
+ * Starting with GDAL 2.3, options can be passed in the filename with the
+ * following syntax:
+ * /vsicurl/option1=val1[,optionN=valN]*,url=http://...
+ * Currently supported options are :
+ * <ul>
+ * <li>use_head=yes/no: whether the HTTP HEAD request can be emitted.
+ *     Default to YES.
+ *     Setting this option overrides the behaviour of the
+ *     CPL_VSIL_CURL_USE_HEAD configuration option.</li>
+ * <li>max_retry=number: default to 0.
+ *     Setting this option overrides the behaviour of the
+ *     GDAL_HTTP_MAX_RETRY configuration option.</li>
+ * <li>retry_delay=number_in_seconds: default to 30.
+ *     Setting this option overrides the behaviour of the
+ *     GDAL_HTTP_RETRY_DELAY configuration option.</li>
+ * <li>list_dir=yes/no: whether an attempt to read the file list of the
+ *     directory where the file is located should be done. Default to YES.</li>
+ * </ul>
  *
  * Partial downloads (requires the HTTP server to support random reading) are
  * done with a 16 KB granularity by default. If the driver detects sequential
@@ -4876,11 +5200,25 @@ struct curl_slist* VSICurlMergeHeaders( struct curl_slist* poDest,
  * The GDAL_HTTP_PROXY, GDAL_HTTP_PROXYUSERPWD and GDAL_PROXY_AUTH configuration
  * options can be used to define a proxy server. The syntax to use is the one of
  * Curl CURLOPT_PROXY, CURLOPT_PROXYUSERPWD and CURLOPT_PROXYAUTH options.
+ * 
+ * Starting with GDAL 2.3, the GDAL_HTTP_MAX_RETRY (number of attempts) and
+ * GDAL_HTTP_RETRY_DELAY (in seconds) configuration option can be set, so that
+ * request retries are done in case of HTTP errors 502, 503 or 504.
  *
- * Starting with GDAL 1.10, the file can be cached in RAM by setting the
+ * The file can be cached in RAM by setting the
  * configuration option VSI_CACHE to TRUE. The cache size defaults to 25 MB, but
  * can be modified by setting the configuration option VSI_CACHE_SIZE (in
- * bytes).
+ * bytes). Content in that cache is discarded when the file handle is closed.
+ * 
+ * In addition, a global LRU cache of 16 MB shared among all downloaded content 
+ * is enabled by default, and content in it may be reused after a file handle
+ * has been closed and reopen. Starting with GDAL 2.3, the
+ * CPL_VSIL_CURL_NON_CACHED configuration option can be set to values like
+ * "/vsicurl/http://example.com/foo.tif:/vsicurl/http://example.com/some_directory",
+ * so that at file handle closing, all cached content related to the mentioned
+ * file(s) is no longer cached. This can help when dealing with resources that
+ * can be modified during execution of GDAL related code. Alternatively,
+ * VSICurlClearCache() can be used.
  *
  * Starting with GDAL 2.1, /vsicurl/ will try to query directly redirected URLs
  * to Amazon S3 signed URLs during their validity period, so as to minimize
@@ -4933,15 +5271,30 @@ void VSIInstallCurlFileHandler( void )
  *
  * The AWS_SECRET_ACCESS_KEY and AWS_ACCESS_KEY_ID configuration options *must*
  * be set.  The AWS_SESSION_TOKEN configuration option must be set when
- * temporary credentials are used.  The AWS_REGION configuration option may be
+ * temporary credentials are used.  The AWS_REGION (or AWS_DEFAULT_REGION
+ * starting with GDAL 2.3) configuration option may be
  * set to one of the supported
  * <a href="http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">S3
- * regions</a> and defaults to 'us-east-1' The AWS_S3_ENDPOINT configuration
- * option defaults to s3.amazonaws.com. Starting with GDAL 2.2, the
+ * regions</a> and defaults to 'us-east-1'.
+ * 
+ * Starting with GDAL 2.3, alternate ways of providing credentials similar to
+ * what the "aws" command line utility or Boto3 support can be used. If the
+ * above mentionned environment variables are not provided, the ~/.aws/credentials
+ * or %UserProfile%/.aws/credentials file will be read (or the file pointed by
+ * CPL_AWS_CREDENTIALS_FILE). The profile may be
+ * specified with the AWS_PROFILE environment variable (the default profile is "default")
+ * The ~/.aws/config or %UserProfile%/.aws/config file may also be used (or the
+ * file pointer by AWS_CONFIG_FILE) to retrieve credentials and the AWS region.
+ * If none of the above method succeeds, instance profile credentials will be
+ * retrieved when GDAL is used on EC2 instances.
+ * 
+ * Starting with GDAL 2.2, the
  * AWS_REQUEST_PAYER configuration option may be set to "requester" to
  * facilitate use with
  * <a href="http://docs.aws.amazon.com/AmazonS3/latest/dev/RequesterPaysBuckets.html">Requester
  * Pays buckets</a>.
+ * 
+ * The AWS_S3_ENDPOINT configuration option defaults to s3.amazonaws.com. 
  *
  * The GDAL_HTTP_PROXY, GDAL_HTTP_PROXYUSERPWD and GDAL_PROXY_AUTH configuration
  * options can be used to define a proxy server. The syntax to use is the one of
@@ -4951,10 +5304,21 @@ void VSIInstallCurlFileHandler( void )
  * options can be used to set the path to the Certification Authority (CA)
  * bundle file (if not specified, curl will use a file in a system location).
  *
- * On reading, the file can be cached in RAM by setting the configuration option
- * VSI_CACHE to TRUE. The cache size defaults to 25 MB, but can be modified by
- * setting the configuration option VSI_CACHE_SIZE (in bytes).
- *
+ * On reading, the file can be cached in RAM by setting the
+ * configuration option VSI_CACHE to TRUE. The cache size defaults to 25 MB, but
+ * can be modified by setting the configuration option VSI_CACHE_SIZE (in
+ * bytes). Content in that cache is discarded when the file handle is closed.
+ * 
+ * In addition, a global LRU cache of 16 MB shared among all downloaded content 
+ * is enabled by default, and content in it may be reused after a file handle
+ * has been closed and reopen. Starting with GDAL 2.3, the
+ * CPL_VSIL_CURL_NON_CACHED configuration option can be set to values like
+ * "/vsis3/bucket/foo.tif:/vsis3/another_bucket/some_directory",
+ * so that at file handle closing, all cached content related to the mentioned
+ * file(s) is no longer cached. This can help when dealing with resources that
+ * can be modified during execution of GDAL related code. Alternatively,
+ * VSICurlClearCache() can be used.
+ * 
  * On writing, the file is uploaded using the S3
  * <a href="http://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadInitiate.html">multipart upload API</a>.
  * The size of chunks is set to 50 MB by default, allowing creating files up to
@@ -5013,9 +5377,20 @@ void VSIInstallS3FileHandler( void )
  * options can be used to set the path to the Certification Authority (CA)
  * bundle file (if not specified, curl will use a file in a system location).
  *
- * On reading, the file can be cached in RAM by setting the configuration option
- * VSI_CACHE to TRUE. The cache size defaults to 25 MB, but can be modified by
- * setting the configuration option VSI_CACHE_SIZE (in bytes).
+ * On reading, the file can be cached in RAM by setting the
+ * configuration option VSI_CACHE to TRUE. The cache size defaults to 25 MB, but
+ * can be modified by setting the configuration option VSI_CACHE_SIZE (in
+ * bytes). Content in that cache is discarded when the file handle is closed.
+ * 
+ * In addition, a global LRU cache of 16 MB shared among all downloaded content 
+ * is enabled by default, and content in it may be reused after a file handle
+ * has been closed and reopen. Starting with GDAL 2.3, the
+ * CPL_VSIL_CURL_NON_CACHED configuration option can be set to values like
+ * "/vsigs/bucket/foo.tif:/vsigs/another_bucket/some_directory",
+ * so that at file handle closing, all cached content related to the mentioned
+ * file(s) is no longer cached. This can help when dealing with resources that
+ * can be modified during execution of GDAL related code. Alternatively,
+ * VSICurlClearCache() can be used.
  *
  * VSIStatL() will return the size in st_size member.
  *
@@ -5025,6 +5400,38 @@ void VSIInstallS3FileHandler( void )
 void VSIInstallGSFileHandler( void )
 {
     VSIFileManager::InstallHandler( "/vsigs/", new VSIGSFSHandler );
+}
+
+/************************************************************************/
+/*                         VSICurlClearCache()                          */
+/************************************************************************/
+
+/**
+ * \brief Clean local cache associated with /vsicurl/ (and related file systems)
+ *
+ * /vsicurl (and related file systems like /vsis3/ , /vsigs/) cache a number of
+ * metadata and data for faster execution in read-only scenarios. But when the
+ * content on the server-side may change during the same process, those
+ * mechanisms can prevent opening new files, or give an outdated version of them.
+ *
+ * @since GDAL 2.2.1
+ */
+
+void VSICurlClearCache( void )
+{
+    // FIXME ? Currently we have different filesystem instances for
+    // vsicurl/, /vsis3/, /vsigs/ . So each one has its own cache of regions,
+    // file size, etc.
+    const char* const apszFS[] = { "/vsicurl/", "/vsis3/", "/vsigs/" };
+    for( size_t i = 0; i < CPL_ARRAYSIZE(apszFS); ++i )
+    {
+        VSICurlFilesystemHandler *poFSHandler =
+            dynamic_cast<VSICurlFilesystemHandler*>(
+                VSIFileManager::GetHandler( apszFS[i] ));
+
+        if( poFSHandler )
+            poFSHandler->ClearCache();
+    }
 }
 
 #endif /* HAVE_CURL */

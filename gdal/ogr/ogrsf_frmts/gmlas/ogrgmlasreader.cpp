@@ -35,7 +35,7 @@
 
 #include "ogr_json_header.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                        GMLASBinInputStream                           */
@@ -1396,7 +1396,6 @@ void GMLASReader::startElement(
         CPLDebug("GMLAS", "Current layer: %s", m_oCurCtxt.m_poLayer->GetName() );
 #endif
 
-
         bool bHasProcessedAttributes = false;
 
         // Find if we can match this element with one of our fields
@@ -1410,6 +1409,26 @@ void GMLASReader::startElement(
             /* Special case for a layer that matches everything, as found */
             /* in swe:extension */
             idx = m_oCurCtxt.m_poLayer->GetOGRFieldIndexFromXPath(
+              m_oCurCtxt.m_poLayer->GetFeatureClass().GetXPath() + szMATCH_ALL);
+            if( idx >= 0 &&
+                m_oCurCtxt.m_poLayer->GetFeatureClass().GetFields().size() > 1 )
+            {
+                // But only match this wildcard field if it is the only child
+                // of the feature class, otherwise that is going to prevent
+                // matching regular fields
+                // Practical case  the <any processContents="lax" minOccurs="0" maxOccurs="unbounded">
+                // declaratin of
+                // http://schemas.earthresourceml.org/earthresourceml-lite/1.0/erml-lite.xsd 
+                // http://services.ga.gov.au/earthresource/ows?service=wfs&version=2.0.0&request=GetFeature&typenames=erl:CommodityResourceView&count=10
+                // FIXME: currently we will thus ignore those extra content
+                // See ogr_gmlas_any_field_at_end_of_declaration test case
+                idx = -1;
+            }
+        }
+        if( idx < 0 && geom_idx < 0 && geom_idx != IDX_COMPOUND_FOLDED )
+        {
+            /* Special case for a layer that is a made of only a geometry */
+            geom_idx = m_oCurCtxt.m_poLayer->GetOGRGeomFieldIndexFromXPath(
               m_oCurCtxt.m_poLayer->GetFeatureClass().GetXPath() + szMATCH_ALL);
         }
 
@@ -1774,7 +1793,7 @@ void GMLASReader::startElement(
             m_nCurGeomFieldIdx = -1;
         }
 
-        if( !bHasProcessedAttributes )
+        if( !bHasProcessedAttributes && m_nLevelSilentIgnoredXPath < 0 )
             ProcessAttributes(attrs);
     }
     else
@@ -1825,6 +1844,8 @@ void GMLASReader::ProcessAttributes(const Attributes& attrs)
             osAttrXPath += "/@";
             osAttrXPath += osAttrLocalname;
         }
+
+        //CPLDebug("GMLAS", "Attr %s=%s", osAttrXPath.c_str(), osAttrValue.c_str());
 
         const int nAttrIdx = m_oCurCtxt.m_poLayer->
                                     GetOGRFieldIndexFromXPath(osAttrXPath);
@@ -1909,6 +1930,17 @@ void GMLASReader::ProcessAttributes(const Attributes& attrs)
                         GetFields()[nFCIdx].GetFixedValue().empty() )
             {
                 // In validation mode, fixed attributes not present in the
+                // document are still reported, which cause spurious warnings
+            }
+            else if( m_bValidate &&
+                     (nFCIdx = m_oCurCtxt.m_poLayer->
+                        GetFCFieldIndexFromXPath(osAttrXPath)) >= 0 &&
+                     !m_oCurCtxt.m_poLayer->GetFeatureClass().
+                        GetFields()[nFCIdx].GetDefaultValue().empty() &&
+                     m_oCurCtxt.m_poLayer->GetFeatureClass().
+                        GetFields()[nFCIdx].GetDefaultValue() == m_osAttrValue )
+            {
+                // In validation mode, default attributes not present in the
                 // document are still reported, which cause spurious warnings
             }
             else if( m_oIgnoredXPathMatcher.MatchesRefXPath(
@@ -2728,6 +2760,21 @@ void GMLASReader::ProcessSWEDataRecord(CPLXMLNode* psRoot)
 }
 
 /************************************************************************/
+/*                            GMLASGetSRSName()                         */
+/************************************************************************/
+
+static const char* GMLASGetSRSName(CPLXMLNode* psNode)
+{
+    const char* pszSRSName = CPLGetXMLValue(psNode, szSRS_NAME, NULL);
+    if( pszSRSName == NULL )
+    {
+        // Case of a gml:Point where the srsName is on the gml:pos
+        pszSRSName = CPLGetXMLValue(psNode, "gml:pos.srsName", NULL);
+    }
+    return pszSRSName;
+}
+
+/************************************************************************/
 /*                            ProcessGeometry()                         */
 /************************************************************************/
 
@@ -2739,8 +2786,7 @@ void GMLASReader::ProcessGeometry(CPLXMLNode* psRoot)
 
     if( m_bInitialPass )
     {
-        const char* pszSRSName = CPLGetXMLValue(psRoot,
-                                                szSRS_NAME, NULL);
+        const char* pszSRSName = GMLASGetSRSName(psRoot);
         if( pszSRSName != NULL )
         {
             // If we are doing a first pass, store the SRS of the geometry
@@ -2786,8 +2832,8 @@ void GMLASReader::ProcessGeometry(CPLXMLNode* psRoot)
                     (OGR_G_CreateFromGMLTree( psRoot ));
     if( poGeom != NULL )
     {
-        const char* pszSRSName = CPLGetXMLValue(psRoot,
-                                                szSRS_NAME, NULL);
+        const char* pszSRSName = GMLASGetSRSName(psRoot);
+
         bool bSwapXY = false;
         if( pszSRSName != NULL )
         {

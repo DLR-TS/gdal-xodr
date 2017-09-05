@@ -57,7 +57,7 @@
 #include "ogr_p.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 static const int SRSDIM_LOC_GEOMETRY = 1 << 0;
 static const int SRSDIM_LOC_POSLIST = 1 << 1;
@@ -484,11 +484,9 @@ CPLXMLNode *OGR_G_ExportEnvelopeToGMLTree( OGRGeometryH hGeometry )
 {
     OGREnvelope sEnvelope;
 
-    memset( &sEnvelope, 0, sizeof(sEnvelope) );
     reinterpret_cast<OGRGeometry *>(hGeometry)->getEnvelope( &sEnvelope );
 
-    if( sEnvelope.MinX == 0 && sEnvelope.MaxX == 0 &&
-        sEnvelope.MinY == 0 && sEnvelope.MaxY == 0 )
+    if( !sEnvelope.IsInit() )
     {
         // TODO: There is apparently a special way of representing a null box
         // geometry. Should use it here eventually.

@@ -32,7 +32,7 @@
 #include "cpl_csv.h"
 #include "ogr_p.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                            OGRBNALayer()                             */
@@ -623,6 +623,7 @@ OGRFeature *OGRBNALayer::BuildFeatureFromBNARecord (BNARecord* record, long fid)
             {
                 OGRPolygon* polygon = new OGRPolygon ();
                 polygon->addRingDirectly(ring);
+                ring = NULL;
                 tabPolygons[nbPolygons] = polygon;
                 nbPolygons++;
 
@@ -648,6 +649,7 @@ OGRFeature *OGRBNALayer::BuildFeatureFromBNARecord (BNARecord* record, long fid)
 
                 OGRPolygon* polygon = new OGRPolygon ();
                 polygon->addRingDirectly(ring);
+                ring = NULL;
                 tabPolygons[nbPolygons] = polygon;
                 nbPolygons++;
 
@@ -706,10 +708,12 @@ OGRFeature *OGRBNALayer::BuildFeatureFromBNARecord (BNARecord* record, long fid)
 
                 OGRPolygon* polygon = new OGRPolygon ();
                 polygon->addRingDirectly(ring);
+                ring = NULL;
                 tabPolygons[nbPolygons] = polygon;
                 nbPolygons++;
             }
         }
+        delete ring;
 
         if (nbPolygons == 1)
         {

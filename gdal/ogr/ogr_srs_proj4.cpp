@@ -49,7 +49,7 @@
 extern
 int EPSGGetWGS84Transform( int nGeogCS, std::vector<CPLString>& asTransform );
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /* -------------------------------------------------------------------- */
 /*      The following list comes from osrs/proj/src/pj_ellps.c.         */
@@ -1062,9 +1062,12 @@ OGRErr OGRSpatialReference::importFromProj4( const char * pszProj4 )
             if( EQUAL(pszValue, ogr_pj_datums[i].pszPJ) )
             {
                 OGRSpatialReference oGCS;
-                oGCS.importFromEPSG( ogr_pj_datums[i].nEPSG );
-                CopyGeogCSFrom( &oGCS );
-                bFullyDefined = true;
+                if( oGCS.importFromEPSG( ogr_pj_datums[i].nEPSG )
+                                                    == OGRERR_NONE &&
+                    CopyGeogCSFrom( &oGCS ) == OGRERR_NONE )
+                {
+                    bFullyDefined = true;
+                }
                 break;
             }
         }
@@ -1243,7 +1246,7 @@ OGRErr OGRSpatialReference::importFromProj4( const char * pszProj4 )
             else
             {
                 // This case is untranslatable.  Should add all proj.4 unts.
-                SetLinearUnits( pszValue, 1.0 );
+                SetLinearUnits( !EQUAL(pszValue, "AUTHORITY") ? pszValue : "unknown", 1.0 );
             }
         }
     }

@@ -61,7 +61,7 @@
 static int bSpatialiteGlobalLoaded = FALSE;
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                      OGRSQLiteInitOldSpatialite()                    */
@@ -188,7 +188,8 @@ void OGRSQLiteDriverUnload(GDALDriver*)
 
 bool OGRSQLiteBaseDataSource::InitNewSpatialite()
 {
-    if( CPLTestBool(CPLGetConfigOption("SPATIALITE_LOAD", "TRUE")) )
+    if( hSpatialiteCtxt == NULL &&
+        CPLTestBool(CPLGetConfigOption("SPATIALITE_LOAD", "TRUE")) )
     {
 #ifdef SPATIALITE_DLOPEN
         if( !OGRSQLiteLoadSpatialiteSymbols() )
@@ -1022,7 +1023,8 @@ int OGRSQLiteDataSource::Create( const char * pszNameIn, char **papszOptions )
             return FALSE;
     }
 
-    return Open(m_pszFilename, TRUE, NULL, GDAL_OF_VECTOR);
+    GDALOpenInfo oOpenInfo(m_pszFilename, GDAL_OF_VECTOR | GDAL_OF_UPDATE);
+    return Open(&oOpenInfo);
 }
 
 /************************************************************************/
@@ -1249,20 +1251,22 @@ void OGRSQLiteDataSource::ReloadLayers()
     papoLayers = NULL;
     nLayers = 0;
 
-    Open(m_pszFilename, bUpdate, NULL, GDAL_OF_VECTOR);
+    GDALOpenInfo oOpenInfo(m_pszFilename,
+                           GDAL_OF_VECTOR | (bUpdate ? GDAL_OF_UPDATE: 0));
+    Open(&oOpenInfo);
 }
 
 /************************************************************************/
 /*                                Open()                                */
 /************************************************************************/
 
-int OGRSQLiteDataSource::Open( const char * pszNewName, int bUpdateIn,
-                               char** papszOpenOptionsIn, int nOpenFlagsIn)
+int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
 
 {
+    const char * pszNewName = poOpenInfo->pszFilename;
     CPLAssert( nLayers == 0 );
-    bUpdate = bUpdateIn;
-    nOpenFlags = nOpenFlagsIn;
+    bUpdate = poOpenInfo->eAccess == GA_Update;
+    nOpenFlags = poOpenInfo->nOpenFlags;
     SetDescription(pszNewName);
 
     if (m_pszFilename == NULL)
@@ -1295,10 +1299,10 @@ int OGRSQLiteDataSource::Open( const char * pszNewName, int bUpdateIn,
         nFileTimestamp = sStat.st_mtime;
     }
 
-    if( papszOpenOptionsIn )
+    if( poOpenInfo->papszOpenOptions )
     {
         CSLDestroy(papszOpenOptions);
-        papszOpenOptions = CSLDuplicate(papszOpenOptionsIn);
+        papszOpenOptions = CSLDuplicate(poOpenInfo->papszOpenOptions);
     }
 
     bool bListVectorLayers = (nOpenFlags & GDAL_OF_VECTOR) != 0;
@@ -1325,7 +1329,113 @@ int OGRSQLiteDataSource::Open( const char * pszNewName, int bUpdateIn,
         OGRSQLiteInitOldSpatialite();
 #endif
 
-        if (!OpenOrCreateDB((bUpdateIn) ? SQLITE_OPEN_READWRITE : SQLITE_OPEN_READONLY, TRUE) )
+#ifdef ENABLE_SQL_SQLITE_FORMAT
+        if( poOpenInfo->pabyHeader &&
+            (STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL SQLITE") ||
+             STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL RASTERLITE") ||
+             STARTS_WITH((const char*)poOpenInfo->pabyHeader, "-- SQL MBTILES")) &&
+            poOpenInfo->fpL != NULL )
+        {
+            if( sqlite3_open_v2( ":memory:", &hDB, SQLITE_OPEN_READWRITE, NULL )
+                    != SQLITE_OK )
+            {
+                return FALSE;
+            }
+
+#ifdef SPATIALITE_412_OR_LATER
+            // We need it here for ST_MinX() and the like
+            InitNewSpatialite();
+#endif
+
+            // Ingest the lines of the dump
+            VSIFSeekL( poOpenInfo->fpL, 0, SEEK_SET );
+            const char* pszLine;
+            while( (pszLine = CPLReadLineL( poOpenInfo->fpL )) != NULL )
+            {
+                if( STARTS_WITH(pszLine, "--") )
+                    continue;
+
+                // Blacklist a few words tat might have security implications
+                // Basically we just want to allow CREATE TABLE and INSERT INTO
+                if( CPLString(pszLine).ifind("ATTACH") != std::string::npos ||
+                    CPLString(pszLine).ifind("DETACH") != std::string::npos ||
+                    CPLString(pszLine).ifind("PRAGMA") != std::string::npos ||
+                    CPLString(pszLine).ifind("SELECT") != std::string::npos ||
+                    CPLString(pszLine).ifind("UPDATE") != std::string::npos ||
+                    CPLString(pszLine).ifind("REPLACE") != std::string::npos ||
+                    CPLString(pszLine).ifind("DELETE") != std::string::npos ||
+                    CPLString(pszLine).ifind("DROP") != std::string::npos ||
+                    CPLString(pszLine).ifind("ALTER") != std::string::npos||
+                    CPLString(pszLine).ifind("VIRTUAL") != std::string::npos )
+                {
+                    bool bOK = false;
+                    if( EQUAL(pszLine,
+                              "CREATE VIRTUAL TABLE SpatialIndex "
+                              "USING VirtualSpatialIndex();") )
+                    {
+                        bOK = TRUE;
+                    }
+                    // Accept creation of spatial index
+                    else if( STARTS_WITH_CI(pszLine, "CREATE VIRTUAL TABLE ") )
+                    {
+                        const char* pszStr = pszLine +
+                                            strlen("CREATE VIRTUAL TABLE ");
+                        if( *pszStr == '"' )
+                            pszStr ++;
+                        while( (*pszStr >= 'a' && *pszStr <= 'z') ||
+                               (*pszStr >= 'A' && *pszStr <= 'Z') ||
+                               *pszStr == '_' )
+                        {
+                            pszStr ++;
+                        }
+                        if( *pszStr == '"' )
+                            pszStr ++;
+                        if( EQUAL(pszStr,
+                            " USING rtree(pkid, xmin, xmax, ymin, ymax);") )
+                        {
+                            bOK = true;
+                        }
+                    }
+                    // Accept INSERT INTO idx_byte_metadata_geometry SELECT rowid, ST_MinX(geometry), ST_MaxX(geometry), ST_MinY(geometry), ST_MaxY(geometry) FROM byte_metadata;
+                    else if( STARTS_WITH_CI(pszLine, "INSERT INTO idx_") &&
+                        CPLString(pszLine).ifind("SELECT") != std::string::npos )
+                    {
+                        char** papszTokens = CSLTokenizeString2( pszLine, " (),,", 0 );
+                        if( CSLCount(papszTokens) == 15 &&
+                            EQUAL(papszTokens[3], "SELECT") &&
+                            EQUAL(papszTokens[5], "ST_MinX") &&
+                            EQUAL(papszTokens[7], "ST_MaxX") &&
+                            EQUAL(papszTokens[9], "ST_MinY") &&
+                            EQUAL(papszTokens[11], "ST_MaxY") &&
+                            EQUAL(papszTokens[13], "FROM") )
+                        {
+                            bOK = TRUE;
+                        }
+                        CSLDestroy(papszTokens);
+                    }
+
+                    if( !bOK )
+                    {
+                        CPLError(CE_Failure, CPLE_NotSupported,
+                                "Rejected statement: %s", pszLine);
+                        return FALSE;
+                    }
+                }
+                char* pszErrMsg = NULL;
+                if( sqlite3_exec( hDB, pszLine, NULL, NULL, &pszErrMsg ) != SQLITE_OK )
+                {
+                    if( pszErrMsg )
+                    {
+                        CPLDebug("SQLITE", "Error %s at line %s",
+                                 pszErrMsg, pszLine);
+                    }
+                }
+                sqlite3_free(pszErrMsg);
+            }
+        }
+        else
+#endif
+        if (!OpenOrCreateDB((bUpdate) ? SQLITE_OPEN_READWRITE : SQLITE_OPEN_READONLY, TRUE) )
             return FALSE;
 
 #ifdef SPATIALITE_412_OR_LATER

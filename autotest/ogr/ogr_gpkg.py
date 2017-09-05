@@ -4319,6 +4319,195 @@ def ogr_gpkg_50():
     return 'success'
 
 ###############################################################################
+# Test opening a .gpkg.sql file
+
+def ogr_gpkg_51():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    if gdaltest.gpkg_dr.GetMetadataItem("ENABLE_SQL_GPKG_FORMAT") != 'YES':
+        return 'skip'
+
+    ds = ogr.Open('data/poly.gpkg.sql')
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    if f is None:
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test opening a .gpkg file
+
+def ogr_gpkg_52():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    ds = ogr.Open('data/poly.gpkg')
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    if f is None:
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test opening a .gpkg file with inconsistency regarding table case (#6916)
+
+def ogr_gpkg_53():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    if gdaltest.gpkg_dr.GetMetadataItem("ENABLE_SQL_GPKG_FORMAT") != 'YES':
+        return 'skip'
+
+    ds = ogr.Open('data/poly_inconsistent_case.gpkg.sql')
+    if ds.GetLayerCount() != 1:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    if f is None:
+        return 'fail'
+
+    import test_cli_utilities
+    if test_cli_utilities.get_test_ogrsf_path() is not None:
+        ret = gdaltest.runexternal(test_cli_utilities.get_test_ogrsf_path() + ' data/poly_inconsistent_case.gpkg.sql')
+
+        if ret.find('INFO') == -1 or ret.find('ERROR') != -1:
+            gdaltest.post_reason('fail')
+            print(ret)
+            return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test editing of a database with 2 layers (https://issues.qgis.org/issues/17034)
+
+def ogr_gpkg_54():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    # Must be on a real file system to demonstrate potential locking
+    # issue
+    tmpfile = 'tmp/ogr_gpkg_54.gpkg'
+    ds = ogr.GetDriverByName('GPKG').CreateDataSource(tmpfile)
+    lyr = ds.CreateLayer('layer1', geom_type=ogr.wkbPoint)
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f.SetGeometry(ogr.CreateGeometryFromWkt('POINT(0 0)'))
+    lyr.CreateFeature(f)
+    f = None
+    lyr = ds.CreateLayer('layer2', geom_type=ogr.wkbPoint)
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f.SetGeometry(ogr.CreateGeometryFromWkt('POINT(1 1)'))
+    lyr.CreateFeature(f)
+    f = None
+    ds = None
+
+    ds1 = ogr.Open(tmpfile, update = 1)
+    ds2 = ogr.Open(tmpfile, update = 1)
+
+    lyr1 = ds1.GetLayer(0)
+    lyr2 = ds2.GetLayer(1)
+
+    f1 = lyr1.GetFeature(1)
+    f1.SetGeometry(ogr.CreateGeometryFromWkt('POINT (1 2)'))
+    lyr1.SetFeature(f1)
+
+    f2 = lyr2.GetFeature(1)
+    f2.SetGeometry(ogr.CreateGeometryFromWkt('POINT (3 4)'))
+    lyr2.SetFeature(f2)
+
+    f1 = lyr1.GetFeature(1)
+    f1.SetGeometry(ogr.CreateGeometryFromWkt('POINT (5 6)'))
+    lyr1.SetFeature(f1)
+
+    f2 = lyr2.GetFeature(1)
+    f2.SetGeometry(ogr.CreateGeometryFromWkt('POINT (7 8)'))
+    lyr2.SetFeature(f2)
+
+    ds1 = None
+    ds2 = None
+
+    ds = ogr.Open(tmpfile)
+    lyr1 = ds.GetLayer(0)
+    f = lyr1.GetNextFeature()
+    if f.GetGeometryRef().ExportToWkt() != 'POINT (5 6)':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    lyr2 = ds.GetLayer(1)
+    f = lyr2.GetNextFeature()
+    if f.GetGeometryRef().ExportToWkt() != 'POINT (7 8)':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    ds = None
+
+    gdal.Unlink(tmpfile)
+
+    return 'success'
+
+###############################################################################
+# Test inserting geometries incompatible with declared layer geometry type
+
+def ogr_gpkg_55():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    tmpfile = '/vsimem/ogr_gpkg_55.gpkg'
+    ds = ogr.GetDriverByName('GPKG').CreateDataSource(tmpfile)
+    lyr = ds.CreateLayer('layer1', geom_type=ogr.wkbLineString)
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f.SetGeometry(ogr.CreateGeometryFromWkt('POINT(0 0)'))
+    gdal.ErrorReset()
+    with gdaltest.error_handler():
+        lyr.CreateFeature(f)
+    if gdal.GetLastErrorMsg() == '':
+        gdaltest.post_reason('should have warned')
+        return 'fail'
+    f = None
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f.SetGeometry(ogr.CreateGeometryFromWkt('POINT(1 1)'))
+    gdal.ErrorReset()
+    lyr.CreateFeature(f)
+    if gdal.GetLastErrorMsg() != '':
+        gdaltest.post_reason('should NOT have warned')
+        return 'fail'
+    f = None
+    ds = None
+
+    gdal.Unlink(tmpfile)
+
+    return 'success'
+
+###############################################################################
+# Test FID identification on SQL result layer
+
+def ogr_gpkg_56():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    ds = gdal.VectorTranslate('/vsimem/ogr_gpkg_56.gpkg', 'data/poly.shp', format = 'GPKG')
+    lyr = ds.ExecuteSQL('select a.fid as fid1, b.fid as fid2 from poly a, poly b order by fid1, fid2')
+    lyr.GetNextFeature()
+    f = lyr.GetNextFeature()
+    if f.GetField('fid1') != 1 or f.GetField('fid2') != 2:
+        f.DumpReadable()
+        return 'fail'
+    ds.ReleaseResultSet(lyr)
+    ds = None
+    gdal.Unlink('/vsimem/ogr_gpkg_56.gpkg')
+
+    return 'success'
+
+###############################################################################
 # Remove the test db from the tmp directory
 
 def ogr_gpkg_cleanup():
@@ -4393,6 +4582,12 @@ gdaltest_list = [
     ogr_gpkg_48,
     ogr_gpkg_49,
     ogr_gpkg_50,
+    ogr_gpkg_51,
+    ogr_gpkg_52,
+    ogr_gpkg_53,
+    ogr_gpkg_54,
+    ogr_gpkg_55,
+    ogr_gpkg_56,
     ogr_gpkg_test_ogrsf,
     ogr_gpkg_cleanup,
 ]

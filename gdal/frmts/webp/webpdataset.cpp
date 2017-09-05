@@ -32,7 +32,7 @@
 
 #include "webp_headers.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /* ==================================================================== */
@@ -282,6 +282,15 @@ CPLErr WEBPDataset::Uncompress()
 
     bHasBeenUncompressed = TRUE;
     eUncompressErrRet = CE_Failure;
+
+    // To avoid excessive memory allocation attempts
+    // Normally WebP images are no larger than 16383x16383*4 ~= 1 GB
+    if( nRasterXSize > INT_MAX / (nRasterYSize * nBands) )
+    {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "Too large image");
+        return CE_Failure;
+    }
 
     pabyUncompressed = reinterpret_cast<GByte*>(
         VSIMalloc3(nRasterXSize, nRasterYSize, nBands ) );

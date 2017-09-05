@@ -30,7 +30,7 @@
 #include "cpl_string.h"
 #include "ogr_pds.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 using namespace OGRPDS;
 
@@ -190,13 +190,14 @@ bool OGRPDSDataSource::LoadTable( const char* pszFilename,
         if (!osTableFilename.empty() && osTableFilename[0] >= '0' &&
             osTableFilename[0] <= '9')
         {
-            nStartBytes = atoi(osTableFilename.c_str()) - 1;
-            if( nStartBytes < 0)
+            nStartBytes = atoi(osTableFilename.c_str());
+            if( nStartBytes <= 1 )
             {
                 CPLError(CE_Failure, CPLE_NotSupported,
                         "Cannot parse %s line", osTableFilename.c_str());
                 return false;
             }
+            nStartBytes = nStartBytes - 1;
             if (strstr(osTableFilename.c_str(), "<BYTES>") == NULL)
             {
                 if( nRecordSize > 0 && nStartBytes > INT_MAX / nRecordSize )
@@ -334,7 +335,8 @@ int OGRPDSDataSource::Open( const char * pszFilename )
     CPLString osRecordBytes = oKeywords.GetKeyword( "RECORD_BYTES", "" );
     int nRecordSize = atoi(osRecordBytes);
     if (osRecordType.empty() || osFileRecords.empty() ||
-        osRecordBytes.empty() || nRecordSize <= 0)
+        osRecordBytes.empty() || nRecordSize <= 0 ||
+        nRecordSize > 10*1024*1024)
     {
         CPLError(CE_Failure, CPLE_NotSupported,
                  "One of RECORD_TYPE, FILE_RECORDS or RECORD_BYTES is missing");

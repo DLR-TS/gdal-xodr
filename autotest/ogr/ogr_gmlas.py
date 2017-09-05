@@ -33,6 +33,7 @@
 ###############################################################################
 
 import os
+import os.path
 import sys
 
 sys.path.append( '../pymod' )
@@ -43,6 +44,39 @@ import webserver
 
 from osgeo import gdal
 from osgeo import ogr
+
+
+###############################################################################
+
+def compare_ogrinfo_output(gmlfile, reffile, options = ''):
+
+    import test_cli_utilities
+
+    if test_cli_utilities.get_ogrinfo_path() is None:
+        return 'skip'
+
+    tmpfilename = 'tmp/' + os.path.basename(gmlfile) + '.txt'
+    ret = gdaltest.runexternal(test_cli_utilities.get_ogrinfo_path() +
+        ' -ro -al GMLAS:' + gmlfile +
+        ' -oo EXPOSE_METADATA_LAYERS=YES '+
+        '-oo @KEEP_RELATIVE_PATHS_FOR_METADATA=YES '+
+        '-oo @EXPOSE_SCHEMAS_NAME_IN_METADATA=NO ' +
+        '-oo @EXPOSE_CONFIGURATION_IN_METADATA=NO' + ' ' + options,
+        encoding = 'utf-8')
+    ret = ret.replace('\r\n', '\n')
+    ret = ret.replace('data\\', 'data/') # Windows
+    expected = open(reffile, 'rb').read().decode('utf-8')
+    expected = expected.replace('\r\n', '\n')
+    if ret != expected:
+        gdaltest.post_reason('fail')
+        print('Got:')
+        print(ret)
+        open(tmpfilename, 'wb').write(ret.encode('utf-8'))
+        print('Diff:')
+        os.system('diff -u ' + reffile + ' ' + tmpfilename)
+        #os.unlink(tmpfilename)
+        return 'fail'
+    return 'success'
 
 ###############################################################################
 # Basic test
@@ -70,30 +104,9 @@ def ogr_gmlas_basic():
        print('Skipping because of -sanitize')
        return 'skip'
 
-    import test_cli_utilities
+    return compare_ogrinfo_output('data/gmlas_test1.xml',
+                                  'data/gmlas_test1.txt')
 
-    if test_cli_utilities.get_ogrinfo_path() is None:
-        return 'skip'
-
-    ret = gdaltest.runexternal(test_cli_utilities.get_ogrinfo_path() +
-        ' -ro -al GMLAS:data/gmlas_test1.xml '+
-        '-oo EXPOSE_METADATA_LAYERS=YES '+
-        '-oo @KEEP_RELATIVE_PATHS_FOR_METADATA=YES '+
-        '-oo @EXPOSE_SCHEMAS_NAME_IN_METADATA=NO ' +
-        '-oo @EXPOSE_CONFIGURATION_IN_METADATA=NO')
-    ret = ret.replace('\r\n', '\n')
-    expected = open('data/gmlas_test1.txt', 'rb').read().decode('utf-8')
-    expected = expected.replace('\r\n', '\n')
-    ret = ret.replace('data\\', 'data/') # Windows
-    if ret != expected:
-        gdaltest.post_reason('fail')
-        print('Got:')
-        print(ret)
-        open('tmp/ogr_gmlas_1.txt', 'wb').write(ret.encode('utf-8'))
-        print('Diff:')
-        os.system('diff -u data/gmlas_test1.txt tmp/ogr_gmlas_1.txt')
-        #os.unlink('tmp/ogr_gmlas_1.txt')
-        return 'fail'
 
     return 'success'
 
@@ -648,7 +661,7 @@ def ogr_gmlas_geometryproperty():
         gdaltest.post_reason('fail')
         f.DumpReadable()
         return 'fail'
-    if f['pointProperty_xml'] != '<gml:Point gml:id="poly.geom.Point" srsName="http://www.opengis.net/def/crs/EPSG/0/4326"><gml:pos>50 3</gml:pos></gml:Point>':
+    if f['pointProperty_xml'] != '<gml:Point gml:id="poly.geom.Point"><gml:pos srsName="http://www.opengis.net/def/crs/EPSG/0/4326">50 3</gml:pos></gml:Point>':
         gdaltest.post_reason('fail')
         f.DumpReadable()
         return 'fail'
@@ -4287,6 +4300,8 @@ def ogr_gmlas_swe_datarecord():
             <xs:element name="value" type="xs:string"/>
         </xs:sequence>
         <xs:attribute name="definition" type="xs:string"/>
+        <!-- attribute optional is ignored in the default configuration -->
+        <xs:attribute name="optional" type="xs:boolean" default="false" use="optional"/>
       </xs:extension>
     </xs:complexContent>
   </xs:complexType>
@@ -4379,6 +4394,13 @@ def ogr_gmlas_swe_datarecord():
 </xs:attributeGroup>
 </xs:schema>""")
 
+    gdal.ErrorReset()
+    ds = gdal.OpenEx('GMLAS:/vsimem/ogr_gmlas_swe_datarecord.xml', open_options = ['VALIDATE=YES'])
+    if gdal.GetLastErrorMsg() != '':
+        gdaltest.post_reason('fail')
+        return 'fail'
+    ds = None
+
     ds = gdal.OpenEx('GMLAS:/vsimem/ogr_gmlas_swe_datarecord.xml')
     lyr = ds.GetLayerByName('main_elt_foo')
     if lyr.GetLayerDefn().GetFieldCount() != 12:
@@ -4406,6 +4428,205 @@ def ogr_gmlas_swe_datarecord():
 
 
     return 'success'
+
+###############################################################################
+#  Test a xs:any field at end of a type declaration
+
+def ogr_gmlas_any_field_at_end_of_declaration():
+
+    if ogr.GetDriverByName('GMLAS') is None:
+        return 'skip'
+
+    # Simplified test case for
+    # http://schemas.earthresourceml.org/earthresourceml-lite/1.0/erml-lite.xsd 
+    # http://services.ga.gov.au/earthresource/ows?service=wfs&version=2.0.0&request=GetFeature&typenames=erl:CommodityResourceView&count=10
+
+    gdal.FileFromMemBuffer('/vsimem/ogr_gmlas_any_field_at_end_of_declaration.xsd',
+"""<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+              elementFormDefault="qualified"
+              attributeFormDefault="unqualified">
+
+<xs:element name="main_elt">
+  <xs:complexType>
+    <xs:sequence>
+        <xs:element name="foo" type="xs:string" minOccurs="1"/>
+        <xs:any processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:element>
+</xs:schema>""")
+
+    gdal.FileFromMemBuffer('/vsimem/ogr_gmlas_any_field_at_end_of_declaration.xml',
+"""
+<main_elt xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="ogr_gmlas_any_field_at_end_of_declaration.xsd">
+    <foo>bar</foo>
+    <extra><something>baz</something></extra>
+</main_elt>""")
+
+    ds = gdal.OpenEx('GMLAS:/vsimem/ogr_gmlas_any_field_at_end_of_declaration.xml')
+    lyr = ds.GetLayerByName('main_elt')
+    # Will warn about 'Unexpected element with xpath=main_elt/extra (subxpath=main_elt/extra) found'
+    # This should be fixed at some point
+    gdal.ErrorReset()
+    with gdaltest.error_handler():
+        f = lyr.GetNextFeature()
+    if gdal.GetLastErrorMsg() == '':
+        gdaltest.post_reason('fail')
+        return 'fail'
+    if f.GetField('foo') != 'bar':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    if f.GetField('value') != '<something>baz</something>':
+        print('Expected fail: value != <something>baz</something>')
+
+    gdal.Unlink('/vsimem/ogr_gmlas_any_field_at_end_of_declaration.xsd')
+    gdal.Unlink('/vsimem/ogr_gmlas_any_field_at_end_of_declaration.xml')
+
+    return 'success'
+
+###############################################################################
+#  Test auxiliary schema without namespace prefix
+
+def ogr_gmlas_aux_schema_without_namespace_prefix():
+
+    if ogr.GetDriverByName('GMLAS') is None:
+        return 'skip'
+    gdal.FileFromMemBuffer('/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix_main.xsd',
+"""<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="http://main"
+           targetNamespace="http://main"
+           elementFormDefault="qualified" attributeFormDefault="unqualified">
+<xs:element name="main_elt">
+    <xs:complexType>
+        <xs:sequence>
+            <xs:element name="foo" type="xs:string"/>
+            <xs:element ref="generic" minOccurs="0" maxOccurs="1"/>
+        </xs:sequence>
+    </xs:complexType>
+</xs:element>
+<xs:element name="generic" abstract="true" type="xs:anyType"/>
+</xs:schema>""")
+
+    gdal.FileFromMemBuffer('/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix_aux.xsd',
+"""<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns="http://aux"
+           targetNamespace="http://aux"
+           xmlns:main="http://main"
+           elementFormDefault="qualified" attributeFormDefault="unqualified">
+<xs:import namespace="http://main" schemaLocation="ogr_gmlas_aux_schema_without_namespace_prefix_main.xsd"/>
+<xs:element name="genericInt" substitutionGroup="main:generic">
+  <xs:complexType>
+    <xs:sequence>
+        <xs:element name="value" type="xs:integer" minOccurs="1"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:element>
+</xs:schema>""")
+
+    gdal.FileFromMemBuffer('/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix.xml',
+"""
+<main:main_elt xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns:main="http://main"
+          xmlns:aux="http://aux"
+          xsi:schemaLocation="http://main ogr_gmlas_aux_schema_without_namespace_prefix_main.xsd http://aux ogr_gmlas_aux_schema_without_namespace_prefix_aux.xsd">
+    <main:foo>bar</main:foo>
+    <aux:genericInt><aux:value>1</aux:value></aux:genericInt>
+</main:main_elt>""")
+
+    ds = gdal.OpenEx('GMLAS:/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix.xml')
+    lyr = ds.GetLayerByName('main_elt')
+    f = lyr.GetNextFeature()
+    if not f.IsFieldSetAndNotNull('generic_pkid'):
+        f.DumpReadable()
+        return 'fail'
+
+    gdal.Unlink('/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix.xml')
+    gdal.Unlink('/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix_main.xsd')
+    gdal.Unlink('/vsimem/ogr_gmlas_aux_schema_without_namespace_prefix_aux.xsd')
+
+    return 'success'
+
+###############################################################################
+# Test importing a GML geometry that is in an element that is a substitutionGroup
+# of another one (#6990)
+
+def ogr_gmlas_geometry_as_substitutiongroup():
+
+    if ogr.GetDriverByName('GMLAS') is None:
+        return 'skip'
+
+    gdal.FileFromMemBuffer('/vsimem/subdir/gmlas_fake_gml32.xsd',
+                           open('data/gmlas_fake_gml32.xsd', 'rb').read())
+
+    gdal.FileFromMemBuffer('/vsimem/subdir/ogr_gmlas_geometry_as_substitutiongroup.xsd',
+"""<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+              xmlns:gml="http://fake_gml32"
+              elementFormDefault="qualified" attributeFormDefault="unqualified">
+
+<xs:import namespace="http://fake_gml32" schemaLocation="../subdir/gmlas_fake_gml32.xsd"/>
+
+<xs:element name="main_elt" substitutionGroup="gml:AbstractFeature">
+  <xs:complexType>
+    <xs:complexContent>
+      <xs:extension base="gml:AbstractFeatureType">
+        <xs:sequence>
+            <xs:element ref="_foo"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:element>
+
+<xs:element name="_foo" type="xs:anyType" abstract="true"/>
+
+<xs:element name="foo" type="gml:PointPropertyType" substitutionGroup="_foo"/>
+
+</xs:schema>""")
+
+    gdal.FileFromMemBuffer('/vsimem/subdir/ogr_gmlas_geometry_as_substitutiongroup.xml',
+"""
+<main:main_elt xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns:main="http://main"
+          xmlns:gml="http://fake_gml32"
+          xsi:schemaLocation="http://main ogr_gmlas_geometry_as_substitutiongroup.xsd">
+    <main:foo><gml:Point gml:id="id"><gml:pos>5 6</gml:pos></gml:Point></main:foo>
+</main:main_elt>""")
+
+    ds = gdal.OpenEx('GMLAS:/vsimem/subdir/ogr_gmlas_geometry_as_substitutiongroup.xml')
+    lyr = ds.GetLayerByName('foo')
+    f = lyr.GetNextFeature()
+    if f.GetGeometryRef() is None:
+        f.DumpReadable()
+        return 'fail'
+    ds = None
+
+    gdal.Unlink('/vsimem/subdir/ogr_gmlas_geometry_as_substitutiongroup.xml')
+    gdal.Unlink('/vsimem/subdir/ogr_gmlas_geometry_as_substitutiongroup.xsd')
+    gdal.Unlink('/vsimem/subdir/gmlas_fake_gml32.xsd')
+
+    return 'success'
+
+###############################################################################
+def ogr_gmlas_extra_piezometre():
+
+    if ogr.GetDriverByName('GMLAS') is None:
+        return 'skip'
+
+    return compare_ogrinfo_output('data/gmlas/real_world/Piezometre.06512X0037.STREMY.2.gml',
+                                  'data/gmlas/real_world/output/Piezometre.06512X0037.STREMY.2.txt',
+                                  options = '-oo REMOVE_UNUSED_LAYERS=YES')
+
+###############################################################################
+def ogr_gmlas_extra_eureg():
+
+    if ogr.GetDriverByName('GMLAS') is None:
+        return 'skip'
+
+    return compare_ogrinfo_output('data/gmlas/real_world/EUReg.example.gml',
+                                  'data/gmlas/real_world/output/EUReg.example.txt',
+                                  options = '-oo REMOVE_UNUSED_LAYERS=YES')
 
 ###############################################################################
 #  Cleanup
@@ -4477,14 +4698,23 @@ gdaltest_list = [
     ogr_gmlas_typing_constraints,
     ogr_gmlas_swe_dataarray,
     ogr_gmlas_swe_datarecord,
+    ogr_gmlas_any_field_at_end_of_declaration,
+    ogr_gmlas_aux_schema_without_namespace_prefix,
+    ogr_gmlas_geometry_as_substitutiongroup,
     ogr_gmlas_cleanup ]
 
-# gdaltest_list = [ ogr_gmlas_basic, ogr_gmlas_swe_dataarray, ogr_gmlas_cleanup ]
+# gdaltest_list = [ ogr_gmlas_basic, ogr_gmlas_aux_schema_without_namespace_prefix, ogr_gmlas_cleanup ]
+
+# Test only work if using "python ogr_gmlas.py"
+gdaltest_extra_list = [
+    ogr_gmlas_extra_piezometre,
+    ogr_gmlas_extra_eureg
+]
 
 if __name__ == '__main__':
 
     gdaltest.setup_run( 'ogr_gmlas' )
 
-    gdaltest.run_tests( gdaltest_list )
+    gdaltest.run_tests( gdaltest_list + gdaltest_extra_list )
 
     gdaltest.summarize()

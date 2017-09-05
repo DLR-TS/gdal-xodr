@@ -718,7 +718,7 @@ def gml_Solid():
                 <gml:Polygon xmlns:foo="http://bar" gml:id="UUID_d8e4b04b-ce0a-441e-b940-5ab99fcf6112">
                   <gml:exterior xmlns:foo="http://bar">
                     <gml:LinearRing xmlns:foo="http://bar" gml:id="UUID_d8e4b04b-ce0a-441e-b940-5ab99fcf6112_0">
-                      <gml:posList xmlns:foo="http://bar" srsDimension="3">1 2 0 3 4 0 5 6 0 1 2 0</gml:posList>
+                      <gml:posList xmlns:foo="http://bar">1 2 0 3 4 0 5 6 0 1 2 0</gml:posList>
                     </gml:LinearRing>
                   </gml:exterior>
                 </gml:Polygon>
@@ -729,7 +729,7 @@ def gml_Solid():
 
     geom = ogr.CreateGeometryFromGML( gml )
 
-    if geom.ExportToWkt() != 'MULTIPOLYGON (((1 2 0,3 4 0,5 6 0,1 2 0)))':
+    if geom.ExportToWkt() != 'POLYHEDRALSURFACE Z (((1 2 0,3 4 0,5 6 0,1 2 0)))':
         gdaltest.post_reason( '<gml:Solid> not correctly parsed' )
         print(geom.ExportToWkt())
         return 'fail'
@@ -1198,11 +1198,11 @@ def gml_invalid_geoms():
         ('<gml:Surface><gml:patches/></gml:Surface>', 'POLYGON EMPTY'), # valid GML3
         ('<gml:Surface><gml:patches><foo/></gml:patches></gml:Surface>', None),
         ('<gml:Surface><gml:patches><gml:PolygonPatch/></gml:patches></gml:Surface>', 'POLYGON EMPTY'), # valid GML3
-        ('<gml:Solid/>', 'POLYGON EMPTY'), # valid GML3
-        ('<gml:Solid><foo/></gml:Solid>', 'POLYGON EMPTY'), # invalid GML3, but we are tolerant
-        ('<gml:Solid><gml:exterior/></gml:Solid>', 'POLYGON EMPTY'), # valid GML3
+        ('<gml:Solid/>', 'POLYHEDRALSURFACE EMPTY'), # valid GML3
+        ('<gml:Solid><foo/></gml:Solid>', 'POLYHEDRALSURFACE EMPTY'), # invalid GML3, but we are tolerant
+        ('<gml:Solid><gml:exterior/></gml:Solid>', 'POLYHEDRALSURFACE EMPTY'), # valid GML3
         ('<gml:Solid><gml:exterior><foo/></gml:exterior></gml:Solid>', None),
-        ('<gml:Solid><gml:exterior><Polygon><exterior><LinearRing><posList>0 0 4 0 4 4 0 4 0 0</posList></LinearRing></exterior></Polygon></gml:exterior><gml:interior/></gml:Solid>', 'POLYGON ((0 0,4 0,4 4,0 4,0 0))'),
+        ('<gml:Solid><gml:exterior><Polygon><exterior><LinearRing><posList srsDimension="2">0 0 4 0 4 4 0 4 0 0</posList></LinearRing></exterior></Polygon></gml:exterior><gml:interior/></gml:Solid>', 'POLYGON ((0 0,4 0,4 4,0 4,0 0))'),
         ('<gml:OrientableSurface/>', None),
         ('<gml:OrientableSurface><foo/></gml:OrientableSurface>', None),
         ('<gml:OrientableSurface><gml:baseSurface/></gml:OrientableSurface>', None),
@@ -1228,7 +1228,7 @@ def gml_invalid_geoms():
         ("""<gml:Curve><gml:segments>
             <gml:Arc><gml:posList>0 0 1 0 0 0</gml:posList></gml:Arc>
             <gml:LineStringSegment><gml:posList>-10 0 -1 0 0 0</gml:posList></gml:LineStringSegment>
-            </gml:segments></gml:Curve>""", None), # non contiguous segments
+            </gml:segments></gml:Curve>""", "COMPOUNDCURVE (CIRCULARSTRING (0 0,1 0,0 0),(0 0,-1 0,-10 0))"), # non contiguous segments
         ("""<gml:CompositeCurve>
             <gml:curveMember><gml:Curve><gml:segments><gml:LineString><gml:posList>0 0 1 0 0 0</gml:posList></gml:LineString></gml:segments></gml:Curve></gml:curveMember>
             <gml:curveMember>
@@ -1242,6 +1242,7 @@ def gml_invalid_geoms():
         ("<gml:ArcByBulge><gml:posList>2 0</gml:posList><gml:bulge>2</gml:bulge><gml:normal>-1</gml:normal></gml:ArcByBulge>", None),
         ("<gml:ArcByBulge><gml:posList>2 0 -2 0</gml:posList><gml:normal>-1</gml:normal></gml:ArcByBulge>", None),
         ("<gml:ArcByBulge><gml:posList>2 0 -2 0</gml:posList><gml:normal>-1</gml:normal></gml:ArcByBulge>", None),
+        ("<ArcByBulge><bulge/></ArcByBulge>", None),
         ("<gml:ArcByCenterPoint><gml:radius>2</gml:radius><gml:startAngle>90</gml:startAngle><gml:endAngle>270</gml:endAngle></gml:ArcByCenterPoint>", None),
         ("<gml:ArcByCenterPoint><gml:pos>1 2</gml:pos><gml:startAngle>90</gml:startAngle><gml:endAngle>270</gml:endAngle></gml:ArcByCenterPoint>", None),
         ("<gml:ArcByCenterPoint><gml:pos>1 2</gml:pos><gml:radius>2</gml:radius<gml:endAngle>270</gml:endAngle></gml:ArcByCenterPoint>", None),

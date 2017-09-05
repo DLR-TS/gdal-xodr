@@ -50,7 +50,7 @@
 
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // Note: Callers must provide blocks in increasing Y order.
 // Disclaimer (E. Rouault): this code is not production ready at all. A lot of
@@ -462,6 +462,21 @@ void PNGDataset::FlushCache()
     }
 }
 
+#ifdef DISABLE_CRC_CHECK
+/************************************************************************/
+/*                     PNGDatasetDisableCRCCheck()                      */
+/************************************************************************/
+
+static void PNGDatasetDisableCRCCheck( png_structp hPNG )
+{
+    hPNG->flags &= ~PNG_FLAG_CRC_CRITICAL_MASK;
+    hPNG->flags |= PNG_FLAG_CRC_CRITICAL_IGNORE;
+
+    hPNG->flags &= ~PNG_FLAG_CRC_ANCILLARY_MASK;
+    hPNG->flags |= PNG_FLAG_CRC_ANCILLARY_NOWARN; 
+}
+#endif
+
 /************************************************************************/
 /*                              Restart()                               */
 /*                                                                      */
@@ -474,6 +489,10 @@ void PNGDataset::Restart()
     png_destroy_read_struct( &hPNG, &psPNGInfo, NULL );
 
     hPNG = png_create_read_struct( PNG_LIBPNG_VER_STRING, this, NULL, NULL );
+
+#ifdef DISABLE_CRC_CHECK
+    PNGDatasetDisableCRCCheck( hPNG );
+#endif
 
     png_set_error_fn( hPNG, &sSetJmpContext, png_gdal_error, png_gdal_warning );
     if( setjmp( sSetJmpContext ) != 0 )
@@ -512,12 +531,8 @@ static bool safe_png_read_image(png_structp hPNG,
 CPLErr PNGDataset::LoadInterlacedChunk( int iLine )
 
 {
-    int nPixelOffset;
-
-    if( nBitDepth == 16 )
-        nPixelOffset = 2 * GetRasterCount();
-    else
-        nPixelOffset = 1 * GetRasterCount();
+    const int nPixelOffset =
+        ( nBitDepth == 16 ) ? 2 * GetRasterCount() : GetRasterCount();
 
     // What is the biggest chunk we can safely operate on?
     static const int MAX_PNG_CHUNK_BYTES = 100000000;
@@ -616,11 +631,8 @@ CPLErr PNGDataset::LoadScanline( int nLine )
     if( nLine >= nBufferStartLine && nLine < nBufferStartLine + nBufferLines)
         return CE_None;
 
-    int nPixelOffset;
-    if( nBitDepth == 16 )
-        nPixelOffset = 2 * GetRasterCount();
-    else
-        nPixelOffset = 1 * GetRasterCount();
+    const int nPixelOffset =
+        ( nBitDepth == 16 ) ? 2 * GetRasterCount() : GetRasterCount();
 
     // If the file is interlaced, we load the entire image into memory using the
     // high-level API.
@@ -641,10 +653,17 @@ CPLErr PNGDataset::LoadScanline( int nLine )
 
     // Read till we get the desired row.
     png_bytep row = pabyBuffer;
+    const GUInt32 nErrorCounter = CPLGetErrorCounter();
     while( nLine > nLastLineRead )
     {
         if( !safe_png_read_rows( hPNG, row, sSetJmpContext ) )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Error while reading row %d%s", nLine,
+                     (nErrorCounter != CPLGetErrorCounter()) ?
+                        CPLSPrintf(": %s", CPLGetLastErrorMsg()) : "");
             return CE_Failure;
+        }
         nLastLineRead++;
     }
 
@@ -991,6 +1010,10 @@ GDALDataset *PNGDataset::OpenStage2( GDALOpenInfo * poOpenInfo, PNGDataset*& poD
         return NULL;
     }
 
+#ifdef DISABLE_CRC_CHECK
+    PNGDatasetDisableCRCCheck( poDS->hPNG );
+#endif
+
     poDS->psPNGInfo = png_create_info_struct( poDS->hPNG );
 
     // Set up error handling.
@@ -1220,7 +1243,26 @@ static bool IsASCII(const char* pszStr)
 }
 #endif
 
-void PNGDataset::WriteMetadataAsText(png_structp hPNG, png_infop psPNGInfo,
+static bool safe_png_set_text(jmp_buf sSetJmpContext,
+                                   png_structp png_ptr,
+                                   png_infop info_ptr,
+#if (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR >= 6) || PNG_LIBPNG_VER_MAJOR > 1
+                                   png_const_textp text_ptr,
+#else
+                                   png_textp text_ptr,
+#endif
+                                   int num_text)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_set_text(png_ptr, info_ptr, text_ptr, num_text);
+    return true;
+}
+
+void PNGDataset::WriteMetadataAsText(jmp_buf sSetJmpContext,
+                                     png_structp hPNG, png_infop psPNGInfo,
                                      const char* pszKey, const char* pszValue)
 {
     png_text sText;
@@ -1233,7 +1275,131 @@ void PNGDataset::WriteMetadataAsText(png_structp hPNG, png_infop psPNGInfo,
     if( !IsASCII(pszValue) && CPLIsUTF8(pszValue, -1) )
         sText.compression = PNG_ITXT_COMPRESSION_NONE;
 #endif
-    png_set_text(hPNG, psPNGInfo, &sText, 1);
+    safe_png_set_text(sSetJmpContext, hPNG, psPNGInfo, &sText, 1);
+}
+
+static
+bool safe_png_set_IHDR(jmp_buf sSetJmpContext,
+                  png_structp png_ptr, png_infop info_ptr, png_uint_32 width,
+                  png_uint_32 height, int bit_depth, int color_type,
+                  int interlace_type, int compression_type, int filter_type)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_set_IHDR(png_ptr, info_ptr, width, height, bit_depth,
+                 color_type, interlace_type, compression_type, filter_type);
+    return true;
+}
+
+static bool safe_png_set_compression_level(jmp_buf sSetJmpContext,
+                                           png_structp png_ptr, int level)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_set_compression_level(png_ptr, level);
+    return true;
+}
+
+static bool safe_png_set_tRNS(jmp_buf sSetJmpContext,
+                              png_structp png_ptr,
+                              png_infop info_ptr,
+#if (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR > 4) || PNG_LIBPNG_VER_MAJOR > 1
+                              png_const_bytep trans,
+#else
+                              png_bytep trans,
+#endif
+                              int num_trans,
+                              png_color_16p trans_values)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_set_tRNS(png_ptr, info_ptr, trans, num_trans, trans_values);
+    return true;
+}
+
+static bool safe_png_set_iCCP(jmp_buf sSetJmpContext,
+                              png_structp png_ptr,
+                              png_infop info_ptr,
+#if (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR > 4) || PNG_LIBPNG_VER_MAJOR > 1
+                              png_const_charp name,
+#else
+                              png_charp name,
+#endif
+                              int compression_type,
+#if (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR > 4) || PNG_LIBPNG_VER_MAJOR > 1
+                              png_const_bytep profile,
+#else
+                              png_charp profile,
+#endif
+                              png_uint_32 proflen)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_set_iCCP(png_ptr, info_ptr, name, compression_type, profile, proflen);
+    return true;
+}
+
+static bool safe_png_set_PLTE(jmp_buf sSetJmpContext,
+                              png_structp png_ptr,
+                              png_infop info_ptr,
+#if (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR > 4) || PNG_LIBPNG_VER_MAJOR > 1
+                              png_const_colorp palette,
+#else
+                              png_colorp palette,
+#endif
+                              int num_palette)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_set_PLTE(png_ptr, info_ptr, palette, num_palette);
+    return true;
+}
+
+static bool safe_png_write_info(jmp_buf sSetJmpContext,
+                                png_structp png_ptr,
+                                png_infop info_ptr)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_write_info(png_ptr, info_ptr);
+    return true;
+}
+
+static bool safe_png_write_rows(jmp_buf sSetJmpContext,
+                                png_structp png_ptr,
+                                png_bytepp row,
+                                png_uint_32 num_rows)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_write_rows(png_ptr, row, num_rows);
+    return true;
+}
+
+static bool safe_png_write_end(jmp_buf sSetJmpContext,
+                                png_structp png_ptr,
+                                png_infop info_ptr)
+{
+    if( setjmp( sSetJmpContext ) != 0 )
+    {
+        return false;
+    }
+    png_write_end(png_ptr, info_ptr);
+    return true;
 }
 
 /************************************************************************/
@@ -1289,13 +1455,6 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
         PNG_LIBPNG_VER_STRING, &sSetJmpContext, png_gdal_error, png_gdal_warning );
     png_infop  psPNGInfo = png_create_info_struct( hPNG );
 
-    if( setjmp( sSetJmpContext ) != 0 )
-    {
-        VSIFCloseL( fpImage );
-        png_destroy_write_struct( &hPNG, &psPNGInfo );
-        return NULL;
-    }
-
     // Set up some parameters.
     int  nColorType=0;
 
@@ -1350,9 +1509,14 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
     const int nXSize = poSrcDS->GetRasterXSize();
     const int nYSize = poSrcDS->GetRasterYSize();
 
-    png_set_IHDR( hPNG, psPNGInfo, nXSize, nYSize,
+    if( !safe_png_set_IHDR( sSetJmpContext, hPNG, psPNGInfo, nXSize, nYSize,
                   nBitDepth, nColorType, PNG_INTERLACE_NONE,
-                  PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE );
+                  PNG_COMPRESSION_TYPE_BASE, PNG_FILTER_TYPE_BASE ) )
+    {
+        VSIFCloseL( fpImage );
+        png_destroy_write_struct( &hPNG, &psPNGInfo );
+        return NULL;
+    }
 
     // Do we want to control the compression level?
     const char *pszLevel = CSLFetchNameValue( papszOptions, "ZLEVEL" );
@@ -1365,10 +1529,17 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             CPLError( CE_Failure, CPLE_AppDefined,
                       "Illegal ZLEVEL value '%s', should be 1-9.",
                       pszLevel );
+            VSIFCloseL( fpImage );
+            png_destroy_write_struct( &hPNG, &psPNGInfo );
             return NULL;
         }
 
-        png_set_compression_level( hPNG, nLevel );
+        if( !safe_png_set_compression_level( sSetJmpContext, hPNG, nLevel ) )
+        {
+            VSIFCloseL( fpImage );
+            png_destroy_write_struct( &hPNG, &psPNGInfo );
+            return NULL;
+        }
     }
 
     // Try to handle nodata values as a tRNS block (note that for paletted
@@ -1385,7 +1556,12 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
        if ( bHaveNoData && dfNoDataValue >= 0 && dfNoDataValue < 65536 )
        {
           sTRNSColor.gray = (png_uint_16) dfNoDataValue;
-          png_set_tRNS( hPNG, psPNGInfo, NULL, 0, &sTRNSColor );
+          if( !safe_png_set_tRNS( sSetJmpContext, hPNG, psPNGInfo, NULL, 0, &sTRNSColor ) )
+          {
+                VSIFCloseL( fpImage );
+                png_destroy_write_struct( &hPNG, &psPNGInfo );
+                return NULL;
+          }
        }
     }
 
@@ -1403,7 +1579,13 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
                sTRNSColor.red   = (png_uint_16) atoi(papszValues[0]);
                sTRNSColor.green = (png_uint_16) atoi(papszValues[1]);
                sTRNSColor.blue  = (png_uint_16) atoi(papszValues[2]);
-               png_set_tRNS( hPNG, psPNGInfo, NULL, 0, &sTRNSColor );
+               if( !safe_png_set_tRNS( sSetJmpContext, hPNG, psPNGInfo, NULL, 0, &sTRNSColor ) )
+               {
+                    VSIFCloseL( fpImage );
+                    png_destroy_write_struct( &hPNG, &psPNGInfo );
+                    CSLDestroy( papszValues );
+                    return NULL;
+               }
            }
 
            CSLDestroy( papszValues );
@@ -1430,7 +1612,12 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
              sTRNSColor.red   = static_cast<png_uint_16>( dfNoDataValueRed );
              sTRNSColor.green = static_cast<png_uint_16>( dfNoDataValueGreen );
              sTRNSColor.blue  = static_cast<png_uint_16>( dfNoDataValueBlue );
-             png_set_tRNS( hPNG, psPNGInfo, NULL, 0, &sTRNSColor );
+             if( !safe_png_set_tRNS( sSetJmpContext, hPNG, psPNGInfo, NULL, 0, &sTRNSColor ) )
+             {
+                VSIFCloseL( fpImage );
+                png_destroy_write_struct( &hPNG, &psPNGInfo );
+                return NULL;
+             }
           }
        }
     }
@@ -1448,6 +1635,7 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
     {
         pszICCProfile = NULL;
 
+        // assumes this can't fail ?
         png_set_sRGB(hPNG, psPNGInfo, PNG_sRGB_INTENT_PERCEPTUAL);
     }
 
@@ -1458,7 +1646,7 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             = CPLBase64DecodeInPlace(reinterpret_cast<GByte *>( pEmbedBuffer ) );
         const char* pszLocalICCProfileName = (pszICCProfileName!=NULL)?pszICCProfileName:"ICC Profile";
 
-        png_set_iCCP(hPNG, psPNGInfo,
+        if( !safe_png_set_iCCP( sSetJmpContext, hPNG, psPNGInfo,
 #if (PNG_LIBPNG_VER_MAJOR == 1 && PNG_LIBPNG_VER_MINOR > 4) || PNG_LIBPNG_VER_MAJOR > 1
             pszLocalICCProfileName,
 #else
@@ -1470,7 +1658,13 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
 #else
             (png_charp)pEmbedBuffer,
 #endif
-            nEmbedLen);
+            nEmbedLen) )
+        {
+            CPLFree(pEmbedBuffer);
+            VSIFCloseL( fpImage );
+            png_destroy_write_struct( &hPNG, &psPNGInfo );
+            return NULL;
+        }
 
         CPLFree(pEmbedBuffer);
     }
@@ -1484,6 +1678,7 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
         if (pszGamma != NULL)
         {
             double dfGamma = CPLAtof(pszGamma);
+            // assumes this can't fail ?
             png_set_gAMA(hPNG, psPNGInfo, dfGamma);
         }
 
@@ -1547,6 +1742,7 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
 
                 if (bOk)
                 {
+                    // assumes this can't fail ?
                     png_set_cHRM(hPNG, psPNGInfo,
                         faColour[0], faColour[1],
                         faColour[2], faColour[3],
@@ -1593,8 +1789,14 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             pasPNGColors[iColor].blue = static_cast<png_byte>( sEntry.c3 );
         }
 
-        png_set_PLTE( hPNG, psPNGInfo, pasPNGColors,
-                      nEntryCount );
+        if( !safe_png_set_PLTE( sSetJmpContext, hPNG, psPNGInfo, pasPNGColors,
+                                nEntryCount ) )
+        {
+            CPLFree( pasPNGColors );
+            VSIFCloseL( fpImage );
+            png_destroy_write_struct( &hPNG, &psPNGInfo );
+            return NULL;
+        }
 
         CPLFree( pasPNGColors );
 
@@ -1615,8 +1817,14 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
                     pabyAlpha[iColor] = 0;
             }
 
-            png_set_tRNS( hPNG, psPNGInfo, pabyAlpha,
-                          nEntryCount, NULL );
+            if( !safe_png_set_tRNS( sSetJmpContext, hPNG, psPNGInfo, pabyAlpha,
+                          nEntryCount, NULL ) )
+            {
+                CPLFree( pabyAlpha );
+                VSIFCloseL( fpImage );
+                png_destroy_write_struct( &hPNG, &psPNGInfo );
+                return NULL;
+            }
 
             CPLFree( pabyAlpha );
         }
@@ -1638,7 +1846,7 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             pszValue = poSrcDS->GetMetadataItem(pszKey);
         if( pszValue != NULL )
         {
-            WriteMetadataAsText(hPNG, psPNGInfo, pszKey, pszValue);
+            WriteMetadataAsText(sSetJmpContext, hPNG, psPNGInfo, pszKey, pszValue);
         }
     }
     if( bWriteMetadataAsText )
@@ -1653,7 +1861,7 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
                 if( CSLFindString(const_cast<char**>( apszKeywords ), pszKey) < 0 &&
                     !EQUAL(pszKey, "AREA_OR_POINT") && !EQUAL(pszKey, "NODATA_VALUES") )
                 {
-                    WriteMetadataAsText(hPNG, psPNGInfo, pszKey, pszValue);
+                    WriteMetadataAsText(sSetJmpContext,hPNG, psPNGInfo, pszKey, pszValue);
                 }
                 CPLFree(pszKey);
             }
@@ -1661,10 +1869,18 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
     }
 
     // Write the PNG info.
-    png_write_info( hPNG, psPNGInfo );
+    if( !safe_png_write_info( sSetJmpContext, hPNG, psPNGInfo ) )
+    {
+        VSIFCloseL( fpImage );
+        png_destroy_write_struct( &hPNG, &psPNGInfo );
+        return NULL;
+    }
 
     if( nBitDepth < 8 )
+    {
+        // Assumes this can't fail
         png_set_packing( hPNG );
+    }
 
     // Loop over the image, copying image data.
     CPLErr      eErr = CE_None;
@@ -1691,7 +1907,12 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
             GDALSwapWords( row, 2, nXSize * nBands, 2 );
 #endif
         if( eErr == CE_None )
-            png_write_rows( hPNG, &row, 1 );
+        {
+            if( !safe_png_write_rows( sSetJmpContext, hPNG, &row, 1 ) )
+            {
+                eErr = CE_Failure;
+            }
+        }
 
         if( eErr == CE_None
             && !pfnProgress( (iLine+1) / static_cast<double>( nYSize ),
@@ -1705,7 +1926,10 @@ PNGDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
 
     CPLFree( pabyScanline );
 
-    png_write_end( hPNG, psPNGInfo );
+    if( !safe_png_write_end( sSetJmpContext, hPNG, psPNGInfo ) )
+    {
+        eErr = CE_Failure;
+    }
     png_destroy_write_struct( &hPNG, &psPNGInfo );
 
     VSIFCloseL( fpImage );

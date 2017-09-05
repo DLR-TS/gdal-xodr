@@ -51,11 +51,12 @@
 #include <ctime>
 #include <algorithm>
 
+#include "cpl_atomic_ops.h"
 #include "cpl_conv.h"
 #include "cpl_error.h"
 #include "cpl_vsi.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #if defined(CPL_MULTIPROC_STUB) && !defined(DEBUG)
 #  define MUTEX_NONE
@@ -82,6 +83,7 @@ struct _CPLLock
 
 #ifdef DEBUG_CONTENTION
     bool     bDebugPerf;
+    volatile int nCurrentHolders;
     GUIntBig nStartTime;
     GIntBig  nMaxDiff;
     double   dfAvgDiff;
@@ -90,13 +92,32 @@ struct _CPLLock
 };
 
 #ifdef DEBUG_CONTENTION
+
+#if defined(__x86_64)
+#define GCC_CPUID(level, a, b, c, d)            \
+  __asm__ ("xchgq %%rbx, %q1\n"                 \
+           "cpuid\n"                            \
+           "xchgq %%rbx, %q1"                   \
+       : "=a" (a), "=r" (b), "=c" (c), "=d" (d) \
+       : "0" (level))
+#else
+#define GCC_CPUID(level, a, b, c, d)            \
+  __asm__ ("xchgl %%ebx, %1\n"                  \
+           "cpuid\n"                            \
+           "xchgl %%ebx, %1"                    \
+       : "=a" (a), "=r" (b), "=c" (c), "=d" (d) \
+       : "0" (level))
+#endif
+
 static GUIntBig CPLrdtsc()
 {
     unsigned int a;
     unsigned int d;
-    unsigned int x;
-    unsigned int y;
-    __asm__ volatile ("cpuid" : "=a" (x), "=d" (y) : "a"(0) : "cx", "bx" );
+    unsigned int unused1;
+    unsigned int unused2;
+    unsigned int unused3;
+    unsigned int unused4;
+    GCC_CPUID(0, unused1, unused2, unused3, unused4);
     __asm__ volatile ("rdtsc" : "=a" (a), "=d" (d) );
     return static_cast<GUIntBig>(a) | (static_cast<GUIntBig>(d) << 32);
 }
@@ -105,10 +126,12 @@ static GUIntBig CPLrdtscp()
 {
     unsigned int a;
     unsigned int d;
-    unsigned int x;
-    unsigned int y;
+    unsigned int unused1;
+    unsigned int unused2;
+    unsigned int unused3;
+    unsigned int unused4;
     __asm__ volatile ("rdtscp" : "=a" (a), "=d" (d) );
-    __asm__ volatile ("cpuid"  : "=a" (x), "=d" (y) : "a"(0) : "cx", "bx" );
+    GCC_CPUID(0, unused1, unused2, unused3, unused4);
     return static_cast<GUIntBig>(a) | (static_cast<GUIntBig>(d) << 32);
 }
 #endif
@@ -2300,6 +2323,8 @@ CPLLock *CPLCreateLock( CPLLockType eType )
             psLock->u.hMutex = hMutex;
 #ifdef DEBUG_CONTENTION
             psLock->bDebugPerf = false;
+            psLock->nCurrentHolders = 0;
+            psLock->nStartTime = 0;
 #endif
             return psLock;
         }
@@ -2319,6 +2344,8 @@ CPLLock *CPLCreateLock( CPLLockType eType )
             psLock->u.hSpinLock = hSpinLock;
 #ifdef DEBUG_CONTENTION
             psLock->bDebugPerf = false;
+            psLock->nCurrentHolders = 0;
+            psLock->nStartTime = 0;
 #endif
             return psLock;
         }
@@ -2359,9 +2386,12 @@ int   CPLCreateOrAcquireLock( CPLLock** ppsLock, CPLLockType eType )
             return FALSE;
     }
 #ifdef DEBUG_CONTENTION
-    if( ret && (*ppsLock)->bDebugPerf )
+    if( ret && CPLAtomicInc(&((*ppsLock)->nCurrentHolders)) == 1 )
     {
-        (*ppsLock)->nStartTime = nStartTime;
+        if( (*ppsLock)->bDebugPerf )
+        {
+            (*ppsLock)->nStartTime = nStartTime;
+        }
     }
 #endif
     return ret;
@@ -2374,13 +2404,25 @@ int   CPLCreateOrAcquireLock( CPLLock** ppsLock, CPLLockType eType )
 int CPLAcquireLock( CPLLock* psLock )
 {
 #ifdef DEBUG_CONTENTION
+    GUIntBig nStartTime = 0;
     if( psLock->bDebugPerf )
-        psLock->nStartTime = CPLrdtsc();
+        nStartTime = CPLrdtsc();
 #endif
+    int ret;
     if( psLock->eType == LOCK_SPIN )
-        return CPLAcquireSpinLock( psLock->u.hSpinLock );
+        ret = CPLAcquireSpinLock( psLock->u.hSpinLock );
     else
-        return CPLAcquireMutex( psLock->u.hMutex, 1000 );
+        ret =  CPLAcquireMutex( psLock->u.hMutex, 1000 );
+#ifdef DEBUG_CONTENTION
+    if( ret && CPLAtomicInc(&(psLock->nCurrentHolders)) == 1 )
+    {
+        if( psLock->bDebugPerf )
+        {
+            psLock->nStartTime = nStartTime;
+        }
+    }
+#endif
+    return ret;
 }
 
 /************************************************************************/
@@ -2394,7 +2436,9 @@ void CPLReleaseLock( CPLLock* psLock )
     GIntBig nMaxDiff = 0;
     double dfAvgDiff = 0;
     GUIntBig nIters = 0;
-    if( psLock->bDebugPerf && psLock->nStartTime )
+    if( CPLAtomicDec(&(psLock->nCurrentHolders)) == 0 &&
+        psLock->bDebugPerf &&
+        psLock->nStartTime )
     {
         const GUIntBig nStopTime = CPLrdtscp();
         const GIntBig nDiffTime =

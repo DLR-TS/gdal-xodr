@@ -47,7 +47,7 @@
 #  include <mbctype.h>  // Multibyte chars stuff.
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /**********************************************************************
  *                       TABGenerateArc()
@@ -472,7 +472,6 @@ char *TABEscapeString(char *pszString)
 char *TABCleanFieldName(const char *pszSrcName)
 {
     char *pszNewName = CPLStrdup(pszSrcName);
-
     if (strlen(pszNewName) > 31)
     {
         pszNewName[31] = '\0';

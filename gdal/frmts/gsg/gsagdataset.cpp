@@ -38,7 +38,7 @@
 #include "gdal_frmts.h"
 #include "gdal_pam.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 #ifndef DBL_MAX
 # ifdef __DBL_MAX__
@@ -146,7 +146,7 @@ class GSAGRasterBand : public GDALPamRasterBand
 /* See http://gcc.gnu.org/ml/gcc/2003-08/msg01195.html for some         */
 /* explanation.                                                         */
 /************************************************************************/
-
+    
 static bool AlmostEqual( double dfVal1, double dfVal2 )
 
 {
@@ -168,6 +168,7 @@ GSAGRasterBand::GSAGRasterBand( GSAGDataset *poDSIn, int nBandIn,
     dfMaxY(0.0),
     dfMinZ(0.0),
     dfMaxZ(0.0),
+    panLineOffset(NULL),
     nLastReadLine(poDSIn->nRasterYSize),
     nMaxLineSize(128),
     padfRowMinZ(NULL),
@@ -183,6 +184,17 @@ GSAGRasterBand::GSAGRasterBand( GSAGDataset *poDSIn, int nBandIn,
     nBlockXSize = poDS->GetRasterXSize();
     nBlockYSize = 1;
 
+    if( poDSIn->nRasterYSize > 1000000 )
+    {
+        // Sanity check to avoid excessive memory allocations
+        VSIFSeekL( poDSIn->fp, 0, SEEK_END );
+        vsi_l_offset nFileSize = VSIFTellL(poDSIn->fp);
+        if( static_cast<vsi_l_offset>(poDSIn->nRasterYSize) > nFileSize )
+        {
+            CPLError(CE_Failure, CPLE_FileIO, "Truncated file");
+            return;
+        }
+    }
     panLineOffset = static_cast<vsi_l_offset *>(
         VSI_CALLOC_VERBOSE( poDSIn->nRasterYSize+1, sizeof(vsi_l_offset) ));
     if( panLineOffset == NULL )
@@ -355,6 +367,9 @@ CPLErr GSAGRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
     char *szEnd = szStart;
     for( int iCell=0; iCell<nBlockXSize; szStart = szEnd )
     {
+        while( isspace( (unsigned char)*szStart ) )
+            szStart++;
+
         double dfValue = CPLStrtod( szStart, &szEnd );
         if( szStart == szEnd )
         {
@@ -365,12 +380,11 @@ CPLErr GSAGRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
                           "Unexpected value in grid row %d (expected floating "
                           "point value, found \"%s\").\n",
                           nBlockYOff, szStart );
+                VSIFree( szLineBuf );
                 return CE_Failure;
             }
 
             /* Check if this was an expected failure */
-            while( isspace( (unsigned char)*szStart ) )
-                szStart++;
 
             /* Found sign at end of input, seek back to re-read it */
             bool bOnlySign = false;
@@ -1080,19 +1094,17 @@ error:
 
 CPLErr GSAGDataset::GetGeoTransform( double *padfGeoTransform )
 {
-    if( padfGeoTransform == NULL )
-        return CE_Failure;
+    padfGeoTransform[0] = 0;
+    padfGeoTransform[1] = 1;
+    padfGeoTransform[2] = 0;
+    padfGeoTransform[3] = 0;
+    padfGeoTransform[4] = 0;
+    padfGeoTransform[5] = 1;
 
     GSAGRasterBand *poGRB = (GSAGRasterBand *)GetRasterBand( 1 );
 
     if( poGRB == NULL )
     {
-        padfGeoTransform[0] = 0;
-        padfGeoTransform[1] = 1;
-        padfGeoTransform[2] = 0;
-        padfGeoTransform[3] = 0;
-        padfGeoTransform[4] = 0;
-        padfGeoTransform[5] = 1;
         return CE_Failure;
     }
 
@@ -1103,6 +1115,9 @@ CPLErr GSAGDataset::GetGeoTransform( double *padfGeoTransform )
 
     if( eErr == CE_None )
         return CE_None;
+
+    if( nRasterXSize == 1 || nRasterYSize == 1 )
+        return CE_Failure;
 
     /* calculate pixel size first */
     padfGeoTransform[1] = (poGRB->dfMaxX - poGRB->dfMinX)/(nRasterXSize - 1);
@@ -1313,8 +1328,10 @@ CPLErr GSAGDataset::ShiftFileContents( VSILFILE *fp, vsi_l_offset nShiftStart,
         }
 
         /* FIXME:  Should use SEEK_CUR, review integer promotions... */
-        if( VSIFSeekL( fp, VSIFTellL(fp)-nRead+nShiftSize-nOverlap,
-                       SEEK_SET ) != 0 )
+        vsi_l_offset nNewPos = (nShiftSize >= 0 ) ?
+            VSIFTellL(fp)+nShiftSize-nRead-nOverlap :
+            VSIFTellL(fp) - (-nShiftSize) -nRead-nOverlap;
+        if( VSIFSeekL( fp, nNewPos, SEEK_SET ) != 0 )
         {
             VSIFree( pabyBuffer );
             CPLError( CE_Failure, CPLE_FileIO,
@@ -1667,7 +1684,8 @@ GDALDataset *GSAGDataset::CreateCopy( const char *pszFilename,
     ssRange << dfMin << " " << dfMax << "\x0D\x0A";
     if( ssRange.str().length() != nDummyRangeLen )
     {
-        int nShiftSize = static_cast<int>(ssRange.str().length() - nDummyRangeLen);
+        int nShiftSize = static_cast<int>(ssRange.str().length()) -
+                         static_cast<int>(nDummyRangeLen);
         if( ShiftFileContents( fp, nRangeStart + nDummyRangeLen,
                                nShiftSize, "\x0D\x0A" ) != CE_None )
         {

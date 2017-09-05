@@ -34,7 +34,7 @@
 #include <cstdlib>
 #include <algorithm>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                           OGRSimpleCurve()                           */
@@ -451,8 +451,16 @@ void OGRSimpleCurve::setNumPoints( int nNewPointCount, int bZeroizeNewContent )
         paoPoints = paoNewPoints;
 
         if( bZeroizeNewContent )
-            memset( paoPoints + nPointCount,
-                0, sizeof(OGRRawPoint) * (nNewPointCount - nPointCount) );
+        {
+            // gcc 8.0 (dev) complains about -Wclass-memaccess since
+            // OGRRawPoint() has a constructor. So use a void* pointer.  Doing
+            // the memset() here is correct since the constructor sets to 0.  We
+            // could instead use a std::fill(), but at every other place, we
+            // treat this class as a regular POD (see above use of realloc())
+            void* dest = static_cast<void*>(paoPoints + nPointCount);
+            memset( dest,
+                    0, sizeof(OGRRawPoint) * (nNewPointCount - nPointCount) );
+        }
 
         if( flags & OGR_G_3D )
         {
@@ -507,11 +515,11 @@ void OGRSimpleCurve::setPoint( int iPoint, OGRPoint * poPoint )
 
 {
     if( (flags & OGR_G_3D) && (flags & OGR_G_MEASURED) )
-        setPoint( iPoint, poPoint->getX(), poPoint->getY(), poPoint->getM() );
-    else if( flags & OGR_G_MEASURED )
-        setPointM( iPoint, poPoint->getX(), poPoint->getY(), poPoint->getM() );
+        setPoint( iPoint, poPoint->getX(), poPoint->getY(), poPoint->getZ(), poPoint->getM() );
     else if( flags & OGR_G_3D )
         setPoint( iPoint, poPoint->getX(), poPoint->getY(), poPoint->getZ() );
+    else if( flags & OGR_G_MEASURED )
+        setPointM( iPoint, poPoint->getX(), poPoint->getY(), poPoint->getM() );
     else
         setPoint( iPoint, poPoint->getX(), poPoint->getY() );
 }
@@ -763,10 +771,14 @@ void OGRSimpleCurve::setM( int iPoint, double mIn )
 void OGRSimpleCurve::addPoint( const OGRPoint * poPoint )
 
 {
-    if( poPoint->getCoordinateDimension() < 3 )
-        setPoint( nPointCount, poPoint->getX(), poPoint->getY() );
-    else
+    if( poPoint->Is3D() && poPoint->IsMeasured() )
+        setPoint( nPointCount, poPoint->getX(), poPoint->getY(), poPoint->getZ(), poPoint->getM() );
+    else if( poPoint->Is3D() )
         setPoint( nPointCount, poPoint->getX(), poPoint->getY(), poPoint->getZ() );
+    else if( poPoint->IsMeasured() )
+        setPointM( nPointCount, poPoint->getX(), poPoint->getY(), poPoint->getM() );
+    else
+        setPoint( nPointCount, poPoint->getX(), poPoint->getY() );
 }
 
 /************************************************************************/

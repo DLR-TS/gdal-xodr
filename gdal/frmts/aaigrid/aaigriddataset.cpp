@@ -60,13 +60,30 @@
 #include "ogr_core.h"
 #include "ogr_spatialref.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
+
+namespace {
+
+float DoubleToFloatClamp(double dfValue) {
+#if HAVE_CXX11
+    if( dfValue <= std::numeric_limits<float>::lowest() )
+        return std::numeric_limits<float>::lowest();
+#else
+    if( dfValue <= -std::numeric_limits<float>::max() )
+        return -std::numeric_limits<float>::max();
+#endif
+    if( dfValue >= std::numeric_limits<float>::max() )
+        return std::numeric_limits<float>::max();
+    return static_cast<float>(dfValue);
+}
+
+}  // namespace
 
 static CPLString OSR_GDS( char **papszNV, const char *pszField,
                           const char *pszDefaultValue );
 
 /************************************************************************/
-/*                           AAIGRasterBand()                            */
+/*                           AAIGRasterBand()                           */
 /************************************************************************/
 
 AAIGRasterBand::AAIGRasterBand( AAIGDataset *poDSIn, int nDataStart ) :
@@ -167,7 +184,7 @@ CPLErr AAIGRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
                 reinterpret_cast<double *>(pImage)[iPixel] = CPLAtofM(szToken);
             else if( eDataType == GDT_Float32 )
                 reinterpret_cast<float *>(pImage)[iPixel] =
-                    static_cast<float>(CPLAtofM(szToken));
+                    DoubleToFloatClamp(CPLAtofM(szToken));
             else
                 reinterpret_cast<GInt32 *>(pImage)[iPixel] =
                     static_cast<GInt32>(atoi(szToken));
@@ -402,6 +419,16 @@ int AAIGDataset::ParseHeader(const char *pszHeader, const char *pszDataType)
     nRasterYSize = atoi(papszTokens[i + 1]);
 
     if (!GDALCheckDatasetDimensions(nRasterXSize, nRasterYSize))
+    {
+        CSLDestroy(papszTokens);
+        return FALSE;
+    }
+
+    // TODO(schwehr): Would be good to also factor the file size into the max.
+    // TODO(schwehr): Allow the user to disable this check.
+    // The driver allocates a panLineOffset array based on nRasterYSize
+    const int kMaxDimSize =  10000000;  // 1e7 cells.
+    if (nRasterXSize > kMaxDimSize || nRasterYSize > kMaxDimSize)
     {
         CSLDestroy(papszTokens);
         return FALSE;

@@ -27,6 +27,10 @@ extern "C" {
   #include "memwatch.h"
 #endif
 
+#ifdef __cplusplus
+#include "datasource.h"
+#endif
+
 #ifndef GRIB2BIT_ENUM
 #define GRIB2BIT_ENUM
 /* See rule (8) bit 1 is most significant, bit 8 least significant. */
@@ -559,11 +563,13 @@ int MetaParse (grib_MetaData * meta, sInt4 *is0, sInt4 ns0,
                sInt4 *is5, sInt4 ns5, sInt4 grib_len,
                float xmissp, float xmisss, int simpVer);
 
-void ParseGrid (gridAttribType * attrib, double **Grib_Data,
+#ifdef __cplusplus
+void ParseGrid (DataSource &fp, gridAttribType * attrib, double **Grib_Data,
                 uInt4 *grib_DataLen, uInt4 Nx, uInt4 Ny, int scan,
-                sInt4 *iain, sInt4 ibitmap, sInt4 *ib, double unitM,
+                sInt4 nd2x3, sInt4 *iain, sInt4 ibitmap, sInt4 *ib, double unitM,
                 double unitB, uChar f_wxType, sect2_WxType * WxType,
                 uChar f_subGrid, int startX, int startY, int stopX, int stopY);
+#endif
 
 void FreqPrint (char **ans, double *Data, sInt4 DataLen, sInt4 Nx,
                 sInt4 Ny, sChar decimal, char *comment);

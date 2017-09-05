@@ -99,6 +99,34 @@ inline T GDALClampValue(const T tValue, const T tMax, const T tMin)
 }
 
 /************************************************************************/
+/*                         GDALIsValueInRange()                         */
+/************************************************************************/
+/**
+ * Returns whether a value is in the type range.
+ * NaN is considered not to be in type range.
+ *
+ * @param dfValue the value
+ * @return whether the value is in the type range.
+ */
+template <class T> inline bool GDALIsValueInRange(double dfValue)
+{
+    return dfValue >= std::numeric_limits<T>::min() &&
+           dfValue <= std::numeric_limits<T>::max();
+}
+
+template <> inline bool GDALIsValueInRange<double>(double dfValue)
+{
+    return !CPLIsNan(dfValue);
+}
+
+template <> inline bool GDALIsValueInRange<float>(double dfValue)
+{
+    return CPLIsInf(dfValue) ||
+           (dfValue >= -std::numeric_limits<float>::max() &&
+            dfValue <= std::numeric_limits<float>::max());
+}
+
+/************************************************************************/
 /*                          GDALCopyWord()                              */
 /************************************************************************/
 /**
@@ -147,6 +175,17 @@ inline void GDALCopyWord(const float fValueIn, double &dfValueOut)
 
 inline void GDALCopyWord(const double dfValueIn, float &fValueOut)
 {
+    if( dfValueIn > std::numeric_limits<float>::max() )
+    {
+        fValueOut = std::numeric_limits<float>::infinity();
+        return;
+    }
+    if( dfValueIn < -std::numeric_limits<float>::max() )
+    {
+        fValueOut = -std::numeric_limits<float>::infinity();
+        return;
+    }
+
     fValueOut = static_cast<float>(dfValueIn);
 }
 
@@ -349,6 +388,33 @@ inline void GDALCopy4Words(const float* pValueIn, GUInt16* const &pValueOut)
 #endif
     GDALCopyXMMToInt64(xmm_i, pValueOut);
 }
+
+#ifdef notdef_because_slightly_slower_than_default_implementation
+inline void GDALCopy4Words(const double* pValueIn, float* const &pValueOut)
+{
+    __m128d float_posmax = _mm_set1_pd(std::numeric_limits<float>::max());
+    __m128d float_negmax = _mm_set1_pd(-std::numeric_limits<float>::max());
+    __m128d float_posinf = _mm_set1_pd(std::numeric_limits<float>::infinity());
+    __m128d float_neginf = _mm_set1_pd(-std::numeric_limits<float>::infinity());
+    __m128d val01 = _mm_loadu_pd(pValueIn);
+    __m128d val23 = _mm_loadu_pd(pValueIn+2);
+    __m128d mask_max = _mm_cmpge_pd( val01, float_posmax );
+    __m128d mask_max23 = _mm_cmpge_pd( val23, float_posmax );
+    val01 = _mm_or_pd(_mm_and_pd(mask_max, float_posinf), _mm_andnot_pd(mask_max, val01));
+    val23 = _mm_or_pd(_mm_and_pd(mask_max23, float_posinf), _mm_andnot_pd(mask_max23, val23));
+    __m128d mask_min = _mm_cmple_pd( val01, float_negmax );
+    __m128d mask_min23 = _mm_cmple_pd( val23, float_negmax );
+    val01 = _mm_or_pd(_mm_and_pd(mask_min, float_neginf), _mm_andnot_pd(mask_min, val01));
+    val23 = _mm_or_pd(_mm_and_pd(mask_min23, float_neginf), _mm_andnot_pd(mask_min23, val23));
+    __m128 val01_s =  _mm_cvtpd_ps ( val01);
+    __m128 val23_s =  _mm_cvtpd_ps ( val23);
+    __m128i val01_i = _mm_castps_si128(val01_s);
+    __m128i val23_i = _mm_castps_si128(val23_s);
+    GDALCopyXMMToInt64(val01_i, pValueOut);
+    GDALCopyXMMToInt64(val23_i, pValueOut+2);
+}
+#endif
+
 #endif //  defined(__x86_64) || defined(_M_X64)
 
 #endif // GDAL_PRIV_TEMPLATES_HPP_INCLUDED

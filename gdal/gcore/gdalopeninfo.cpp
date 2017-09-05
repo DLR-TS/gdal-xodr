@@ -46,7 +46,7 @@
 #include "cpl_vsi.h"
 #include "gdal.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /* ==================================================================== */
@@ -120,6 +120,7 @@ retry:  // TODO(schwehr): Stop using goto.
     {
         const char* pszExt = CPLGetExtension(pszFilename);
         if( EQUAL(pszExt, "zip") || EQUAL(pszExt, "tar") || EQUAL(pszExt, "gz")
+            || pszFilename[strlen(pszFilename)-1] == '}'
 #ifdef DEBUG
             // For AFL, so that .cur_input is detected as the archive filename.
             || EQUAL( CPLGetFilename(pszFilename), ".cur_input" )

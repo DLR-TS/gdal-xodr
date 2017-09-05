@@ -42,7 +42,7 @@
 #include "hdf4compat.h"
 #include "hdf4dataset.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 extern const char * const pszGDALSignature;
 
@@ -706,8 +706,11 @@ int HDF4Dataset::Identify( GDALOpenInfo * poOpenInfo )
 GDALDataset *HDF4Dataset::Open( GDALOpenInfo * poOpenInfo )
 
 {
+#ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    // During fuzzing, do not use Identify to reject crazy content.
     if( !Identify( poOpenInfo ) )
         return NULL;
+#endif
 
     CPLMutexHolderD(&hHDF4Mutex);
 

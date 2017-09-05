@@ -37,7 +37,7 @@
 #include <algorithm>
 #include <limits>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 int     bReadOnly = FALSE;
 int     bVerbose = TRUE;
@@ -367,7 +367,7 @@ static int TestDataset( GDALDriver** ppoDriver )
             = poDS->ExecuteSQL(pszSQLStatement, NULL, pszDialect);
         if (poResultSet == NULL)
         {
-            GDALClose( (GDALDatasetH)poDS );
+            GDALClose(poDS);
             return FALSE;
         }
 
@@ -399,7 +399,7 @@ static int TestDataset( GDALDriver** ppoDriver )
             {
                 printf( "FAILURE: Couldn't fetch advertised layer %d!\n",
                         iLayer );
-                GDALClose( (GDALDatasetH)poDS );
+                GDALClose(poDS);
                 return FALSE;
             }
 
@@ -419,7 +419,7 @@ static int TestDataset( GDALDriver** ppoDriver )
 
         if (poDS->GetLayerCount() >= 2)
         {
-            GDALClose( (GDALDatasetH)poDS );
+            GDALClose(poDS);
             poDS = NULL;
             bRetLocal = TestInterleavedReading( pszDataSource, NULL );
             bRet &= bRetLocal;
@@ -439,7 +439,7 @@ static int TestDataset( GDALDriver** ppoDriver )
             {
                 printf( "FAILURE: Couldn't fetch requested layer %s!\n",
                         *papszLayerIter );
-                GDALClose( (GDALDatasetH)poDS );
+                GDALClose(poDS);
                 return FALSE;
             }
 
@@ -461,7 +461,7 @@ static int TestDataset( GDALDriver** ppoDriver )
 
         if (CSLCount(papszLayers) >= 2)
         {
-            GDALClose( (GDALDatasetH)poDS );
+            GDALClose(poDS);
             poDS = NULL;
             bRetLocal = TestInterleavedReading( pszDataSource, papszLayers );
             bRet &= bRetLocal;
@@ -472,7 +472,7 @@ static int TestDataset( GDALDriver** ppoDriver )
 /*      Close down.                                                     */
 /* -------------------------------------------------------------------- */
     if( poDS != NULL )
-        GDALClose( (GDALDatasetH)poDS );
+        GDALClose(poDS);
 
     return bRet;
 }
@@ -725,9 +725,13 @@ static int TestCreateLayer( GDALDriver* poDriver, OGRwkbGeometryType eGeomType )
         if (eGeomType == wkbUnknown || eGeomType == wkbNone)
             eOtherGeomType = wkbLineString;
         else if( wkbFlatten(eGeomType) == eGeomType )
-            eOtherGeomType = (OGRwkbGeometryType) ( ((int)eGeomType % 7) + 1 );
+            eOtherGeomType =
+                static_cast<OGRwkbGeometryType>(
+                    (static_cast<int>(eGeomType) % 7) + 1);
         else
-            eOtherGeomType = wkbSetZ((OGRwkbGeometryType) ( (((int)wkbFlatten(eGeomType) % 7) + 1 )));
+          eOtherGeomType =
+              wkbSetZ(static_cast<OGRwkbGeometryType>(
+                  ((static_cast<int>(wkbFlatten(eGeomType)) % 7) + 1 )));
         pszWKT = GetWKT(eOtherGeomType);
         if( pszWKT != NULL )
         {
@@ -838,7 +842,8 @@ static int TestCreateLayer( GDALDriver* poDriver, OGRwkbGeometryType eGeomType )
         !EQUAL(poDriver->GetDescription(), "KML") &&
         !EQUAL(poDriver->GetDescription(), "LIBKML") &&
         !EQUAL(poDriver->GetDescription(), "PDF") &&
-        !EQUAL(poDriver->GetDescription(), "GeoJSON") )
+        !EQUAL(poDriver->GetDescription(), "GeoJSON") &&
+        !EQUAL(poDriver->GetDescription(), "OGR_GMT") )
     {
         /* Reopen dataset */
         poDS = LOG_ACTION((GDALDataset*)GDALOpenEx( osFilename,
@@ -3412,7 +3417,7 @@ static int TestInterleavedReading( const char* pszDataSourceIn, char** papszLaye
     }
 
     /* Test normal reading */
-    LOG_ACTION(GDALClose( (GDALDatasetH)poDS ));
+    LOG_ACTION(GDALClose(poDS));
     poDS = LOG_ACTION((GDALDataset*) GDALOpenEx( pszDataSourceIn,
                                 GDAL_OF_VECTOR, NULL, papszOpenOptions, NULL ));
     poDS2 = LOG_ACTION((GDALDataset*) GDALOpenEx( pszDataSourceIn,
@@ -3503,9 +3508,9 @@ bye:
     DestroyFeatureAndNullify(poFeature12);
     DestroyFeatureAndNullify(poFeature22);
     if( poDS != NULL)
-        LOG_ACTION(GDALClose( (GDALDatasetH)poDS ));
+        LOG_ACTION(GDALClose(poDS));
     if( poDS2 != NULL )
-        LOG_ACTION(GDALClose( (GDALDatasetH)poDS2 ));
+        LOG_ACTION(GDALClose(poDS2));
     return bRet;
 }
 
@@ -3634,7 +3639,7 @@ static int TestVirtualIO( GDALDataset * poDS )
             printf("WARNING: /vsimem dataset reports %d layers where as base dataset reports %d layers.\n",
                     poDS2->GetLayerCount(), poDS->GetLayerCount() );
         }
-        GDALClose( (GDALDatasetH) poDS2 );
+        GDALClose(poDS2);
 
         if( bVerbose && bRet )
         {

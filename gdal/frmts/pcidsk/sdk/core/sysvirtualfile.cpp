@@ -46,9 +46,7 @@
 #include "segment/sysblockmap.h"
 #include <cassert>
 #include <cstring>
-#if 0
 #include <cstdio>
-#endif
 
 using namespace PCIDSK;
 
@@ -91,7 +89,14 @@ SysVirtualFile::SysVirtualFile( CPCIDSKFile *fileIn, int start_block,
 SysVirtualFile::~SysVirtualFile()
 
 {
-    Synchronize();
+    try
+    {
+        Synchronize();
+    }
+    catch( const PCIDSKException& e )
+    {
+        fprintf(stderr, "Exception in ~SysVirtualFile(): %s", e.what()); // ok
+    }
 }
 
 /************************************************************************/

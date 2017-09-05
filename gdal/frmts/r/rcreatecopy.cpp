@@ -42,7 +42,7 @@
 #include "gdal_pam.h"
 #include "gdal_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 GDALDataset *
 RCreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
@@ -113,6 +113,13 @@ RCreateCopy( const char * pszFilename,
     const int nYSize = poSrcDS->GetRasterYSize();
     const bool bASCII = CPLFetchBool(papszOptions, "ASCII", false);
     const bool bCompressed = CPLFetchBool(papszOptions, "COMPRESS", !bASCII);
+
+    vsi_l_offset nSize = static_cast<vsi_l_offset>(nBands) * nXSize * nYSize;
+    if( nSize > static_cast<vsi_l_offset>(INT_MAX) )
+    {
+        CPLError(CE_Failure, CPLE_NotSupported, "Too big raster");
+        return NULL;
+    }
 
     // Some some rudimentary checks.
 

@@ -33,7 +33,7 @@
 #include "wmsdriver.h"
 #include "minidriver_mrf.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 using namespace WMSMiniDriver_MRF_ns;
 
@@ -152,13 +152,14 @@ void *SectorCache::data(size_t address) {
 // Keep in sync with the type enum
 static const int ir_size[WMSMiniDriver_MRF::tEND] = { 16, 8 };
 
-WMSMiniDriver_MRF::WMSMiniDriver_MRF(): m_type(tMRF), fp(NULL), m_request(NULL),index_cache(NULL) {};
+WMSMiniDriver_MRF::WMSMiniDriver_MRF(): m_type(tMRF), fp(NULL), m_request(NULL),index_cache(NULL) {}
 
 WMSMiniDriver_MRF::~WMSMiniDriver_MRF() {
     if (index_cache)
         delete index_cache;
     if (fp)
         VSIFCloseL(fp);
+    delete m_request;
 }
 
 CPLErr WMSMiniDriver_MRF::Initialize(CPLXMLNode *config, CPL_UNUSED char **papszOpenOptions) {

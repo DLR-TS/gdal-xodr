@@ -31,7 +31,7 @@
 #include "gdal_utils_priv.h"
 #include "gdal_priv.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /************************************************************************/
 /*                               Usage()                                */
@@ -44,11 +44,11 @@ static void Usage(const char* pszErrorMsg = NULL)
         "Usage: gdal_rasterize [-b band]* [-i] [-at]\n"
         "       {[-burn value]* | [-a attribute_name] | [-3d]} [-add]\n"
         "       [-l layername]* [-where expression] [-sql select_statement]\n"
-        "       [-dialect dialect] [-of format] [-a_srs srs_def]\n"
+        "       [-dialect dialect] [-of format] [-a_srs srs_def] [-to \"NAME=VALUE\"]*\n"
         "       [-co \"NAME=VALUE\"]* [-a_nodata value] [-init value]*\n"
         "       [-te xmin ymin xmax ymax] [-tr xres yres] [-tap] [-ts width height]\n"
         "       [-ot {Byte/Int16/UInt16/UInt32/Int32/Float32/Float64/\n"
-        "             CInt16/CInt32/CFloat32/CFloat64}] [-q]\n"
+        "             CInt16/CInt32/CFloat32/CFloat64}] [-optim {[AUTO]/VECTOR/RASTER}] [-q]\n"
         "       <src_datasource> <dst_filename>\n" );
 
     if( pszErrorMsg != NULL )

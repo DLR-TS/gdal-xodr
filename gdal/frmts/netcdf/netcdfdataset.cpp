@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -62,7 +63,7 @@
 #include "ogr_core.h"
 #include "ogr_srs_api.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 // Internal function declarations.
 
@@ -376,47 +377,47 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
         else
             bSignedData = true;
 
-        // For NC4 format NC_BYTE is signed, NC_UBYTE is unsigned.
+        // For NC4 format NC_BYTE is (normally) signed, NC_UBYTE is unsigned.
+        // But in case a NC3 file was converted automatically and has hints
+        // that it is unsigned, take them into account
         if( poNCDFDS->eFormat == NCDF_FORMAT_NC4 )
         {
             bSignedData = true;
         }
+
+        // If we got valid_range, test for signed/unsigned range.
+        // http://www.unidata.ucar.edu/software/netcdf/docs/netcdf/Attribute-Conventions.html
+        if( bGotValidRange )
+        {
+            // If we got valid_range={0,255}, treat as unsigned.
+            if( adfValidRange[0] == 0 && adfValidRange[1] == 255 )
+            {
+                bSignedData = false;
+                // Reset valid_range.
+                adfValidRange[0] = dfNoData;
+                adfValidRange[1] = dfNoData;
+            }
+            // If we got valid_range={-128,127}, treat as signed.
+            else if( adfValidRange[0] == -128 && adfValidRange[1] == 127 )
+            {
+                bSignedData = true;
+                // Reset valid_range.
+                adfValidRange[0] = dfNoData;
+                adfValidRange[1] = dfNoData;
+            }
+        }
+        // Else test for _Unsigned.
+        // http://www.unidata.ucar.edu/software/netcdf/docs/BestPractices.html
         else
         {
-            // If we got valid_range, test for signed/unsigned range.
-            // http://www.unidata.ucar.edu/software/netcdf/docs/netcdf/Attribute-Conventions.html
-            if( bGotValidRange )
+            char *pszTemp = NULL;
+            if( NCDFGetAttr(cdfid, nZId, "_Unsigned", &pszTemp) == CE_None )
             {
-                // If we got valid_range={0,255}, treat as unsigned.
-                if( adfValidRange[0] == 0 && adfValidRange[1] == 255 )
-                {
+                if( EQUAL(pszTemp, "true") )
                     bSignedData = false;
-                    // Reset valid_range.
-                    adfValidRange[0] = dfNoData;
-                    adfValidRange[1] = dfNoData;
-                }
-                // If we got valid_range={-128,127}, treat as signed.
-                else if( adfValidRange[0] == -128 && adfValidRange[1] == 127 )
-                {
+                else if( EQUAL(pszTemp, "false") )
                     bSignedData = true;
-                    // Reset valid_range.
-                    adfValidRange[0] = dfNoData;
-                    adfValidRange[1] = dfNoData;
-                }
-            }
-            // Else test for _Unsigned.
-            // http://www.unidata.ucar.edu/software/netcdf/docs/BestPractices.html
-            else
-            {
-                char *pszTemp = NULL;
-                if( NCDFGetAttr(cdfid, nZId, "_Unsigned", &pszTemp) == CE_None )
-                {
-                    if( EQUAL(pszTemp, "true") )
-                        bSignedData = false;
-                    else if( EQUAL(pszTemp, "false") )
-                        bSignedData = true;
-                    CPLFree(pszTemp);
-                }
+                CPLFree(pszTemp);
             }
         }
 
@@ -1280,6 +1281,12 @@ CPLErr netCDFRasterBand::CreateBandMetadata( const int *paDimIds )
         snprintf(szMetaName, sizeof(szMetaName), "NETCDF_DIM_%s", szVarName);
         SetMetadataItem(szMetaName, szMetaTemp);
 
+        // Avoid int32 overflow. Perhaps something more sensible to do here ?
+        if( result > 0 && Sum > INT_MAX / result )
+            break;
+        if( Taken > INT_MAX - result * Sum )
+            break;
+
         Taken += result * Sum;
     }  // End loop non-spatial dimensions.
 
@@ -1554,22 +1561,19 @@ CPLErr netCDFRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
     }
     else if( eDataType == GDT_Int32 )
     {
-        if( sizeof(long) == 4 )
-        {
+#if SIZEOF_UNSIGNED_LONG == 4
             status = nc_get_vara_long(cdfid, nZId, start, edge,
                                       static_cast<long *>(pImageNC));
             if( status == NC_NOERR )
                 CheckData<long>(pImage, pImageNC, edge[nBandXPos],
                                 edge[nBandYPos], false);
-        }
-        else
-        {
+#else
             status = nc_get_vara_int(cdfid, nZId, start, edge,
                                      static_cast<int *>(pImageNC));
             if( status == NC_NOERR )
                 CheckData<int>(pImage, pImageNC, edge[nBandXPos],
                                edge[nBandYPos], false);
-        }
+#endif
     }
     else if( eDataType == GDT_Float32 )
     {
@@ -1778,6 +1782,9 @@ CPLErr netCDFRasterBand::IWriteBlock( CPL_UNUSED int nBlockXOff,
 
 netCDFDataset::netCDFDataset() :
     // Basic dataset vars.
+#ifdef ENABLE_NCDUMP
+    bFileToDestroyAtClosing(false),
+#endif
     cdfid(-1),
     papszSubDatasets(NULL),
     papszMetadata(NULL),
@@ -1878,6 +1885,10 @@ netCDFDataset::~netCDFDataset()
         int status = nc_close(cdfid);
         NCDF_ERR(status);
     }
+#ifdef ENABLE_NCDUMP
+    if( bFileToDestroyAtClosing )
+        VSIUnlink( osFilename );
+#endif
 }
 
 /************************************************************************/
@@ -2834,9 +2845,27 @@ void netCDFDataset::SetProjectionFromVar( int nVarId, bool bReadSRSOnly )
     {
         nc_inq_varid(cdfid, poDS->papszDimName[nXDimID], &nVarDimXID);
         nc_inq_varid(cdfid, poDS->papszDimName[nYDimID], &nVarDimYID);
+
+        // Check that they are 1D or 2D variables
+        if( nVarDimXID >= 0 )
+        {
+            int ndims = -1;
+            nc_inq_varndims(cdfid, nVarDimXID, &ndims);
+            if( ndims == 0 || ndims > 2 )
+                nVarDimXID = -1;
+        }
+
+        if( nVarDimYID >= 0 )
+        {
+            int ndims = -1;
+            nc_inq_varndims(cdfid, nVarDimYID, &ndims);
+            if( ndims == 0 || ndims > 2 )
+                nVarDimYID = -1;
+        }
     }
 
-    if( !bReadSRSOnly && (nVarDimXID != -1) && (nVarDimYID != -1) )
+    if( !bReadSRSOnly && (nVarDimXID != -1) && (nVarDimYID != -1) &&
+        xdim > 0 && ydim > 0 )
     {
         pdfXCoord = static_cast<double *>(CPLCalloc(xdim, sizeof(double)));
         pdfYCoord = static_cast<double *>(CPLCalloc(ydim, sizeof(double)));
@@ -2975,9 +3004,12 @@ void netCDFDataset::SetProjectionFromVar( int nVarId, bool bReadSRSOnly )
                      pdfXCoord[xdim - 2], pdfXCoord[xdim - 1]);
 #endif
 
-            if( (abs(abs(nSpacingBegin) - abs(nSpacingLast))  <= 1) &&
-                (abs(abs(nSpacingBegin) - abs(nSpacingMiddle)) <= 1) &&
-                (abs(abs(nSpacingMiddle) - abs(nSpacingLast)) <= 1) )
+            const double dfSpacingBegin = nSpacingBegin;
+            const double dfSpacingMiddle = nSpacingMiddle;
+            const double dfSpacingLast = nSpacingLast;
+            if( (fabs(fabs(dfSpacingBegin) - fabs(dfSpacingLast))  <= 1) &&
+                (fabs(fabs(dfSpacingBegin) - fabs(dfSpacingMiddle)) <= 1) &&
+                (fabs(fabs(dfSpacingMiddle) - fabs(dfSpacingLast)) <= 1) )
             {
                 bLonSpacingOK = true;
             }
@@ -3018,17 +3050,21 @@ void netCDFDataset::SetProjectionFromVar( int nVarId, bool bReadSRSOnly )
 
             // For Latitude we allow an error of 0.1 degrees for gaussian
             // gridding (only if this is not a projected SRS).
-
-            if( (abs(abs(nSpacingBegin) - abs(nSpacingLast))  <= 1) &&
-                (abs(abs(nSpacingBegin) - abs(nSpacingMiddle)) <= 1) &&
-                (abs(abs(nSpacingMiddle) - abs(nSpacingLast)) <= 1) )
+            // Note: we use fabs() instead of abs() to avoid int32 overflow
+            // issues.
+            const double dfSpacingBegin = nSpacingBegin;
+            const double dfSpacingMiddle = nSpacingMiddle;
+            const double dfSpacingLast = nSpacingLast;
+            if( (fabs(fabs(dfSpacingBegin) - fabs(dfSpacingLast))  <= 1) &&
+                (fabs(fabs(dfSpacingBegin) - fabs(dfSpacingMiddle)) <= 1) &&
+                (fabs(fabs(dfSpacingMiddle) - fabs(dfSpacingLast)) <= 1) )
             {
                 bLatSpacingOK = true;
             }
             else if( !oSRS.IsProjected() &&
-                     (((abs(abs(nSpacingBegin) - abs(nSpacingLast))) <= 100) &&
-                      ((abs(abs(nSpacingBegin) - abs(nSpacingMiddle))) <= 100) &&
-                      ((abs(abs(nSpacingMiddle) - abs(nSpacingLast))) <= 100)) )
+                     (((fabs(fabs(dfSpacingBegin) - fabs(dfSpacingLast))) <= 100) &&
+                      ((fabs(fabs(dfSpacingBegin) - fabs(dfSpacingMiddle))) <= 100) &&
+                      ((fabs(fabs(dfSpacingMiddle) - fabs(dfSpacingLast))) <= 100)) )
             {
                 bLatSpacingOK = true;
                 CPLError(CE_Warning, CPLE_AppDefined,
@@ -3122,6 +3158,58 @@ void netCDFDataset::SetProjectionFromVar( int nVarId, bool bReadSRSOnly )
                 yMinMax[0] = dfCoordOffset + yMinMax[0] * dfCoordScale;
                 yMinMax[1] = dfCoordOffset + yMinMax[1] * dfCoordScale;
             }
+
+
+            // Geostationary satellites can specify units in (micro)radians
+            // So we check if they do, and if so convert to linear units (meters)
+            const char *pszProjName = oSRS.GetAttrValue( "PROJECTION" );
+            if( pszProjName != NULL )
+            {
+                if( EQUAL( pszProjName, SRS_PT_GEOSTATIONARY_SATELLITE ) )
+                {
+                    double satelliteHeight = oSRS.GetProjParm(SRS_PP_SATELLITE_HEIGHT, 1.0);
+                    size_t nAttlen = 0;
+                    char szUnits[NC_MAX_NAME+1];
+                    szUnits[0] = '\0';
+                    nc_type nAttype=NC_NAT;
+                    nc_inq_att(cdfid, nVarDimXID, "units", &nAttype, &nAttlen);
+                    if( nAttlen < sizeof(szUnits) &&
+                        nc_get_att_text( cdfid, nVarDimXID, "units",
+                        szUnits ) == NC_NOERR )
+                    {
+                        szUnits[nAttlen] = '\0';
+                        if( EQUAL( szUnits, "microradian" ) )
+                        {
+                            xMinMax[0] = xMinMax[0] * satelliteHeight * 0.000001;
+                            xMinMax[1] = xMinMax[1] * satelliteHeight * 0.000001;
+                        }
+                        else if( EQUAL( szUnits, "rad" ) )
+                        {
+                            xMinMax[0] = xMinMax[0] * satelliteHeight;
+                            xMinMax[1] = xMinMax[1] * satelliteHeight;
+                        }
+                    }
+                    szUnits[0] = '\0';
+                    nc_inq_att(cdfid, nVarDimYID, "units", &nAttype, &nAttlen);
+                    if( nAttlen < sizeof(szUnits) &&
+                       nc_get_att_text( cdfid, nVarDimYID, "units",
+                       szUnits ) == NC_NOERR )
+                    {
+                        szUnits[nAttlen] = '\0';
+                        if( EQUAL( szUnits, "microradian" ) )
+                        {
+                            yMinMax[0] = yMinMax[0] * satelliteHeight * 0.000001;
+                            yMinMax[1] = yMinMax[1] * satelliteHeight * 0.000001;
+                        }
+                        else if( EQUAL( szUnits, "rad" ) )
+                        {
+                            yMinMax[0] = yMinMax[0] * satelliteHeight;
+                            yMinMax[1] = yMinMax[1] * satelliteHeight;
+                        }
+                    }
+                }
+            }
+
 
             adfTempGeoTransform[0] = xMinMax[0];
             adfTempGeoTransform[2] = 0;
@@ -3406,11 +3494,29 @@ int netCDFDataset::ProcessCFGeolocation( int nVarId )
             for( int i = 0; i < CSLCount(papszTokens); i++ )
             {
                 if( NCDFIsVarLongitude(cdfid, -1, papszTokens[i]) )
-                    snprintf(szGeolocXName, sizeof(szGeolocXName),
-                             "%s",papszTokens[i]);
+                {
+                    int nOtherVarId = -1;
+                    // Check that the variable actually exists
+                    // Needed on Sentinel-3 products
+                    if( nc_inq_varid(cdfid, papszTokens[i], &nOtherVarId) ==
+                                                                NC_NOERR )
+                    {
+                        snprintf(szGeolocXName, sizeof(szGeolocXName),
+                                 "%s",papszTokens[i]);
+                    }
+                }
                 else if( NCDFIsVarLatitude(cdfid, -1, papszTokens[i]) )
-                    snprintf(szGeolocYName, sizeof(szGeolocYName),
-                             "%s",papszTokens[i]);
+                {
+                    int nOtherVarId = -1;
+                    // Check that the variable actually exists
+                    // Needed on Sentinel-3 products
+                    if( nc_inq_varid(cdfid, papszTokens[i], &nOtherVarId) ==
+                                                                NC_NOERR )
+                    {
+                        snprintf(szGeolocYName, sizeof(szGeolocYName),
+                                 "%s",papszTokens[i]);
+                    }
+                }
             }
             // Add GEOLOCATION metadata.
             if( !EQUAL(szGeolocXName, "") && !EQUAL(szGeolocYName, "") )
@@ -3607,6 +3713,8 @@ int NCDFWriteSRSVariable(int cdfid, OGRSpatialReference* poSRS,
         // Write CF-1.5 compliant Projected attributes.
 
         const OGR_SRSNode *poPROJCS = poSRS->GetAttrNode("PROJCS");
+        if( poPROJCS == NULL )
+            return -1;
         const char *pszProjName = poSRS->GetAttrValue("PROJECTION");
         if( pszProjName == NULL )
             return -1;
@@ -4561,9 +4669,12 @@ CPLErr netCDFDataset::ReadAttributes( int cdfidIn, int var)
 
 {
     char szVarName[NC_MAX_NAME + 1];
-    int nbAttr;
+    int nbAttr = 0;
 
-    nc_inq_varnatts(cdfidIn, var, &nbAttr);
+    int status = nc_inq_varnatts(cdfidIn, var, &nbAttr);
+    NCDF_ERR(status);
+    if( status != NC_NOERR )
+        return CE_Failure;
     if( var == NC_GLOBAL )
     {
         strcpy(szVarName, "NC_GLOBAL");
@@ -4571,15 +4682,17 @@ CPLErr netCDFDataset::ReadAttributes( int cdfidIn, int var)
     else
     {
         szVarName[0] = '\0';
-        int status = nc_inq_varname(cdfidIn, var, szVarName);
+        status = nc_inq_varname(cdfidIn, var, szVarName);
         NCDF_ERR(status);
+        if( status != NC_NOERR )
+            return CE_Failure;
     }
 
     for( int l = 0; l < nbAttr; l++ )
     {
         char szAttrName[NC_MAX_NAME + 1];
         szAttrName[0] = 0;
-        int status = nc_inq_attname(cdfidIn, var, l, szAttrName);
+        status = nc_inq_attname(cdfidIn, var, l, szAttrName);
         NCDF_ERR(status);
         char szMetaName[NC_MAX_NAME * 2 + 1 + 1];
         snprintf(szMetaName, sizeof(szMetaName), "%s#%s", szVarName,
@@ -4737,7 +4850,35 @@ CPL_UNUSED
         return NCDF_FORMAT_UNKNOWN;
     if( poOpenInfo->nHeaderBytes < 4 )
         return NCDF_FORMAT_NONE;
-    if( STARTS_WITH_CI((char*)poOpenInfo->pabyHeader, "CDF\001") )
+    const char* pszHeader =
+                reinterpret_cast<const char*>(poOpenInfo->pabyHeader);
+
+#ifdef ENABLE_NCDUMP
+    if( poOpenInfo->fpL != NULL &&
+        STARTS_WITH(pszHeader, "netcdf ") &&
+        strstr(pszHeader, "dimensions:") &&
+        strstr(pszHeader, "variables:") )
+    {
+#ifdef NETCDF_HAS_NC4
+        if( strstr(pszHeader, "// NC4C") )
+            return NCDF_FORMAT_NC4C;
+        else if( strstr(pszHeader, "// NC4") )
+            return NCDF_FORMAT_NC4;
+        else
+#endif // NETCDF_HAS_NC4
+            return NCDF_FORMAT_NC;
+    }
+#endif // ENABLE_NCDUMP
+
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+    // We don't necessarily want to catch bugs in libnetcdf ...
+    if( CPLGetConfigOption("DISABLE_OPEN_REAL_NETCDF_FILES", NULL) )
+    {
+        return NCDF_FORMAT_NONE;
+    }
+#endif
+
+    if( STARTS_WITH_CI(pszHeader, "CDF\001") )
     {
         // In case the netCDF driver is registered before the GMT driver,
         // avoid opening GMT files.
@@ -4763,11 +4904,11 @@ CPL_UNUSED
 
         return NCDF_FORMAT_NC;
     }
-    else if( STARTS_WITH_CI((char *)poOpenInfo->pabyHeader, "CDF\002") )
+    else if( STARTS_WITH_CI(pszHeader, "CDF\002") )
     {
         return NCDF_FORMAT_NC2;
     }
-    else if( STARTS_WITH_CI((char *)poOpenInfo->pabyHeader, "\211HDF\r\n\032\n") )
+    else if( STARTS_WITH_CI(pszHeader, "\211HDF\r\n\032\n") )
     {
         // Requires netCDF-4/HDF5 support in libnetcdf (not just libnetcdf-v4).
         // If HDF5 is not supported in GDAL, this driver will try to open the
@@ -4796,7 +4937,7 @@ CPL_UNUSED
         return NCDF_FORMAT_HDF5;
 #endif
     }
-    else if( STARTS_WITH_CI((char *)poOpenInfo->pabyHeader, "\016\003\023\001") )
+    else if( STARTS_WITH_CI(pszHeader, "\016\003\023\001") )
     {
         // Requires HDF4 support in libnetcdf, but if HF4 is supported by GDAL
         // don't try to open.
@@ -5523,6 +5664,676 @@ int netCDFDataset::Identify( GDALOpenInfo *poOpenInfo )
     return FALSE;
 }
 
+#ifdef ENABLE_NCDUMP
+
+/************************************************************************/
+/*                      netCDFDatasetCreateTempFile()                   */
+/************************************************************************/
+
+/* Create a netCDF file from a text dump (format of ncdump) */
+/* Mostly to easy fuzzing of the driver, while still generating valid */
+/* netCDF files. */
+/* Note: not all data types are supported ! */
+static bool netCDFDatasetCreateTempFile( NetCDFFormatEnum eFormat,
+                                         const char* pszTmpFilename,
+                                         VSILFILE* fpSrc )
+{
+    CPL_IGNORE_RET_VAL(eFormat);
+    int nCreateMode = NC_CLOBBER;
+#ifdef NETCDF_HAS_NC4
+    if( eFormat == NCDF_FORMAT_NC4 )
+        nCreateMode |= NC_NETCDF4;
+    else if( eFormat == NCDF_FORMAT_NC4C )
+        nCreateMode |= NC_NETCDF4 | NC_CLASSIC_MODEL;
+#endif
+    int nCdfId = -1;
+    int status = nc_create(pszTmpFilename, nCreateMode, &nCdfId);
+    if( status != NC_NOERR )
+    {
+        return false;
+    }
+    VSIFSeekL( fpSrc, 0, SEEK_SET );
+    const char* pszLine;
+    static const int SECTION_NONE = 0;
+    static const int SECTION_DIMENSIONS = 1;
+    static const int SECTION_VARIABLES = 2;
+    static const int SECTION_DATA = 3;
+    int nActiveSection = SECTION_NONE;
+    std::map<CPLString, int> oMapDimToId;
+    std::map<int, int> oMapDimIdToDimLen;
+    std::map<CPLString, int> oMapVarToId;
+    std::map<int, std::vector<int> > oMapVarIdToVectorOfDimId;
+    std::map<int, int> oMapVarIdToType;
+    std::set<CPLString> oSetAttrDefined;
+    oMapVarToId[""] = -1;
+    size_t nTotalVarSize = 0;
+    while( (pszLine = CPLReadLineL(fpSrc)) != NULL )
+    {
+        if( STARTS_WITH(pszLine, "dimensions:") &&
+            nActiveSection == SECTION_NONE )
+        {
+            nActiveSection = SECTION_DIMENSIONS;
+        }
+        else if( STARTS_WITH(pszLine, "variables:") &&
+            nActiveSection == SECTION_DIMENSIONS )
+        {
+            nActiveSection = SECTION_VARIABLES;
+        }
+        else if( STARTS_WITH(pszLine, "data:") &&
+            nActiveSection == SECTION_VARIABLES )
+        {
+            nActiveSection = SECTION_DATA;
+            status = nc_enddef(nCdfId);
+            if(status != NC_NOERR ) 
+            {
+                CPLDebug("netCDF", "nc_enddef() failed: %s",
+                         nc_strerror(status));
+            }
+        }
+        else if( nActiveSection == SECTION_DIMENSIONS )
+        {
+            char** papszTokens = CSLTokenizeString2(pszLine, " \t=;", 0);
+            if( CSLCount(papszTokens) == 2 )
+            {
+                const char* pszDimName = papszTokens[0];
+                bool bIsASCII = true;
+                for( int i = 0; pszDimName[i] != '\0'; i++ )
+                {
+                    if( reinterpret_cast<const unsigned char*>(pszDimName)[i] > 127 )
+                    {
+                        bIsASCII = false;
+                        break;
+                    }
+                }
+                if( !bIsASCII )
+                {
+                    // Workaround https://github.com/Unidata/netcdf-c/pull/450
+                    CPLDebug("netCDF",
+                             "nc_def_dim(%s) failed: rejected because "
+                             "of non-ASCII characters", pszDimName);
+                    CSLDestroy(papszTokens);
+                    continue;
+                }
+                int nDimSize = EQUAL(papszTokens[1], "UNLIMITED") ?
+                                        NC_UNLIMITED : atoi(papszTokens[1]);
+                if( nDimSize >= 1000 )
+                    nDimSize = 1000; // to avoid very long processing
+                if( nDimSize >= 0 )
+                {
+                    int nDimId = -1;
+                    status = nc_def_dim(nCdfId, pszDimName, nDimSize, &nDimId);
+                    if( status != NC_NOERR )
+                    {
+                        CPLDebug("netCDF", "nc_def_dim(%s, %d) failed: %s",
+                                 pszDimName, nDimSize, nc_strerror(status));
+                    }
+                    else
+                    {
+#ifdef DEBUG_VERBOSE
+                        CPLDebug("netCDF", "nc_def_dim(%s, %d) (%s) succeeded",
+                                 pszDimName, nDimSize, pszLine);
+#endif
+                        oMapDimToId[pszDimName] = nDimId;
+                        oMapDimIdToDimLen[nDimId] = nDimSize;
+                    }
+                }
+            }
+            CSLDestroy(papszTokens);
+        }
+        else if( nActiveSection == SECTION_VARIABLES )
+        {
+            while( *pszLine == ' ' || *pszLine == '\t' )
+                pszLine ++;
+            const char* pszColumn = strchr(pszLine, ':');
+            const char* pszEqual = strchr(pszLine, '=' );
+            if( pszColumn == NULL )
+            {
+                char** papszTokens = CSLTokenizeString2(pszLine, " \t=(),;", 0);
+                if( CSLCount(papszTokens) >= 2 )
+                {
+                    const char* pszVarName = papszTokens[1];
+                    bool bValidName = true;
+                    if( STARTS_WITH(pszVarName, "_nc4_non_coord_") )
+                    {
+                        // This is an internal netcdf prefix. Using it may
+                        // cause memory leaks.
+                        bValidName = false;
+                    }
+                    for( int i = 0; pszVarName[i]; i++ )
+                    {
+                        if( !((pszVarName[i] >= 'a' && pszVarName[i] <= 'z') ||
+                              (pszVarName[i] >= 'A' && pszVarName[i] <= 'Z') ||
+                              (pszVarName[i] >= '0' && pszVarName[i] <= '9') ||
+                              pszVarName[i] == '_') )
+                        {
+                            bValidName = false;
+                        }
+                    }
+                    if( !bValidName )
+                    {
+                        CPLDebug("netCDF",
+                                 "nc_def_var(%s) failed: illegal character found",
+                                 pszVarName);
+                        CSLDestroy(papszTokens);
+                        continue;
+                    }
+                    if( oMapVarToId.find(pszVarName) != oMapVarToId.end() )
+                    {
+                        CPLDebug("netCDF",
+                                 "nc_def_var(%s) failed: already defined",
+                                 pszVarName);
+                        CSLDestroy(papszTokens);
+                        continue;
+                    }
+                    const char* pszVarType = papszTokens[0];
+                    int nc_datatype = NC_BYTE;
+                    size_t nDataTypeSize = 1;
+                    if( EQUAL(pszVarType, "char") )
+                    {
+                        nc_datatype = NC_CHAR;
+                        nDataTypeSize = 1;
+                    }
+                    else if( EQUAL(pszVarType, "byte") )
+                    {
+                        nc_datatype = NC_BYTE;
+                        nDataTypeSize = 1;
+                    }
+                    else if( EQUAL(pszVarType, "short") )
+                    {
+                        nc_datatype = NC_SHORT;
+                        nDataTypeSize = 2;
+                    }
+                    else if( EQUAL(pszVarType, "int") )
+                    {
+                        nc_datatype = NC_INT;
+                        nDataTypeSize = 4;
+                    }
+                    else if( EQUAL(pszVarType, "float") )
+                    {
+                        nc_datatype = NC_FLOAT;
+                        nDataTypeSize = 4;
+                    }
+                    else if( EQUAL(pszVarType, "double") )
+                    {
+                        nc_datatype = NC_DOUBLE;
+                        nDataTypeSize = 8;
+                    }
+#ifdef NETCDF_HAS_NC4
+                    else if( EQUAL(pszVarType, "ubyte") )
+                    {
+                        nc_datatype = NC_UBYTE;
+                        nDataTypeSize = 1;
+                    }
+                    else if( EQUAL(pszVarType, "ushort") )
+                    {
+                        nc_datatype = NC_USHORT;
+                        nDataTypeSize = 2;
+                    }
+                    else if( EQUAL(pszVarType, "uint") )
+                    {
+                        nc_datatype = NC_UINT;
+                        nDataTypeSize = 4;
+                    }
+                    else if( EQUAL(pszVarType, "int64") )
+                    {
+                        nc_datatype = NC_INT64;
+                        nDataTypeSize = 8;
+                    }
+                    else if( EQUAL(pszVarType, "uint64") )
+                    {
+                        nc_datatype = NC_UINT64;
+                        nDataTypeSize = 8;
+                    }
+#endif
+
+                    int nDims = CSLCount(papszTokens) - 2;
+                    if( nDims >= 32 )
+                    {
+                        // The number of dimensions in a netCDFv4 file is
+                        // limited by #define H5S_MAX_RANK    32
+                        // but libnetcdf doesn't check that...
+                        CPLDebug("netCDF",
+                                 "nc_def_var(%s) failed: too many dimensions",
+                                 pszVarName);
+                        CSLDestroy(papszTokens);
+                        continue;
+                    }
+                    std::vector<int> aoDimIds;
+                    bool bFailed = false;
+                    size_t nSize = 1;
+                    for( int i = 0; i < nDims; i++ )
+                    {
+                        const char* pszDimName = papszTokens[2+i];
+                        if( oMapDimToId.find(pszDimName) == oMapDimToId.end() )
+                        {
+                            bFailed = true;
+                            break;
+                        }
+                        const int nDimId = oMapDimToId[pszDimName];
+                        aoDimIds.push_back(nDimId);
+
+                        const size_t nDimSize = oMapDimIdToDimLen[nDimId];
+                        if( nDimSize != 0 &&
+                            (nSize * nDimSize) / nDimSize != nSize )
+                        {
+                            bFailed = true;
+                            break;
+                        }
+                        else
+                        {
+                            nSize *= nDimSize;
+                        }
+                    }
+                    if( bFailed )
+                    {
+                        CPLDebug("netCDF",
+                                 "nc_def_var(%s) failed: unknown dimension(s)",
+                                 pszVarName);
+                        CSLDestroy(papszTokens);
+                        continue;
+                    }
+                    if( nSize > 100U * 1024 * 1024 / nDataTypeSize )
+                    {
+                        CPLDebug("netCDF",
+                                 "nc_def_var(%s) failed: too large data",
+                                 pszVarName);
+                        CSLDestroy(papszTokens);
+                        continue;
+                    }
+                    if( nTotalVarSize + nSize < nTotalVarSize ||
+                        nTotalVarSize + nSize > 100 * 1024 * 1024 )
+                    {
+                        CPLDebug("netCDF",
+                                 "nc_def_var(%s) failed: too large data",
+                                 pszVarName);
+                        CSLDestroy(papszTokens);
+                        continue;
+                    }
+                    nTotalVarSize += nSize;
+
+                    int nVarId = -1;
+                    status =
+                        nc_def_var(nCdfId, pszVarName, nc_datatype, nDims,
+                                   (nDims) ? &aoDimIds[0] : NULL, &nVarId);
+                    if( status != NC_NOERR )
+                    {
+                        CPLDebug("netCDF", "nc_def_var(%s) failed: %s",
+                                 pszVarName, nc_strerror(status));
+                    }
+                    else
+                    {
+#ifdef DEBUG_VERBOSE
+                        CPLDebug("netCDF", "nc_def_var(%s) (%s) succeeded",
+                                 pszVarName, pszLine);
+#endif
+                        oMapVarToId[pszVarName] = nVarId;
+                        oMapVarIdToType[nVarId] = nc_datatype;
+                        oMapVarIdToVectorOfDimId[nVarId] = aoDimIds;
+                    }
+                }
+                CSLDestroy(papszTokens);
+            }
+            else if( pszEqual != NULL && pszEqual - pszColumn > 0 )
+            {
+                CPLString osVarName( pszLine, pszColumn - pszLine );
+                CPLString osAttrName( pszColumn + 1, pszEqual - pszColumn - 1);
+                osAttrName.Trim();
+                if( oMapVarToId.find(osVarName) == oMapVarToId.end() )
+                {
+                    CPLDebug("netCDF",
+                             "nc_put_att(%s:%s) failed: "
+                             "no corresponding variable",
+                             osVarName.c_str(), osAttrName.c_str());
+                    continue;
+                }
+                bool bValidName = true;
+                for( size_t i = 0; i < osAttrName.size(); i++ )
+                {
+                    if( !((osAttrName[i] >= 'a' && osAttrName[i] <= 'z') ||
+                            (osAttrName[i] >= 'A' && osAttrName[i] <= 'Z') ||
+                            (osAttrName[i] >= '0' && osAttrName[i] <= '9') ||
+                            osAttrName[i] == '_') )
+                    {
+                        bValidName = false;
+                    }
+                }
+                if( !bValidName )
+                {
+                    CPLDebug("netCDF",
+                             "nc_put_att(%s:%s) failed: illegal character found",
+                             osVarName.c_str(), osAttrName.c_str());
+                    continue;
+                }
+                if( oSetAttrDefined.find(osVarName + ":" + osAttrName) !=
+                        oSetAttrDefined.end() )
+                {
+                    CPLDebug("netCDF",
+                             "nc_put_att(%s:%s) failed: already defined",
+                             osVarName.c_str(), osAttrName.c_str());
+                    continue;
+                }
+
+                const int nVarId = oMapVarToId[osVarName];
+                const char* pszValue = pszEqual + 1;
+                while( *pszValue == ' ' )
+                    pszValue ++;
+
+                status = NC_EBADTYPE;
+                if( *pszValue == '"' )
+                {
+                    // For _FillValue, the attribute type should match
+                    // the variable type. Leaks memory with NC4 otherwise
+                    if( osAttrName == "_FillValue" )
+                    {
+                        CPLDebug("netCDF", "nc_put_att_(%s:%s) failed: %s",
+                                osVarName.c_str(), osAttrName.c_str(),
+                                nc_strerror(status));
+                        continue;
+                    }
+
+                    // Unquote and unescape string value
+                    CPLString osVal(pszValue + 1);
+                    while( !osVal.empty() )
+                    {
+                        if( osVal.back() == ';' ||
+                            osVal.back() == ' ')
+                        {
+                            osVal.resize(osVal.size()-1);
+                        }
+                        else if( osVal.back() == '"' )
+                        {
+                            osVal.resize(osVal.size()-1);
+                            break;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    osVal.replaceAll("\\\"", '"');
+                    status = nc_put_att_text(nCdfId, nVarId, osAttrName,
+                                             osVal.size(), osVal.c_str());
+                }
+                else
+                {
+                    CPLString osVal(pszValue);
+                    while( !osVal.empty() )
+                    {
+                        if( osVal.back() == ';' ||
+                            osVal.back() == ' ')
+                        {
+                            osVal.resize(osVal.size()-1);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    int nc_datatype = -1;
+                    if( !osVal.empty() && osVal.back() == 'b' )
+                    {
+                        nc_datatype = NC_BYTE;
+                        osVal.resize(osVal.size()-1);
+                    }
+                    else if( !osVal.empty() && osVal.back() == 's' )
+                    {
+                        nc_datatype = NC_SHORT;
+                        osVal.resize(osVal.size()-1);
+                    }
+                    if( CPLGetValueType(osVal) == CPL_VALUE_INTEGER )
+                    {
+                        if( nc_datatype < 0 )
+                            nc_datatype = NC_INT;
+                    }
+                    else if( CPLGetValueType(osVal) == CPL_VALUE_REAL )
+                    {
+                        nc_datatype = NC_DOUBLE;
+                    }
+                    else
+                    {
+                        nc_datatype = -1;
+                    }
+
+                    // For _FillValue, check that the attribute type matches
+                    // the variable type. Leaks memory with NC4 otherwise
+                    if( osAttrName == "_FillValue" )
+                    {
+                        if( nVarId < 0 ||
+                            nc_datatype != oMapVarIdToType[nVarId] )
+                        {
+                            nc_datatype = -1;
+                        }
+                    }
+
+                    if( nc_datatype == NC_BYTE )
+                    {
+                        signed char chVal =
+                            static_cast<signed char>(atoi(osVal));
+                        status = nc_put_att_schar(
+                            nCdfId, nVarId, osAttrName, NC_BYTE, 1, &chVal);
+                    }
+                    else if( nc_datatype == NC_SHORT )
+                    {
+                        short nVal =
+                            static_cast<short>(atoi(osVal));
+                        status = nc_put_att_short(
+                            nCdfId, nVarId, osAttrName, NC_SHORT, 1, &nVal);
+                    }
+                    else if( nc_datatype == NC_INT )
+                    {
+                        int nVal =
+                            static_cast<int>(atoi(osVal));
+                        status = nc_put_att_int(
+                            nCdfId, nVarId, osAttrName, NC_INT, 1, &nVal);
+                    }
+                    else if( nc_datatype == NC_DOUBLE )
+                    {
+                        double dfVal = CPLAtof(osVal);
+                        status = nc_put_att_double(
+                            nCdfId, nVarId, osAttrName, NC_DOUBLE, 1, &dfVal);
+                    }
+
+                }
+                if( status != NC_NOERR )
+                {
+                    CPLDebug("netCDF", "nc_put_att_(%s:%s) failed: %s",
+                             osVarName.c_str(), osAttrName.c_str(),
+                             nc_strerror(status));
+                }
+                else
+                {
+                    oSetAttrDefined.insert(osVarName + ":" + osAttrName);
+#ifdef DEBUG_VERBOSE
+                    CPLDebug("netCDF", "nc_put_att_(%s:%s) (%s) succeeded",
+                             osVarName.c_str(), osAttrName.c_str(),
+                             pszLine);
+#endif
+                }
+            }
+        }
+        else if( nActiveSection == SECTION_DATA )
+        {
+            while( *pszLine == ' ' || *pszLine == '\t' )
+                pszLine ++;
+            const char* pszEqual = strchr(pszLine, '=');
+            if( pszEqual )
+            {
+                CPLString osVarName( pszLine, pszEqual - pszLine );
+                osVarName.Trim();
+                if( oMapVarToId.find(osVarName) == oMapVarToId.end() )
+                    continue;
+                const int nVarId = oMapVarToId[osVarName];
+                CPLString osAccVal(pszEqual + 1);
+                osAccVal.Trim();
+                while( osAccVal.empty() || osAccVal.back() != ';' )
+                {
+                    pszLine = CPLReadLineL(fpSrc);
+                    if( pszLine == NULL )
+                        break;
+                    CPLString osVal(pszLine);
+                    osVal.Trim();
+                    osAccVal += osVal;
+                }
+                if( pszLine == NULL )
+                    break;
+                osAccVal.resize( osAccVal.size() - 1 );
+
+                const std::vector<int> aoDimIds =
+                                    oMapVarIdToVectorOfDimId[nVarId];
+                size_t nSize = 1;
+                std::vector<size_t> aoStart, aoEdge;
+                aoStart.resize( aoDimIds.size() );
+                aoEdge.resize( aoDimIds.size() );
+                for( size_t i = 0; i < aoDimIds.size(); ++i )
+                {
+                    const size_t nDimSize = oMapDimIdToDimLen[aoDimIds[i]];
+                    if( nDimSize != 0 &&
+                        (nSize * nDimSize) / nDimSize != nSize )
+                    {
+                        nSize = 0;
+                    }
+                    else
+                    {
+                        nSize *= nDimSize;
+                    }
+                    aoStart[i] = 0;
+                    aoEdge[i] = nDimSize;
+                }
+
+                status = NC_EBADTYPE;
+                if( nSize == 0 )
+                {
+                    // Might happen with a unlimited dimension
+                }
+                else if( oMapVarIdToType[nVarId] == NC_DOUBLE )
+                {
+                    if( !aoStart.empty() )
+                    {
+                        char** papszTokens = CSLTokenizeString2(
+                                                    osAccVal, " ,;", 0);
+                        size_t nTokens = CSLCount(papszTokens);
+                        if( nTokens >= nSize )
+                        {
+                            double* padfVals = static_cast<double*>(
+                                VSI_CALLOC_VERBOSE(nSize, sizeof(double)));
+                            if( padfVals )
+                            {
+                                for(size_t i=0; i<nSize; i++)
+                                {
+                                    padfVals[i] = CPLAtof(papszTokens[i]);
+                                }
+                                status = nc_put_vara_double(
+                                                    nCdfId, nVarId, &aoStart[0],
+                                                    &aoEdge[0], padfVals );
+                                VSIFree(padfVals);
+                            }
+                        }
+                        CSLDestroy(papszTokens);
+                    }
+                }
+                else if( oMapVarIdToType[nVarId] == NC_BYTE )
+                {
+                    if( !aoStart.empty() )
+                    {
+                        char** papszTokens = CSLTokenizeString2(
+                                                    osAccVal, " ,;", 0);
+                        size_t nTokens = CSLCount(papszTokens);
+                        if( nTokens >= nSize )
+                        {
+                            signed char* panVals = static_cast<signed char*>(
+                                VSI_CALLOC_VERBOSE(nSize, sizeof(signed char)));
+                            if( panVals )
+                            {
+                                for(size_t i=0; i<nSize; i++)
+                                {
+                                    panVals[i] = static_cast<signed char>(
+                                                        atoi(papszTokens[i]));
+                                }
+                                status = nc_put_vara_schar(
+                                                nCdfId, nVarId, &aoStart[0],
+                                                &aoEdge[0], panVals );
+                                VSIFree(panVals);
+                            }
+                        }
+                        CSLDestroy(papszTokens);
+                    }
+                }
+                else if( oMapVarIdToType[nVarId] == NC_CHAR )
+                {
+                    if( aoStart.size() == 2 )
+                    {
+                        std::vector<CPLString> aoStrings;
+                        bool bInString = false;
+                        CPLString osCurString;
+                        for( size_t i = 0; i < osAccVal.size() ; )
+                        {
+                            if( !bInString )
+                            {
+                                if( osAccVal[i] == '"' )
+                                {
+                                    bInString = true;
+                                    osCurString.clear();
+                                }
+                                i++;
+                            }
+                            else if( osAccVal[i] == '\\' &&
+                                i + 1 < osAccVal.size() &&
+                                     osAccVal[i+1] == '"' )
+                            {
+                                osCurString += '"';
+                                i += 2;
+                            }
+                            else if( osAccVal[i] == '"' )
+                            {
+                                aoStrings.push_back(osCurString);
+                                osCurString.clear();
+                                bInString = false;
+                                i ++;
+                            }
+                            else
+                            {
+                                osCurString += osAccVal[i];
+                                i ++;
+                            }
+                        }
+                        const size_t nRecords = oMapDimIdToDimLen[aoDimIds[0]];
+                        const size_t nWidth = oMapDimIdToDimLen[aoDimIds[1]];
+                        size_t nIters = aoStrings.size();
+                        if( nIters > nRecords )
+                            nIters = nRecords;
+                        for(size_t i=0; i< nIters; i++)
+                        {
+                            size_t anIndex[2];
+                            anIndex[0] = i;
+                            anIndex[1] = 0;
+                            size_t anCount[2];
+                            anCount[0] = 1;
+                            anCount[1] = aoStrings[i].size();
+                            if( anCount[1] > nWidth )
+                                anCount[1] = nWidth;
+                            status = nc_put_vara_text(
+                                nCdfId, nVarId, anIndex, anCount,
+                                aoStrings[i].c_str());
+                            if( status != NC_NOERR )
+                                break;
+                        }
+                    }
+                }
+                if( status != NC_NOERR )
+                {
+                    CPLDebug("netCDF", "nc_put_var_(%s) failed: %s",
+                             osVarName.c_str(), nc_strerror(status));
+                }
+            }
+        }
+    }
+
+    nc_close(nCdfId);
+    return true;
+}
+
+#endif // ENABLE_NCDUMP
+
 /************************************************************************/
 /*                                Open()                                */
 /************************************************************************/
@@ -5551,6 +6362,16 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
               NCDF_FORMAT_NC4C == eTmpFormat) )
             return NULL;
     }
+    else
+    {
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+        // We don't necessarily want to catch bugs in libnetcdf ...
+        if( CPLGetConfigOption("DISABLE_OPEN_REAL_NETCDF_FILES", NULL) )
+        {
+            return NULL;
+        }
+#endif
+    }
 
     CPLMutexHolderD(&hNCMutex);
 
@@ -5565,6 +6386,39 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
     // Check if filename start with NETCDF: tag.
     bool bTreatAsSubdataset = false;
     CPLString osSubdatasetName;
+
+#ifdef ENABLE_NCDUMP
+    const char* pszHeader =
+                reinterpret_cast<const char*>(poOpenInfo->pabyHeader);
+    if( poOpenInfo->fpL != NULL &&
+        STARTS_WITH(pszHeader, "netcdf ") &&
+        strstr(pszHeader, "dimensions:") &&
+        strstr(pszHeader, "variables:") )
+    {
+        // By default create a temporary file that will be destroyed,
+        // unless NETCDF_TMP_FILE is defined. Can be useful to see which
+        // netCDF file has been generated from a potential fuzzed input.
+        poDS->osFilename = CPLGetConfigOption("NETCDF_TMP_FILE", "");
+        if( poDS->osFilename.empty() )
+        {
+            poDS->bFileToDestroyAtClosing = true;
+            poDS->osFilename = CPLGenerateTempFilename("netcdf_tmp");
+        }
+        if( !netCDFDatasetCreateTempFile( eTmpFormat,
+                                          poDS->osFilename,
+                                          poOpenInfo->fpL ) )
+        {
+            CPLReleaseMutex(hNCMutex);  // Release mutex otherwise we'll deadlock
+                                        // with GDALDataset own mutex.
+            delete poDS;
+            CPLAcquireMutex(hNCMutex, 1000.0);
+            return NULL;
+        }
+        bTreatAsSubdataset = false;
+        poDS->eFormat = eTmpFormat;
+    }
+    else
+#endif
 
     if( STARTS_WITH_CI(poOpenInfo->pszFilename, "NETCDF:") )
     {
@@ -5651,6 +6505,17 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
     }
 #ifdef NCDF_DEBUG
     CPLDebug("GDAL_netCDF", "got cdfid=%d", cdfid);
+#endif
+
+#if defined(ENABLE_NCDUMP) && !defined(WIN32)
+    // Try to destroy the temporary file right now on Unix
+    if( poDS->bFileToDestroyAtClosing )
+    {
+        if( VSIUnlink( poDS->osFilename ) == 0 )
+        {
+            poDS->bFileToDestroyAtClosing = false;
+        }
+    }
 #endif
 
     // Is this a real netCDF file?
@@ -5918,11 +6783,16 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                 {
                     int anDimIds[2] = { -1, -1 };
                     nc_inq_vardimid(poDS->cdfid, j, anDimIds);
+
+                    nc_type vartype = NC_NAT;
+                    nc_inq_vartype(poDS->cdfid, j, &vartype);
+
                     char szDimNameX[NC_MAX_NAME + 1];
                     char szDimNameY[NC_MAX_NAME + 1];
                     szDimNameX[0] = '\0';
                     szDimNameY[0] = '\0';
-                    if( nc_inq_dimname(poDS->cdfid, anDimIds[0], szDimNameY) ==
+                    if( vartype == NC_CHAR &&
+                        nc_inq_dimname(poDS->cdfid, anDimIds[0], szDimNameY) ==
                            NC_NOERR &&
                        nc_inq_dimname(poDS->cdfid, anDimIds[1], szDimNameX) ==
                            NC_NOERR &&
@@ -6205,7 +7075,7 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                 poDS->bSetProjection = false;
                 poDS->bSetGeoTransform = false;
 
-            if( (poOpenInfo->nOpenFlags & GDAL_OF_RASTER) == 0 )
+                if( (poOpenInfo->nOpenFlags & GDAL_OF_RASTER) == 0 )
                 {
                     // Strip out uninteresting metadata.
                     poDS->papszMetadata = CSLSetNameValue(
@@ -6235,10 +7105,6 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                     poLayer->SetGridMapping(osGridMapping);
                 }
                 poLayer->SetProfile(nProfileDimId, nParentIndexVarID);
-                poDS->papoLayers = static_cast<netCDFLayer **>(
-                    CPLRealloc(poDS->papoLayers,
-                               (poDS->nLayers + 1) * sizeof(netCDFLayer *)));
-                poDS->papoLayers[poDS->nLayers++] = poLayer;
 
                 for( size_t j = 0; j < anPotentialVectorVarID.size(); j++ )
                 {
@@ -6258,6 +7124,20 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                         poLayer->AddField(anPotentialVectorVarID[j]);
                     }
                 }
+
+                if( poLayer->GetLayerDefn()->GetFieldCount() != 0 ||
+                    poLayer->GetGeomType() != wkbNone )
+                {
+                    poDS->papoLayers = static_cast<netCDFLayer **>(
+                        CPLRealloc(poDS->papoLayers,
+                                (poDS->nLayers + 1) * sizeof(netCDFLayer *)));
+                    poDS->papoLayers[poDS->nLayers++] = poLayer;
+                }
+                else
+                {
+                    delete poLayer;
+                }
+
             }
         }
 
@@ -6599,6 +7479,23 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                  nMaxBandCount,
                  static_cast<unsigned int>(nTotLevCount));
         nTotLevCount = static_cast<unsigned int>(nMaxBandCount);
+    }
+    if( poDS->nRasterXSize == 0 || poDS->nRasterYSize == 0 )
+    {
+        poDS->nRasterXSize = 0;
+        poDS->nRasterYSize = 0;
+        nTotLevCount = 0;
+        if( poDS->nLayers == 0 )
+        {
+            CPLFree(paDimIds);
+            CPLFree(panBandDimPos);
+            CPLFree(panBandZLev);
+            CPLReleaseMutex(hNCMutex);  // Release mutex otherwise we'll deadlock
+                                        // with GDALDataset own mutex.
+            delete poDS;
+            CPLAcquireMutex(hNCMutex, 1000.0);
+            return NULL;
+        }
     }
     for( unsigned int lev = 0; lev < nTotLevCount ; lev++ )
     {
@@ -7219,7 +8116,7 @@ netCDFDataset::CreateCopy( const char *pszFilename, GDALDataset *poSrcDS,
         else
         {
             szBandName[0] = '\0';
-}
+        }
 
         // Get long_name from <var>#long_name.
         char szLongName[NC_MAX_NAME + 1];
@@ -7728,6 +8625,10 @@ void GDALRegister_netCDF()
     poDriver->SetMetadataItem("GDAL_HAS_HDF5", "YES");
 #endif
 
+#ifdef ENABLE_NCDUMP
+    poDriver->SetMetadataItem("ENABLE_NCDUMP", "YES");
+#endif
+
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONFIELDDATATYPES,
                               "Integer Integer64 Real String Date DateTime");
 
@@ -7774,6 +8675,10 @@ static bool NCDFIsGDALVersionGTE(const char *pszVersion, int nTarget)
          iToken++ )
     {
         nVersions[iToken] = atoi(papszTokens[iToken]);
+        if( nVersions[iToken] < 0 )
+            nVersions[iToken] = 0;
+        else if( nVersions[iToken] > 99 )
+            nVersions[iToken] = 99;
     }
 
     int nVersion = 0;
@@ -8192,7 +9097,8 @@ static CPLErr NCDFGetAttr1( int nCdfId, int nVarId, const char *pszAttrName,
     switch( nAttrType )
     {
     case NC_CHAR:
-        nc_get_att_text(nCdfId, nVarId, pszAttrName, pszAttrValue);
+        CPL_IGNORE_RET_VAL(
+            nc_get_att_text(nCdfId, nVarId, pszAttrName, pszAttrValue));
         pszAttrValue[nAttrLen] = '\0';
         dfValue = 0.0;
         break;

@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <limits>
 
 #include "cpl_conv.h"
 #include "cpl_csv.h"
@@ -50,7 +51,7 @@
 #include "ogr_p.h"
 #include "ogr_srs_api.h"
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 extern void OGREPSGDatumNameMassage( char ** ppszDatum );
 
@@ -646,8 +647,10 @@ int RemapPNamesBasedOnProjCSAndPName( OGRSpatialReference* pOgr,
                                       const char* pszProgCSName,
                                       char **mappingTable )
 {
-  int ret = 0;
   OGR_SRSNode *poPROJCS = pOgr->GetAttrNode( "PROJCS" );
+  if( poPROJCS == NULL ) return -1;
+
+  int ret = 0;
   for( int i = 0; mappingTable[i] != NULL; i += 3 )
   {
     while( mappingTable[i] != NULL &&
@@ -754,30 +757,57 @@ OGRErr OGRSpatialReference::importFromESRI( char **papszPrj )
     }
     else if( EQUAL(osProj, "utm") )
     {
-        if( static_cast<int>(OSR_GDV(papszPrj, "zone", 0.0)) != 0 )
+        const double dfOsrGdv = OSR_GDV(papszPrj, "zone", 0.0);
+        if( dfOsrGdv > 0 && dfOsrGdv < 61 )
         {
             const double dfYShift = OSR_GDV(papszPrj, "Yshift", 0.0);
 
-            SetUTM( static_cast<int>(OSR_GDV(papszPrj, "zone", 0.0)),
-                    dfYShift == 0.0 );
+            SetUTM(static_cast<int>(dfOsrGdv), dfYShift == 0.0);
         }
         else
         {
             const double dfCentralMeridian = OSR_GDV(papszPrj, "PARAM_1", 0.0);
             const double dfRefLat = OSR_GDV(papszPrj, "PARAM_2", 0.0);
-
-            const int nZone = static_cast<int>(
-                (dfCentralMeridian + 183.0) / 6.0 + 0.0000001 );
-            SetUTM( nZone, dfRefLat >= 0.0 );
+            if( dfCentralMeridian >= -180.0 && dfCentralMeridian <= 180.0 )
+            {
+                const int nZone = static_cast<int>(
+                    (dfCentralMeridian + 183.0) / 6.0 + 0.0000001 );
+                SetUTM( nZone, dfRefLat >= 0.0 );
+            }
         }
     }
     else if( EQUAL(osProj, "STATEPLANE") )
     {
-        int nZone = static_cast<int>( OSR_GDV( papszPrj, "zone", 0.0 ) );
+        const double dfZone = OSR_GDV(papszPrj, "zone", 0.0);
+
+        if( dfZone < std::numeric_limits<int>::min() ||
+            dfZone > std::numeric_limits<int>::max() ||
+            CPLIsNan(dfZone) )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "zone out of range: %f", dfZone);
+            return OGRERR_CORRUPT_DATA;
+        }
+
+        int nZone = static_cast<int>( dfZone );
+
         if( nZone != 0 )
             nZone = ESRIToUSGSZone( nZone );
         else
-            nZone = static_cast<int>( OSR_GDV( papszPrj, "fipszone", 0.0 ) );
+        {
+            const double dfFipszone = OSR_GDV(papszPrj, "fipszone", 0.0);
+
+            if( dfFipszone < std::numeric_limits<int>::min() ||
+                dfFipszone > std::numeric_limits<int>::max() ||
+                CPLIsNan(dfFipszone) )
+            {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                        "fipszone out of range: %f", dfFipszone);
+                return OGRERR_CORRUPT_DATA;
+            }
+
+            nZone = static_cast<int>( dfFipszone );
+        }
 
         if( nZone != 0 )
         {
@@ -1041,8 +1071,10 @@ int RemapPValuesBasedOnProjCSAndPName( OGRSpatialReference* pOgr,
                                        const char* pszProgCSName,
                                        char **mappingTable )
 {
-    int ret = 0;
     OGR_SRSNode *poPROJCS = pOgr->GetAttrNode( "PROJCS" );
+    if( poPROJCS == NULL ) return -1;
+
+    int ret = 0;
     for( int i = 0; mappingTable[i] != NULL; i += 4 )
     {
         while( mappingTable[i] != NULL &&
@@ -1084,8 +1116,10 @@ int AddParamBasedOnPrjName( OGRSpatialReference* pOgr,
                             const char* pszProjectionName,
                             char **mappingTable )
 {
-    int ret = -1;
     OGR_SRSNode *poPROJCS = pOgr->GetAttrNode( "PROJCS" );
+    if( poPROJCS == NULL ) return -1;
+
+    int ret = -1;
     for( int i = 0; mappingTable[i] != NULL; i += 3 )
     {
         if( EQUALN(pszProjectionName, mappingTable[i],
@@ -1133,6 +1167,8 @@ int DeleteParamBasedOnPrjName( OGRSpatialReference* pOgr,
                    strlen(mappingTable[i])) )
         {
             OGR_SRSNode *poPROJCS = pOgr->GetAttrNode( "PROJCS" );
+            if( poPROJCS == NULL ) break;
+
             const char* pszParamName = mappingTable[i+1];
             int iIndex = -1;
             for( int iChild = 0; iChild < poPROJCS->GetChildCount(); iChild++ )
@@ -1666,6 +1702,8 @@ OGRErr OGRSpatialReference::morphToESRI()
     if( pszProjection != NULL && EQUAL(pszProjection, SRS_PT_MERCATOR_2SP) )
     {
         SetNode( "PROJCS|PROJECTION", "Mercator" );
+        if( (poProjCS = GetAttrNode( "PROJCS" )) != NULL )
+            poProjCSNodeChild = poProjCS->GetChild(0);
     }
 
     // See #4861.
@@ -1673,6 +1711,8 @@ OGRErr OGRSpatialReference::morphToESRI()
              EQUAL(pszProjection, SRS_PT_MERCATOR_1SP) )
     {
         SetNode( "PROJCS|PROJECTION", "Mercator" );
+        if( (poProjCS = GetAttrNode( "PROJCS" )) != NULL )
+            poProjCSNodeChild = poProjCS->GetChild(0);
 
         const double dfK0 = GetNormProjParm(SRS_PP_SCALE_FACTOR, 1.0);
 
@@ -1779,7 +1819,10 @@ OGRErr OGRSpatialReference::morphToESRI()
         CPLFree( newGcsName );
         pszGcsName = GetAttrValue( "GEOGCS" );
       }
-      RemapGeogCSName(this, pszGcsName);
+      if( pszGcsName != NULL )
+      {
+        RemapGeogCSName(this, pszGcsName);
+      }
 
       // Specific processing and remapping
       pszProjection = GetAttrValue("PROJECTION");
@@ -2097,18 +2140,21 @@ OGRErr OGRSpatialReference::morphFromESRI()
         // http://trac.osgeo.org/gdal/ticket/2072
         if( EQUAL( pszProjection, SRS_PT_LAMBERT_CONFORMAL_CONIC_1SP ) )
         {
-            OGR_SRSNode *poPROJCS = GetAttrNode( "PROJCS" );
-            const int iSP1Child =
-                FindProjParm( "Standard_Parallel_1", poPROJCS );
-            const int iLatOrigChild =
-                FindProjParm( "Latitude_Of_Origin", poPROJCS );
-            if( iSP1Child != -1 && iLatOrigChild != 1 )
+            OGR_SRSNode *poPROJCS = GetAttrNode("PROJCS");
+            if( poPROJCS != NULL )
             {
-                // Do a sanity check before removing Standard_Parallel_1.
-                if( EQUAL(poPROJCS->GetChild(iSP1Child)->GetValue(),
-                          poPROJCS->GetChild(iLatOrigChild)->GetValue()) )
+                const int iSP1Child =
+                    FindProjParm("Standard_Parallel_1", poPROJCS);
+                const int iLatOrigChild =
+                    FindProjParm("Latitude_Of_Origin", poPROJCS);
+                if( iSP1Child != -1 && iLatOrigChild != -1 )
                 {
-                    poPROJCS->DestroyChild( iSP1Child );
+                    // Do a sanity check before removing Standard_Parallel_1.
+                    if( EQUAL(poPROJCS->GetChild(iSP1Child)->GetValue(),
+                              poPROJCS->GetChild(iLatOrigChild)->GetValue()) )
+                    {
+                        poPROJCS->DestroyChild(iSP1Child);
+                    }
                 }
             }
         }
@@ -2132,6 +2178,12 @@ OGRErr OGRSpatialReference::morphFromESRI()
                               const_cast<char **>(papszDatumMapping+2),
                               3 );
 
+    // Refresh poDatum as the above SetNode() calls might have invalidated
+    // it.
+    poDatum = GetAttrNode( "DATUM" );
+    if( poDatum != NULL )
+        poDatum = poDatum->GetChild(0);
+
 /* -------------------------------------------------------------------- */
 /*      Special case for Peru96 related SRS that should use the         */
 /*      Peru96 DATUM, but in ESRI world, both Peru96 and SIRGAS-Chile   */
@@ -2143,7 +2195,7 @@ OGRErr OGRSpatialReference::morphFromESRI()
         const char* pszSRSName = GetAttrValue("PROJCS");
         if( pszSRSName == NULL )
             pszSRSName = GetAttrValue("GEOGCS");
-        if( strstr(pszSRSName, "Peru96") )
+        if( pszSRSName != NULL && strstr(pszSRSName, "Peru96") )
         {
             bPeru96Datum = true;
             poDatum->SetValue( "Peru96" );

@@ -37,12 +37,12 @@
 
 #include <set>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
-int     bReadOnly = FALSE;
-int     bVerbose = TRUE;
-bool    bSuperQuiet = false;
-int     bSummaryOnly = FALSE;
+bool bReadOnly = false;
+bool bVerbose = true;
+bool bSuperQuiet = false;
+bool bSummaryOnly = false;
 GIntBig nFetchFID = OGRNullFID;
 char**  papszOptions = NULL;
 
@@ -50,14 +50,14 @@ static void Usage(const char* pszErrorMsg = NULL);
 
 static void ReportOnLayer( OGRLayer *, const char *, const char* pszGeomField,
                            OGRGeometry *,
-                           int bListMDD,
-                           int bShowMetadata,
+                           bool bListMDD,
+                           bool bShowMetadata,
                            char** papszExtraMDDomains,
-                           int bFeatureCount,
-                           int bExtent  );
+                           bool bFeatureCount,
+                           bool bExtent );
 static void GDALInfoReportMetadata( GDALMajorObjectH hObject,
-                                    int bListMDD,
-                                    int bShowMetadata,
+                                    bool bListMDD,
+                                    bool bShowMetadata,
                                     char **papszExtraMDDomains );
 
 /************************************************************************/
@@ -89,17 +89,19 @@ int main( int nArgc, char ** papszArgv )
     const char  *pszDataSource = NULL;
     char        **papszLayers = NULL;
     OGRGeometry *poSpatialFilter = NULL;
-    int         nRepeatCount = 1, bAllLayers = FALSE;
+    int nRepeatCount = 1;
+    bool bAllLayers = false;
     char  *pszSQLStatement = NULL;
     const char  *pszDialect = NULL;
     int          nRet = 0;
     const char* pszGeomField = NULL;
     char      **papszOpenOptions = NULL;
     char      **papszExtraMDDomains = NULL;
-    int                 bListMDD = FALSE;
-    int                  bShowMetadata = TRUE;
-    int         bFeatureCount = TRUE, bExtent = TRUE;
-    bool        bDatasetGetNextFeature = false;
+    bool bListMDD = false;
+    bool bShowMetadata = true;
+    bool bFeatureCount = true;
+    bool bExtent = true;
+    bool bDatasetGetNextFeature = false;
 
     /* Check strict compilation and runtime library version as we use C++ API */
     if (! GDAL_CHECK_VERSION(papszArgv[0]))
@@ -132,13 +134,13 @@ int main( int nArgc, char ** papszArgv )
         else if( EQUAL(papszArgv[iArg],"--help") )
             Usage();
        else if( EQUAL(papszArgv[iArg],"-ro") )
-            bReadOnly = TRUE;
+            bReadOnly = true;
         else if( EQUAL(papszArgv[iArg],"-q") || EQUAL(papszArgv[iArg],"-quiet"))
-            bVerbose = FALSE;
+            bVerbose = false;
         else if( EQUAL(papszArgv[iArg],"-qq") )
         {
             /* Undocumented: mainly only useful for AFL testing */
-            bVerbose = FALSE;
+            bVerbose = false;
             bSuperQuiet = true;
         }
         else if( EQUAL(papszArgv[iArg],"-fid") )
@@ -212,16 +214,17 @@ int main( int nArgc, char ** papszArgv )
         }
         else if( EQUAL(papszArgv[iArg],"-al") )
         {
-            bAllLayers = TRUE;
+            bAllLayers = true;
         }
         else if( EQUAL(papszArgv[iArg],"-so")
                  || EQUAL(papszArgv[iArg],"-summary")  )
         {
-            bSummaryOnly = TRUE;
+            bSummaryOnly = true;
         }
         else if( STARTS_WITH_CI(papszArgv[iArg], "-fields=") )
         {
-            char* pszTemp = (char*)CPLMalloc(32 + strlen(papszArgv[iArg]));
+            char* pszTemp =
+                static_cast<char *>(CPLMalloc(32 + strlen(papszArgv[iArg])));
             snprintf(pszTemp,
                     32 + strlen(papszArgv[iArg]),
                     "DISPLAY_FIELDS=%s", papszArgv[iArg] + strlen("-fields="));
@@ -230,7 +233,8 @@ int main( int nArgc, char ** papszArgv )
         }
         else if( STARTS_WITH_CI(papszArgv[iArg], "-geom=") )
         {
-            char* pszTemp = (char*)CPLMalloc(32 + strlen(papszArgv[iArg]));
+            char* pszTemp =
+                static_cast<char *>(CPLMalloc(32 + strlen(papszArgv[iArg])));
             snprintf(pszTemp,
                     32 + strlen(papszArgv[iArg]),
                     "DISPLAY_GEOMETRY=%s", papszArgv[iArg] + strlen("-geom="));
@@ -244,9 +248,9 @@ int main( int nArgc, char ** papszArgv )
                                                 papszArgv[++iArg] );
         }
         else if( EQUAL(papszArgv[iArg], "-nomd") )
-            bShowMetadata = FALSE;
+            bShowMetadata = false;
         else if( EQUAL(papszArgv[iArg], "-listmdd") )
-            bListMDD = TRUE;
+            bListMDD = true;
         else if( EQUAL(papszArgv[iArg], "-mdd") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
@@ -254,9 +258,9 @@ int main( int nArgc, char ** papszArgv )
                                                 papszArgv[++iArg] );
         }
         else if( EQUAL(papszArgv[iArg], "-nocount") )
-            bFeatureCount = FALSE;
+            bFeatureCount = false;
         else if( EQUAL(papszArgv[iArg], "-noextent") )
-            bExtent = FALSE;
+            bExtent = false;
         else if( EQUAL(papszArgv[iArg],"-rl"))
             bDatasetGetNextFeature = true;
         else if( papszArgv[iArg][0] == '-' )
@@ -268,7 +272,7 @@ int main( int nArgc, char ** papszArgv )
         else
         {
             papszLayers = CSLAddString( papszLayers, papszArgv[iArg] );
-            bAllLayers = FALSE;
+            bAllLayers = false;
         }
     }
 
@@ -300,7 +304,7 @@ int main( int nArgc, char ** papszArgv )
         if( poDS != NULL && bVerbose )
         {
             printf( "Had to open data source read-only.\n" );
-            bReadOnly = TRUE;
+            bReadOnly = true;
         }
     }
 
@@ -414,8 +418,8 @@ int main( int nArgc, char ** papszArgv )
                     oSetLayers.find(poLayer) == oSetLayers.end() )
                 {
                     oSetLayers.insert(poLayer);
-                    int bSummaryOnlyBackup = bSummaryOnly;
-                    bSummaryOnly = TRUE;
+                    const bool bSummaryOnlyBackup = bSummaryOnly;
+                    bSummaryOnly = true;
                     ReportOnLayer( poLayer, NULL, NULL, NULL,
                                    bListMDD, bShowMetadata,
                                    papszExtraMDDomains,
@@ -563,7 +567,7 @@ int main( int nArgc, char ** papszArgv )
 /* -------------------------------------------------------------------- */
 /*      Close down.                                                     */
 /* -------------------------------------------------------------------- */
-    GDALClose( (GDALDatasetH)poDS );
+    GDALClose(poDS);
 
 #ifdef __AFL_HAVE_MANUAL_CONTROL
     }
@@ -596,7 +600,7 @@ static void Usage(const char* pszErrorMsg)
     printf( "Usage: ogrinfo [--help-general] [-ro] [-q] [-where restricted_where|@filename]\n"
             "               [-spat xmin ymin xmax ymax] [-geomfield field] [-fid fid]\n"
             "               [-sql statement|@filename] [-dialect sql_dialect] [-al] [-rl] [-so] [-fields={YES/NO}]\n"
-            "               [-geom={YES/NO/SUMMARY}] [-formats] [[-oo NAME=VALUE] ...]\n"
+            "               [-geom={YES/NO/SUMMARY}] [[-oo NAME=VALUE] ...]\n"
             "               [-nomd] [-listmdd] [-mdd domain|`all`]*\n"
             "               [-nocount] [-noextent]\n"
             "               datasource_name [layer [layer ...]]\n");
@@ -614,11 +618,11 @@ static void Usage(const char* pszErrorMsg)
 static void ReportOnLayer( OGRLayer * poLayer, const char *pszWHERE,
                            const char* pszGeomField,
                            OGRGeometry *poSpatialFilter,
-                           int bListMDD,
-                           int bShowMetadata,
+                           bool bListMDD,
+                           bool bShowMetadata,
                            char** papszExtraMDDomains,
-                           int bFeatureCount,
-                           int bExtent )
+                           bool bFeatureCount,
+                           bool bExtent )
 
 {
     OGRFeatureDefn      *poDefn = poLayer->GetLayerDefn();
@@ -709,7 +713,7 @@ static void ReportOnLayer( OGRLayer * poLayer, const char *pszWHERE,
                    oExt.MinX, oExt.MinY, oExt.MaxX, oExt.MaxY);
         }
 
-        char    *pszWKT;
+        char *pszWKT = NULL;
 
         if( nGeomFieldCount > 1 )
         {
@@ -844,8 +848,8 @@ static void GDALInfoPrintMetadata( GDALMajorObjectH hObject,
 /*                       GDALInfoReportMetadata()                       */
 /************************************************************************/
 static void GDALInfoReportMetadata( GDALMajorObjectH hObject,
-                                    int bListMDD,
-                                    int bShowMetadata,
+                                    bool bListMDD,
+                                    bool bShowMetadata,
                                     char **papszExtraMDDomains )
 {
     const char* pszIndent = "";

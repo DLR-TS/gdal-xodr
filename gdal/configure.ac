@@ -87,6 +87,15 @@ dnl GCC 6 warnings
 AX_CHECK_COMPILE_FLAG([-Wnull-dereference], [C_WFLAGS="$C_WFLAGS -Wnull-dereference" CXX_WFLAGS="$CXX_WFLAGS -Wnull-dereference"],,[$ERROR_ON_UNKNOWN_OPTIONS])
 AX_CHECK_COMPILE_FLAG([-Wduplicated-cond], [C_WFLAGS="$C_WFLAGS -Wduplicated-cond" CXX_WFLAGS="$CXX_WFLAGS -Wduplicated-cond"],,[$ERROR_ON_UNKNOWN_OPTIONS])
 
+dnl GCC 7 warnings
+dnl Do not enable yet. Causes warning in alg/gdalthinplate.cpp due to armadillo templates
+dnl AX_CHECK_COMPILE_FLAG([-Wduplicated-branches], [C_WFLAGS="$C_WFLAGS -Wduplicated-branches" CXX_WFLAGS="$CXX_WFLAGS -Wduplicated-branches"],,[$ERROR_ON_UNKNOWN_OPTIONS])
+
+dnl GCC 8 warnings
+AC_LANG_PUSH([C++])
+AX_CHECK_COMPILE_FLAG([-Wextra-semi], [CXX_WFLAGS="$CXX_WFLAGS -Wextra-semi"],,[$ERROR_ON_UNKNOWN_OPTIONS])
+AC_LANG_POP([C++])
+
 AX_CHECK_COMPILE_FLAG([-Wno-sign-compare], [NO_SIGN_COMPARE="-Wno-sign-compare"],,[$ERROR_ON_UNKNOWN_OPTIONS])
 
 dnl clang >= 3.9
@@ -2539,10 +2548,11 @@ if test "$with_openjpeg" = "no" ; then
 
 elif test "$with_openjpeg" = "yes" -o "$with_openjpeg" = "" ; then
 
-  AC_CHECK_HEADERS([openjpeg-2.0/openjpeg.h])
-  if test "$ac_cv_header_openjpeg_2_0_openjpeg_h" = "yes"; then
+  AC_CHECK_HEADERS([openjpeg-2.2/openjpeg.h])
+  if test "$ac_cv_header_openjpeg_2_2_openjpeg_h" = "yes"; then
     AC_CHECK_LIB(openjp2,opj_stream_set_user_data_length,HAVE_OPENJPEG=yes,HAVE_OPENJPEG=no,)
     if test "$HAVE_OPENJPEG" = "yes"; then
+        OPENJPEG_VERSION=20200
         LIBS="-lopenjp2 $LIBS"
     fi
   else
@@ -2552,6 +2562,14 @@ elif test "$with_openjpeg" = "yes" -o "$with_openjpeg" = "" ; then
         if test "$HAVE_OPENJPEG" = "yes"; then
             OPENJPEG_VERSION=20100
             LIBS="-lopenjp2 $LIBS"
+        fi
+    else
+        AC_CHECK_HEADERS([openjpeg-2.0/openjpeg.h])
+        if test "$ac_cv_header_openjpeg_2_0_openjpeg_h" = "yes"; then
+            AC_CHECK_LIB(openjp2,opj_stream_set_user_data_length,HAVE_OPENJPEG=yes,HAVE_OPENJPEG=no,)
+            if test "$HAVE_OPENJPEG" = "yes"; then
+                LIBS="-lopenjp2 $LIBS"
+            fi
         fi
     fi
   fi
@@ -2563,8 +2581,11 @@ else
   elif test -r $with_openjpeg/include/openjpeg-2.1/openjpeg.h ; then
     OPENJPEG_VERSION=20100
     EXTRA_INCLUDES="-I$with_openjpeg/include $EXTRA_INCLUDES"
+  elif test -r $with_openjpeg/include/openjpeg-2.2/openjpeg.h ; then
+    OPENJPEG_VERSION=20200
+    EXTRA_INCLUDES="-I$with_openjpeg/include $EXTRA_INCLUDES"
   else
-    AC_MSG_ERROR([openjpeg.h not found in $with_openjpeg/include/openjpeg-2.0 or $with_openjpeg/include/openjpeg-2.1])
+    AC_MSG_ERROR([openjpeg.h not found in $with_openjpeg/include/openjpeg-2.0 or $with_openjpeg/include/openjpeg-2.1 or $with_openjpeg/include/openjpeg-2.2])
   fi
 
   AC_CHECK_LIB(openjp2,opj_stream_set_user_data_length,HAVE_OPENJPEG=yes,HAVE_OPENJPEG=no,-L$with_openjpeg/lib)
@@ -4737,7 +4758,7 @@ dnl building for Windows). This test should work for the case of
 dnl cross-compilation too.
 dnl ---------------------------------------------------------------------------
 case "${host_os}" in
-    cygwin* | mingw32* | pw32*)
+    cygwin* | mingw* | pw32*)
       EXE_EXT=.exe
       SO_EXT=dll
       ;;

@@ -10,7 +10,7 @@
 
 
 
-g2int g2_unpack7(unsigned char *cgrib,g2int *iofst,g2int igdsnum,g2int *igdstmpl,
+g2int g2_unpack7(unsigned char *cgrib,g2int cgrib_length,g2int *iofst,g2int igdsnum,g2int *igdstmpl,
                g2int idrsnum,g2int *idrstmpl,g2int ndpts,g2float **fld)
 //$$$  SUBPROGRAM DOCUMENTATION BLOCK
 //                .      .    .                                       .
@@ -92,25 +92,38 @@ g2int g2_unpack7(unsigned char *cgrib,g2int *iofst,g2int igdsnum,g2int *igdstmpl
       }
 
       ipos=(*iofst/8);
-      lfld=(g2float *)calloc(ndpts,sizeof(g2float));
-      if (lfld == 0) {
-         ierr=6;
-         return(ierr);
+      if( ipos >= cgrib_length ) {
+          return 7;
       }
-      else {
-         *fld=lfld;
+      if (idrsnum == 40 || idrsnum == 40000)
+      {
+          *fld= lfld = 0;
+      }
+      else
+      {
+        lfld=(g2float *)calloc(ndpts,sizeof(g2float));
+        if (lfld == 0) {
+            ierr=6;
+            return(ierr);
+        }
+        else {
+            *fld=lfld;
+        }
       }
 
       if (idrsnum == 0)
-        simunpack(cgrib+ipos,idrstmpl,ndpts,lfld);
+        simunpack(cgrib+ipos,cgrib_length-ipos,idrstmpl,ndpts,lfld);
       else if (idrsnum == 2 || idrsnum == 3) {
-        if (comunpack(cgrib+ipos,lensec,idrsnum,idrstmpl,ndpts,lfld) != 0) {
+        if (comunpack(cgrib+ipos,cgrib_length-ipos,lensec,idrsnum,idrstmpl,ndpts,lfld) != 0) {
           return 7;
         }
       }
       else if (idrsnum == 50) {            // Spectral Simple
-        simunpack(cgrib+ipos,idrstmpl,ndpts-1,lfld+1);
-        rdieee(idrstmpl+4,lfld+0,1);
+        if( ndpts > 0 )
+        {
+            simunpack(cgrib+ipos,cgrib_length-ipos,idrstmpl,ndpts-1,lfld+1);
+            rdieee(idrstmpl+4,lfld+0,1);
+        }
       }
       else if (idrsnum == 51)              //  Spectral complex
         if ( igdsnum>=50 && igdsnum <=53 )
@@ -123,8 +136,14 @@ g2int g2_unpack7(unsigned char *cgrib,g2int *iofst,g2int igdsnum,g2int *igdstmpl
           return(ierr);
         }
       else if (idrsnum == 40 || idrsnum == 40000) {
-        jpcunpack(cgrib+ipos,lensec-5,idrstmpl,ndpts,lfld);
+        if( jpcunpack(cgrib+ipos,lensec-5,idrstmpl,ndpts,fld) != 0 )
+        {
+            ierr=7;
+            if ( *fld != 0 ) free(*fld);
+            *fld=0;     //NULL
+            return(ierr);
         }
+      }
 #ifdef USE_PNG
       else if (idrsnum == 41 || idrsnum == 40010) {
         pngunpack(cgrib+ipos,lensec-5,idrstmpl,ndpts,lfld);

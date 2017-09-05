@@ -45,7 +45,7 @@
 #include <limits>
 #include <utility>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 //
 // A static map holding seen server GetTileService responses, per process
@@ -1032,9 +1032,9 @@ void WMSDeregister(CPL_UNUSED GDALDriver *d) {
 #define RegisterMinidriver(name) \
     class WMSMiniDriverFactory_##name : public WMSMiniDriverFactory { \
     public: \
-        WMSMiniDriverFactory_##name() { m_name = CPLString(#name); };\
-        virtual ~WMSMiniDriverFactory_##name() {};\
-        virtual WMSMiniDriver* New() const override { return new WMSMiniDriver_##name;}; \
+        WMSMiniDriverFactory_##name() { m_name = CPLString(#name); }\
+        virtual ~WMSMiniDriverFactory_##name() {}\
+        virtual WMSMiniDriver* New() const override { return new WMSMiniDriver_##name;} \
     }; \
     WMSRegisterMiniDriverFactory(new WMSMiniDriverFactory_##name());
 

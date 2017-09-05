@@ -88,7 +88,7 @@
 extern "C" GIntBig CPL_DLL CPL_STDCALL GDALGetCacheUsed64(void);
 #endif
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 /* Unix or Windows NT/2000/XP */
 #if !defined(WIN32)
@@ -434,11 +434,19 @@ static GIntBig nMaxCumulAllocSize = -1;
 /*                             VSICalloc()                              */
 /************************************************************************/
 
+#ifndef DEBUG_VSIMALLOC
+
 /** Analog of calloc(). Use VSIFree() to free */
 void *VSICalloc( size_t nCount, size_t nSize )
-
 {
-#ifdef DEBUG_VSIMALLOC
+    // cppcheck-suppress invalidFunctionArg
+    return calloc( nCount, nSize );
+}
+
+#else  // DEBUG_VSIMALLOC
+
+void *VSICalloc( size_t nCount, size_t nSize )
+{
     size_t nMul = nCount * nSize;
     if( nCount != 0 && nMul / nCount != nSize )
     {
@@ -534,10 +542,8 @@ void *VSICalloc( size_t nCount, size_t nSize )
 #endif
     // cppcheck-suppress memleak
     return ptr + 2 * sizeof(void*);
-#else
-    return calloc( nCount, nSize );
-#endif
 }
+#endif   // DEBUG_VSIMALLOC
 
 /************************************************************************/
 /*                             VSIMalloc()                              */
@@ -997,6 +1003,7 @@ char *VSIStrdup( const char * pszString )
 /*                          VSICheckMul2()                              */
 /************************************************************************/
 
+CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW
 static size_t VSICheckMul2( size_t mul1, size_t mul2, bool *pbOverflowFlag,
                             const char* pszFile, int nLine )
 {
@@ -1034,6 +1041,7 @@ static size_t VSICheckMul2( size_t mul1, size_t mul2, bool *pbOverflowFlag,
 /*                          VSICheckMul3()                              */
 /************************************************************************/
 
+CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW
 static size_t VSICheckMul3( size_t mul1, size_t mul2, size_t mul3,
                             bool *pbOverflowFlag,
                             const char* pszFile, int nLine )
@@ -1197,10 +1205,10 @@ void *VSICallocVerbose( size_t nCount, size_t nSize, const char* pszFile,
     if( pRet == NULL && nCount != 0 && nSize != 0 )
     {
         CPLError(CE_Failure, CPLE_OutOfMemory,
-                 "%s, %d: cannot allocate " CPL_FRMT_GUIB " bytes",
+                 "%s, %d: cannot allocate " CPL_FRMT_GUIB "x" CPL_FRMT_GUIB " bytes",
                  pszFile ? pszFile : "(unknown file)",
                  nLine,
-                 static_cast<GUIntBig>(nCount) * static_cast<GUIntBig>(nSize));
+                 static_cast<GUIntBig>(nCount), static_cast<GUIntBig>(nSize));
     }
     return pRet;
 }

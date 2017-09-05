@@ -37,7 +37,7 @@
 #include <iostream>
 #include <string>
 
-CPL_CVSID("$Id$");
+CPL_CVSID("$Id$")
 
 KML::KML() :
     poTrunk_(NULL),
@@ -242,6 +242,10 @@ void XMLCALL KML::startElement( void* pUserData, const char* pszName,
 
     poKML->nWithoutEventCounter = 0;
 
+    const char* pszColumn = strchr(pszName, ':');
+    if( pszColumn)
+        pszName = pszColumn + 1;
+
     if(poKML->poTrunk_ == NULL
     || (poKML->poCurrent_ != NULL &&
         poKML->poCurrent_->getName().compare("description") != 0))
@@ -304,6 +308,10 @@ void XMLCALL KML::startElementValidate( void* pUserData, const char* pszName,
         return;
 
     poKML->validity = KML_VALIDITY_INVALID;
+
+    const char* pszColumn = strchr(pszName, ':');
+    if( pszColumn)
+        pszName = pszColumn + 1;
 
     if(strcmp(pszName, "kml") == 0 || strcmp(pszName, "Document") == 0)
     {
@@ -372,6 +380,10 @@ void XMLCALL KML::endElement(void* pUserData, const char* pszName)
     KML* poKML = static_cast<KML *>(pUserData);
 
     poKML->nWithoutEventCounter = 0;
+
+    const char* pszColumn = strchr(pszName, ':');
+    if( pszColumn)
+        pszName = pszColumn + 1;
 
     if(poKML->poCurrent_ != NULL &&
        poKML->poCurrent_->getName().compare(pszName) == 0)
@@ -572,32 +584,32 @@ bool KML::isHandled(std::string const& elem) const
 bool KML::isLeaf( std::string const& /* elem */ ) const
 {
     return false;
-};
+}
 
 bool KML::isFeature( std::string const& /* elem */ ) const
 {
     return false;
-};
+}
 
 bool KML::isFeatureContainer( std::string const& /* elem */ ) const
 {
     return false;
-};
+}
 
 bool KML::isContainer( std::string const& /* elem */ ) const
 {
     return false;
-};
+}
 
 bool KML::isRest( std::string const& /* elem */ ) const
 {
     return false;
-};
+}
 
 void KML::findLayers( KMLNode* /* poNode */, int /* bKeepEmptyContainers */ )
 {
     // idle
-};
+}
 
 bool KML::hasOnlyEmpty() const
 {
