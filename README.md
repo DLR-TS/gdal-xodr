@@ -24,13 +24,13 @@ Misc:
 
 ## Building
 ### 0 Dependencies
-The driver works only for GDAL 2.x. and does not support GDAL 1.x. It depends on
+The driver works only for GDAL 2.x. and does not support GDAL 1.x. It depends on the following libraries
 
 - [odrSpiral](https://github.com/DLR-TS/odrSpiral)
 - [xodr](https://github.com/DLR-TS/xodr)
 - [CodeSynthesis XSD](http://codesynthesis.com/products/xsd/)
 - [Xerces-C++](https://xerces.apache.org/xerces-c/)
-- [GEOS](https://trac.osgeo.org/geos/)
+- [GEOS](https://trac.osgeo.org/geos/); on Windows we recommend using the version distributed with [OSGeo4W](https://trac.osgeo.org/osgeo4w/)
 
 and building it is divided into
 
@@ -98,7 +98,7 @@ XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3D.lib
 XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1D.dll
 !ENDIF
 ```
-Open the generated `.vcxproj` in Visual Studio and build GDAL for the desired configuration (e.g. Release or Debug). Alternatively, for an exemplary Release build use `nmake` from command line:
+Open the generated `.vcxproj` in Visual Studio and build *the base* GDAL library for the desired configuration (e.g. Release or Debug). Alternatively, for an exemplary Release build use `nmake` from command line:
 ```bash
 cd <gdal>/gdal/
 nmake -f makefile.vc MSVC_VER=1900 WIN64=1
@@ -117,7 +117,7 @@ Navigate into the OpenDRIVE OGR driver directory
 ```bash
 cd <gdal>/gdal/ogr/ogrsf_frmts/xodr/
 ```
-Configure the paths for all required Windows dependencies in `XODRnmake.opt`. Then
+Configure the paths for all required Windows dependencies in the provided `XODRnmake.opt`. Then
 ```bash
 nmake -f makefile.vc MSVC_VER=1900 WIN64=1 plugin-install
 ```
