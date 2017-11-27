@@ -4225,7 +4225,6 @@ def ogr_geom_multipoint_envelope_bug():
 
     return 'success'
 
-
 ###############################################################################
 def ogr_geom_polygon_empty_ring():
 
@@ -4233,6 +4232,88 @@ def ogr_geom_polygon_empty_ring():
     g2 = ogr.Geometry( ogr.wkbLinearRing )
     g.AddGeometryDirectly( g2 )
     if not g.IsEmpty():
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+
+def ogr_geom_polygon_intersects_point():
+
+    if not ogrtest.have_geos():
+        return 'skip'
+
+    poly = ogr.CreateGeometryFromWkt('POLYGON((0 0,5 5,10 0,0 0))')
+    point = ogr.Geometry(ogr.wkbPoint)
+    point.AddPoint(10, 0)
+    if poly.Intersects(point) != 1:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    if poly.Contains(point) != 0:
+        gdaltest.post_reason('fail')
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test fix for #7128
+
+def ogr_geom_geometrycollection():
+
+    wkt_list = ['GEOMETRYCOLLECTION (POINT EMPTY)',
+                'GEOMETRYCOLLECTION (LINESTRING EMPTY)',
+                'GEOMETRYCOLLECTION (POLYGON EMPTY)',
+                'GEOMETRYCOLLECTION (MULTIPOINT EMPTY)',
+                'GEOMETRYCOLLECTION (MULTILINESTRING EMPTY)',
+                'GEOMETRYCOLLECTION (MULTIPOLYGON EMPTY)',
+                'GEOMETRYCOLLECTION (GEOMETRYCOLLECTION EMPTY)',
+                'GEOMETRYCOLLECTION (CIRCULARSTRING EMPTY)',
+                'GEOMETRYCOLLECTION (COMPOUNDCURVE EMPTY)',
+                'GEOMETRYCOLLECTION (CURVEPOLYGON EMPTY)',
+                'GEOMETRYCOLLECTION (MULTICURVE EMPTY)',
+                'GEOMETRYCOLLECTION (MULTISURFACE EMPTY)',
+                'GEOMETRYCOLLECTION (TRIANGLE EMPTY)',
+                'GEOMETRYCOLLECTION (POLYHEDRALSURFACE EMPTY)',
+                'GEOMETRYCOLLECTION (TIN EMPTY)']
+    for wkt in wkt_list:
+        g = ogr.CreateGeometryFromWkt(wkt)
+        if g.ExportToWkt() != wkt:
+            print(g.ExportToWkt(), wkt)
+            return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test fix for #7126
+
+def ogr_geom_assignspatialref():
+
+    g = ogr.CreateGeometryFromWkt('GEOMETRYCOLLECTION(POLYGON((0 0,0 1,1 1,0 0)),COMPOUNDCURVE(CIRCULARSTRING(0 0,1 1,2 0)),POLYHEDRALSURFACE(((0 0,0 1,1 1,0 0))))')
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    g.AssignSpatialReference(sr)
+    if g.GetGeometryRef(0).GetSpatialReference().ExportToWkt() != sr.ExportToWkt():
+        return 'fail'
+    if g.GetGeometryRef(0).GetGeometryRef(0).GetSpatialReference().ExportToWkt() != sr.ExportToWkt():
+        return 'fail'
+    if g.GetGeometryRef(1).GetSpatialReference().ExportToWkt() != sr.ExportToWkt():
+        return 'fail'
+    if g.GetGeometryRef(1).GetGeometryRef(0).GetSpatialReference().ExportToWkt() != sr.ExportToWkt():
+        return 'fail'
+    if g.GetGeometryRef(2).GetSpatialReference().ExportToWkt() != sr.ExportToWkt():
+        return 'fail'
+    if g.GetGeometryRef(2).GetGeometryRef(0).GetSpatialReference().ExportToWkt() != sr.ExportToWkt():
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+def ogr_geom_swapxy():
+
+    g = ogr.CreateGeometryFromWkt('GEOMETRYCOLLECTION(POINT(1 2),LINESTRING(1 2,2 3),POLYGON((0 0,0 1,1 1,0 0)),COMPOUNDCURVE(CIRCULARSTRING(0 0,1 1,2 0)),POLYHEDRALSURFACE(((0 0,0 1,1 1,0 0))))')
+    g.SwapXY()
+    if g.ExportToWkt() != 'GEOMETRYCOLLECTION (POINT (2 1),LINESTRING (2 1,3 2),POLYGON ((0 0,1 0,1 1,0 0)),COMPOUNDCURVE (CIRCULARSTRING (0 0,1 1,0 2)),POLYHEDRALSURFACE (((0 0,1 0,1 1,0 0))))':
+        print(g)
         return 'fail'
 
     return 'success'
@@ -4304,6 +4385,10 @@ gdaltest_list = [
     ogr_geom_triangle_ps_tin_conversion,
     ogr_geom_multipoint_envelope_bug,
     ogr_geom_polygon_empty_ring,
+    ogr_geom_polygon_intersects_point,
+    ogr_geom_geometrycollection,
+    ogr_geom_assignspatialref,
+    ogr_geom_swapxy,
     ogr_geom_cleanup ]
 
 # gdaltest_list = [ ogr_geom_triangle_ps_tin_conversion ]

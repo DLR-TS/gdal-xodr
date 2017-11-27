@@ -100,20 +100,28 @@ namespace tut
     {
         ensure("GetReferenceCount expected to be 1 before copies", 1 == poSRS->GetReferenceCount());
         {
+            int nCurCount;
+            int nLastCount = 1;
             T value;
             value.assignSpatialReference(poSRS);
-            ensure("SRS reference count not incremented by assignSpatialReference", 2 == poSRS->GetReferenceCount());
+            nCurCount = poSRS->GetReferenceCount();
+            ensure("SRS reference count not incremented by assignSpatialReference", nCurCount > nLastCount );
+            nLastCount = nCurCount;
 
             T value2(value);
-            ensure("SRS reference count not incremented by copy constructor", 3 == poSRS->GetReferenceCount());
+            nCurCount = poSRS->GetReferenceCount();
+            ensure("SRS reference count not incremented by copy constructor", nCurCount > nLastCount );
+            nLastCount = nCurCount;
 
             T value3;
             value3 = value;
-            ensure("SRS reference count not incremented by assignment operator", 4 == poSRS->GetReferenceCount());
+            nCurCount = poSRS->GetReferenceCount();
+            ensure("SRS reference count not incremented by assignment operator", nCurCount > nLastCount );
+            nLastCount = nCurCount;
 
             value3 = value;
             ensure( "SRS reference count incremented by assignment operator",
-                    4 == poSRS->GetReferenceCount() );
+                    nLastCount == poSRS->GetReferenceCount() );
 
         }
         ensure( "GetReferenceCount expected to be decremented by destructors",
@@ -515,6 +523,10 @@ namespace tut
         ensure(OGRParseDate("2017/11/31 12:34:56.789", &sField, 0));
         ensure_equals(sField.Date.Second, 56.789f);
 
+        // Leap second
+        ensure(OGRParseDate("2017/11/31 12:34:60", &sField, 0));
+        ensure_equals(sField.Date.Second, 60.0f);
+
         ensure(OGRParseDate("2017-11-31T12:34:56", &sField, 0));
         ensure_equals(sField.Date.Year, 2017);
         ensure_equals(sField.Date.Month, 11);
@@ -567,7 +579,7 @@ namespace tut
         ensure(!OGRParseDate("2017-01-01T00:a:00", &sField, 0));
         ensure(!OGRParseDate("2017-01-01T00: 34:56", &sField, 0));
         ensure(!OGRParseDate("2017-01-01T00:61:00", &sField, 0));
-        ensure(!OGRParseDate("2017-01-01T00:00:62", &sField, 0));
+        ensure(!OGRParseDate("2017-01-01T00:00:61", &sField, 0));
         ensure(!OGRParseDate("2017-01-01T00:00:a", &sField, 0));
     }
 

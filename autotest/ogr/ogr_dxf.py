@@ -67,7 +67,7 @@ def ogr_dxf_1():
         return 'fail'
 
     fc = gdaltest.dxf_layer.GetFeatureCount()
-    if fc != 16:
+    if fc != 22:
         gdaltest.post_reason( 'did not get expected feature count, got %d' % fc)
         return 'fail'
 
@@ -207,7 +207,7 @@ def ogr_dxf_6():
         gdaltest.post_reason( 'not keeping 2D text as 2D' )
         return 'fail'
 
-    if feat.GetStyleString() != 'LABEL(f:"normallatin1",t:"Test",a:30,s:5g,p:7,c:#000000)':
+    if feat.GetStyleString() != 'LABEL(f:"Arial",t:"Test",a:30,s:5g,p:7,c:#000000)':
         print(feat.GetStyleString())
         gdaltest.post_reason( 'got wrong style string' )
         return 'fail'
@@ -255,20 +255,40 @@ def ogr_dxf_8():
         gdaltest.post_reason( 'did not get expected geometry type.' )
         return 'fail'
 
-    if ogrtest.check_feature_geometry( feat, 'MULTILINESTRING ((63.862871944482457 149.209935992088333,24.341960668550669 111.934531038652722),(72.754404848874373 139.782768575383642,62.744609795879391 150.395563330366286),(33.233493572942614 102.507363621948002,23.2236985199476 113.120158376930675),(63.862871944482457 149.209935992088333,59.187727781045531 147.04077688455709),(63.862871944482457 149.209935992088333,61.424252078251662 144.669522208001183),(24.341960668550669 111.934531038652722,26.78058053478146 116.474944822739886),(24.341960668550669 111.934531038652722,29.017104831987599 114.103690146183979))' ):
+    if ogrtest.check_feature_geometry( feat, 'MULTILINESTRING ((63.8628719444825 149.209935992088,24.3419606685507 111.934531038653),(72.3255686642474 140.237438265109,63.0051995752285 150.119275371538),(32.8046573883157 102.962033311673,23.4842882992968 112.843870418103))' ):
+        return 'fail'
+
+    # Dimension arrowheads
+    feat = gdaltest.dxf_layer.GetNextFeature()
+    geom = feat.GetGeometryRef()
+
+    if geom.GetGeometryType() != ogr.wkbPolygon25D:
+        gdaltest.post_reason( 'did not get expected geometry type.' )
+        return 'fail'
+
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((61.7583023958313 147.797704380064 0,63.8628719444825 149.209935992088 0,62.3300839753339 147.191478127097 0,61.7583023958313 147.797704380064 0))' ):
+        return 'fail'
+
+    feat = gdaltest.dxf_layer.GetNextFeature()
+    geom = feat.GetGeometryRef()
+
+    if geom.GetGeometryType() != ogr.wkbPolygon25D:
+        gdaltest.post_reason( 'did not get expected geometry type.' )
+        return 'fail'
+
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((26.4465302172018 113.346762650677 0,24.3419606685507 111.934531038653 0,25.8747486376992 113.952988903644 0,26.4465302172018 113.346762650677 0))' ):
         return 'fail'
 
     # Dimension text
     feat = gdaltest.dxf_layer.GetNextFeature()
-
     geom = feat.GetGeometryRef()
 
     if ogrtest.check_feature_geometry( feat, 'POINT (42.815907752635709 131.936242584545397)' ):
         return 'fail'
 
-    expected_style = 'LABEL(f:"Arial",t:"54.3264",p:5,a:43.3,s:2.5g)'
+    expected_style = 'LABEL(f:"Arial",t:"54.33",p:5,a:43.3,s:2.5g)'
     if feat.GetStyleString() != expected_style:
-        gdaltest.post_reason( 'Got unexpected style string:\n%s\ninstead of:\n%s.' % (feat.GetStyleString(),expected_style) )
+        gdaltest.post_reason( 'Got unexpected style string:\n%s\ninstead of:\n%s' % (feat.GetStyleString(),expected_style) )
         return 'fail'
 
     return 'success'
@@ -278,8 +298,8 @@ def ogr_dxf_8():
 
 def ogr_dxf_9():
 
-    # Skip two dimensions each with a line and text.
-    for x in range(4):
+    # Skip two dimensions each with a line, two arrowheads and text.
+    for x in range(8):
         feat = gdaltest.dxf_layer.GetNextFeature()
 
     # block (merged geometries)
@@ -299,7 +319,7 @@ def ogr_dxf_9():
         gdaltest.post_reason( 'Did not get expected first mtext.' )
         return 'fail'
 
-    expected_style = 'LABEL(f:"normallatin1",t:"'+gdaltest.sample_style+'",a:45,s:0.5g,p:5,c:#000000)'
+    expected_style = 'LABEL(f:"Arial",t:"'+gdaltest.sample_style+'",a:45,s:0.5g,p:5,c:#000000)'
     if feat.GetStyleString() != expected_style:
         gdaltest.post_reason( 'Got unexpected style string:\n%s\ninstead of:\n%s.' % (feat.GetStyleString(),expected_style) )
         return 'fail'
@@ -724,13 +744,23 @@ def ogr_dxf_16():
         gdaltest.post_reason( 'did not get expected layer name.' )
         return 'fail'
 
+    # STAR geometry
+    feat = dxf_layer.GetNextFeature()
+
+    if feat.GetField('Block') != 'STAR':
+        gdaltest.post_reason( 'Did not get expected block name.' )
+        return 'fail'
+
+    if ogrtest.check_feature_geometry( feat, 'MULTILINESTRING ((-0.028147497671066 1.041457413829428 0,0.619244948763444 -1.069604911500494 0),(0.619244948763444 -1.069604911500494 0,-0.957014920816232 0.478507460408116 0),(-0.957014920816232 0.478507460408116 0,1.041457413829428 0.365917469723853 0),(1.041457413829428 0.365917469723853 0,-0.478507460408116 -1.041457413829428 0),(-0.478507460408116 -1.041457413829428 0,-0.056294995342131 1.013309916158363 0))' ):
+        return 'fail'
+
     # First MTEXT
     feat = dxf_layer.GetNextFeature()
     if feat.GetField( 'Text' ) != gdaltest.sample_text:
         gdaltest.post_reason( 'Did not get expected first mtext.' )
         return 'fail'
 
-    expected_style = 'LABEL(f:"normallatin1",t:"'+gdaltest.sample_style+'",a:45,s:0.5g,p:5,c:#000000)'
+    expected_style = 'LABEL(f:"Arial",t:"'+gdaltest.sample_style+'",a:45,s:0.5g,p:5,c:#000000)'
     if feat.GetStyleString() != expected_style:
         gdaltest.post_reason( 'Got unexpected style string:\n%s\ninstead of:\n%s.' % (feat.GetStyleString(),expected_style) )
         return 'fail'
@@ -749,16 +779,6 @@ def ogr_dxf_16():
         return 'fail'
 
     if ogrtest.check_feature_geometry( feat, 'POINT (0.879677852348995 -0.263903355704699 0)' ):
-        return 'fail'
-
-    # STAR geometry
-    feat = dxf_layer.GetNextFeature()
-
-    if feat.GetField('BlockName') != 'STAR':
-        gdaltest.post_reason( 'Did not get expected block name.' )
-        return 'fail'
-
-    if ogrtest.check_feature_geometry( feat, 'MULTILINESTRING ((-0.028147497671066 1.041457413829428 0,0.619244948763444 -1.069604911500494 0),(0.619244948763444 -1.069604911500494 0,-0.957014920816232 0.478507460408116 0),(-0.957014920816232 0.478507460408116 0,1.041457413829428 0.365917469723853 0),(1.041457413829428 0.365917469723853 0,-0.478507460408116 -1.041457413829428 0),(-0.478507460408116 -1.041457413829428 0,-0.056294995342131 1.013309916158363 0))' ):
         return 'fail'
 
     feat = None
@@ -783,21 +803,21 @@ def ogr_dxf_17():
     dst_feat = ogr.Feature( feature_def = blyr.GetLayerDefn() )
     dst_feat.SetGeometryDirectly( ogr.CreateGeometryFromWkt(
         'GEOMETRYCOLLECTION( LINESTRING(0 0,1 1),LINESTRING(1 0,0 1))' ) )
-    dst_feat.SetField( 'BlockName', 'XMark' )
+    dst_feat.SetField( 'Block', 'XMark' )
     blyr.CreateFeature( dst_feat )
 
     # Block with 2 polygons
     dst_feat = ogr.Feature( feature_def = blyr.GetLayerDefn() )
     dst_feat.SetGeometryDirectly( ogr.CreateGeometryFromWkt(
         'GEOMETRYCOLLECTION( POLYGON((10 10,10 20,20 20,20 10,10 10)),POLYGON((10 -10,10 -20,20 -20,20 -10,10 -10)))' ) )
-    dst_feat.SetField( 'BlockName', 'Block2' )
+    dst_feat.SetField( 'Block', 'Block2' )
     blyr.CreateFeature( dst_feat )
 
     # Block with point and line
     dst_feat = ogr.Feature( feature_def = blyr.GetLayerDefn() )
     dst_feat.SetGeometryDirectly( ogr.CreateGeometryFromWkt(
         'GEOMETRYCOLLECTION( POINT(1 2),LINESTRING(0 0,1 1))' ) )
-    dst_feat.SetField( 'BlockName', 'Block3' )
+    dst_feat.SetField( 'Block', 'Block3' )
     blyr.CreateFeature( dst_feat )
 
     # Write a block reference feature.
@@ -958,7 +978,7 @@ def ogr_dxf_18():
         gdaltest.post_reason( 'Got wrong linetype. (1)' )
         return 'fail'
 
-    if feat.GetStyleString() != 'PEN(c:#ffff00,w:2g,p:"12.6999999999999993g 6.3499999999999996g")':
+    if feat.GetStyleString() != 'PEN(c:#ffff00,w:2g,p:"12.7g 6.1234567892g")':
         print(feat.GetStyleString())
         gdaltest.post_reason( "got wrong style string (1)" )
         return 'fail'
@@ -972,7 +992,7 @@ def ogr_dxf_18():
         gdaltest.post_reason( 'Got wrong linetype. (2)' )
         return 'fail'
 
-    if feat.GetStyleString() != 'PEN(c:#ffff00,w:2g,p:"0.0g 4.0g")':
+    if feat.GetStyleString() != 'PEN(c:#ffff00,w:2g,p:"0g 4g")':
         print(feat.GetStyleString())
         gdaltest.post_reason( "got wrong style string (2)" )
         return 'fail'
@@ -986,7 +1006,7 @@ def ogr_dxf_18():
         gdaltest.post_reason( 'Got wrong linetype. (3)' )
         return 'fail'
 
-    if feat.GetStyleString() != 'PEN(c:#ffff00,w:2g,p:"3.0g 4.0g")':
+    if feat.GetStyleString() != 'PEN(c:#ffff00,w:2g,p:"3g 4g")':
         print(feat.GetStyleString())
         gdaltest.post_reason( "got wrong style string (3)" )
         return 'fail'
@@ -1085,21 +1105,30 @@ def ogr_dxf_21():
 
 def ogr_dxf_22():
 
-    # Read TEXT feature
+    # Read MTEXT feature
     ds = ogr.Open('data/text.dxf')
     lyr = ds.GetLayer(0)
 
+    if version_info >= (3,0,0):
+        test_text = 'test\ttext ab/c~d\u00B1ef^g.h#i jklm'
+    else:
+        exec("test_text = u'test\ttext ab/c~d\u00B1ef^g.h#i jklm'")
+        test_text = test_text.encode('utf-8')
+
     feat = lyr.GetNextFeature()
-    if feat.GetFieldAsString('Text') != 'test_text':
+    if feat.GetFieldAsString('Text') != test_text:
         gdaltest.post_reason('bad attribute')
+        feat.DumpReadable()
         return 'fail'
     style = feat.GetStyleString()
-    if style != 'LABEL(f:"Arial",t:"test_text",a:45,s:10g,c:#ff0000)':
+    if style != 'LABEL(f:"Arial",t:"' + test_text + '",a:45,s:10g,c:#ff0000)':
         gdaltest.post_reason('bad style')
+        feat.DumpReadable()
         print(style)
         return 'fail'
     if ogrtest.check_feature_geometry( feat, 'POINT(1 2 3)' ):
         gdaltest.post_reason('bad geometry')
+        feat.DumpReadable()
         return 'fail'
 
     # Write text feature
@@ -1120,21 +1149,38 @@ def ogr_dxf_22():
     lyr = ds.GetLayer(0)
 
     feat = lyr.GetNextFeature()
-    if feat.GetFieldAsString('Text') != 'test_text':
+    if feat.GetFieldAsString('Text') != test_text:
         gdaltest.post_reason('bad attribute')
+        feat.DumpReadable()
         return 'fail'
     style = feat.GetStyleString()
-    if style != 'LABEL(f:"Arial",t:"test_text",a:45,s:10g,c:#ff0000)':
+    if style != 'LABEL(f:"Arial",t:"' + test_text + '",a:45,s:10g,c:#ff0000)':
         gdaltest.post_reason('bad style')
+        feat.DumpReadable()
         print(style)
         return 'fail'
     if ogrtest.check_feature_geometry( feat, 'POINT(1 2 3)' ):
         gdaltest.post_reason('bad geometry')
+        feat.DumpReadable()
         return 'fail'
 
     ds = None
 
     gdal.Unlink('/vsimem/ogr_dxf_22.dxf')
+
+    # Now try reading in the MTEXT feature without translating escape sequences
+    gdal.SetConfigOption('DXF_TRANSLATE_ESCAPE_SEQUENCES', 'FALSE')
+    ds = ogr.Open('data/text.dxf')
+    gdal.SetConfigOption('DXF_TRANSLATE_ESCAPE_SEQUENCES', None)
+    lyr = ds.GetLayer(0)
+
+    feat = lyr.GetNextFeature()
+    if feat.GetFieldAsString('Text') != '\A1;test^Itext\~\pt0.2;{\H0.7x;\Sab\/c\~d%%p^ ef\^ g.h\#i;} j{\L\Ok\ol}m':
+        gdaltest.post_reason('bad attribute with DXF_TRANSLATE_ESCAPE_SEQUENCES = FALSE')
+        feat.DumpReadable()
+        return 'fail'
+
+    ds = None
 
     return 'success'
 
@@ -1938,9 +1984,9 @@ def ogr_dxf_32():
 
 # OGRFeature(entities):19
 #   EntityHandle (String) = 1CB
-#   LINESTRING (-0.5 1.0,-1.0 1.0,-0.5 2.0,-0.5 1.0)
+#   LINESTRING Z (-0.5 1.0 -0.866025403784439,-1.0 1.0 -1.73205080756888,-0.5 2.0 -0.866025403784439,-0.5 1.0 -0.866025403784439)
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'LINESTRING (-0.5 1.0,-1.0 1.0,-0.5 2.0,-0.5 1.0)'):
+    if ogrtest.check_feature_geometry( feat, 'LINESTRING Z (-0.5 1.0 -0.866025403784439,-1.0 1.0 -1.73205080756888,-0.5 2.0 -0.866025403784439,-0.5 1.0 -0.866025403784439)'):
         feat.DumpReadable()
         return 'fail'
 
@@ -2022,17 +2068,17 @@ def ogr_dxf_32():
 
 # OGRFeature(entities):29
 #   EntityHandle (String) = 1D9
-#   POLYGON ((-1.5 4.0,-2.0 4.0,-2.0 3.0,-1.5 3.0,-1.5 4.0))
+#   POLYGON Z ((-1.5 4.0 -2.59807621135332,-2.0 4.0 -3.46410161513776,-2.0 3.0 -3.46410161513776,-1.5 3.0 -2.59807621135332,-1.5 4.0 -2.59807621135332))
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'POLYGON ((-1.5 4.0,-2.0 4.0,-2.0 3.0,-1.5 3.0,-1.5 4.0))'):
+    if ogrtest.check_feature_geometry( feat, 'POLYGON ((-1.5 4.0 -2.59807621135332,-2.0 4.0 -3.46410161513776,-2.0 3.0 -3.46410161513776,-1.5 3.0 -2.59807621135332,-1.5 4.0 -2.59807621135332))'):
         feat.DumpReadable()
         return 'fail'
 
 # OGRFeature(entities):30
 #   EntityHandle (String) = 1DB
-#   POLYGON ((-4.0 8.0,-4.5 8.0,-4.5 9.0,-4.0 9.0,-4.0 8.0))
+#   POLYGON Z ((-4.0 8.0 -6.92820323027551,-4.5 8.0 -7.79422863405995,-4.5 9.0 -7.79422863405995,-4.0 9.0 -6.92820323027551,-4.0 8.0 -6.92820323027551))
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'POLYGON ((-4.0 8.0,-4.5 8.0,-4.5 9.0,-4.0 9.0,-4.0 8.0))'):
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((-4.0 8.0 -6.92820323027551,-4.5 8.0 -7.79422863405995,-4.5 9.0 -7.79422863405995,-4.0 9.0 -6.92820323027551,-4.0 8.0 -6.92820323027551))'):
         feat.DumpReadable()
         return 'fail'
 
@@ -2078,9 +2124,9 @@ def ogr_dxf_32():
 
 # OGRFeature(entities):36
 #   EntityHandle (String) = 1E1
-#   LINESTRING (0.25 -0.5,-0.25 -0.5,1.0 -1.0,0.25 -0.5)
+#   LINESTRING Z (0.25 -0.5 -1.29903810567666,-0.25 -0.5 -2.1650635094611,1.0 -1.0 -1.73205080756888,0.25 -0.5 -1.29903810567666)
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'LINESTRING (0.25 -0.5,-0.25 -0.5,1.0 -1.0,0.25 -0.5)'):
+    if ogrtest.check_feature_geometry( feat, 'LINESTRING Z (0.25 -0.5 -1.29903810567666,-0.25 -0.5 -2.1650635094611,1.0 -1.0 -1.73205080756888,0.25 -0.5 -1.29903810567666)'):
         feat.DumpReadable()
         return 'fail'
 
@@ -2162,17 +2208,17 @@ def ogr_dxf_32():
 
 # OGRFeature(entities):46
 #   EntityHandle (String) = 1EF
-#   POLYGON ((1.5 -2.0,0.75 -1.5,0.25 -1.5,1.0 -2.0,1.5 -2.0))
+#   POLYGON Z ((1.5 -2.0 -4.33012701892219,1.0 -2.0 -5.19615242270663,0.25 -1.5 -4.76313972081441,0.75 -1.5 -3.89711431702997,1.5 -2.0 -4.33012701892219))
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'POLYGON ((1.5 -2.0,0.75 -1.5,0.25 -1.5,1.0 -2.0,1.5 -2.0))'):
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((1.5 -2.0 -4.33012701892219,1.0 -2.0 -5.19615242270663,0.25 -1.5 -4.76313972081441,0.75 -1.5 -3.89711431702997,1.5 -2.0 -4.33012701892219))'):
         feat.DumpReadable()
         return 'fail'
 
 # OGRFeature(entities):47
 #   EntityHandle (String) = 1F1
-#   POLYGON ((2.0 -4.0,1.5 -4.0,2.25 -4.5,2.75 -4.5,2.0 -4.0))
+#   POLYGON Z ((2.0 -4.0 -10.3923048454133,1.5 -4.0 -11.2583302491977,2.25 -4.5 -11.6913429510899,2.75 -4.5 -10.8253175473055,2.0 -4.0 -10.3923048454133))
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'POLYGON ((2.0 -4.0,1.5 -4.0,2.25 -4.5,2.75 -4.5,2.0 -4.0))'):
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((2.0 -4.0 -10.3923048454133,1.5 -4.0 -11.2583302491977,2.25 -4.5 -11.6913429510899,2.75 -4.5 -10.8253175473055,2.0 -4.0 -10.3923048454133))'):
         feat.DumpReadable()
         return 'fail'
 
@@ -2218,9 +2264,9 @@ def ogr_dxf_32():
 
 # OGRFeature(entities):53
 #   EntityHandle (String) = 1F7
-#   LINESTRING (1.375 0.25,2.0 1.0,2.125 -0.25,1.375 0.25)
+#   LINESTRING Z (1.375 0.25 -0.21650635094611,2.0 1.0 -9.68245836551854e-17,2.125 -0.25 -0.649519052838329,1.375 0.25 -0.21650635094611)
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'LINESTRING (1.375 0.25,2.0 1.0,2.125 -0.25,1.375 0.25)'):
+    if ogrtest.check_feature_geometry( feat, 'LINESTRING Z (1.375 0.25 -0.21650635094611,2.0 1.0 -9.68245836551854e-17,2.125 -0.25 -0.649519052838329,1.375 0.25 -0.21650635094611)'):
         feat.DumpReadable()
         return 'fail'
 
@@ -2302,17 +2348,17 @@ def ogr_dxf_32():
 
 # OGRFeature(entities):63
 #   EntityHandle (String) = 205
-#   POLYGON ((4.875 0.25,5.5 1.0,4.75 1.5,4.125 0.75,4.875 0.25))
+#   POLYGON Z ((4.875 0.25 -1.08253175473055,5.5 1.0 -0.866025403784439,4.75 1.5 -0.43301270189222,4.125 0.75 -0.649519052838329,4.875 0.25 -1.08253175473055))
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'POLYGON ((4.875 0.25,5.5 1.0,4.75 1.5,4.125 0.75,4.875 0.25))'):
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((4.875 0.25 -1.08253175473055,5.5 1.0 -0.866025403784439,4.75 1.5 -0.43301270189222,4.125 0.75 -0.649519052838329,4.875 0.25 -1.08253175473055))'):
         feat.DumpReadable()
         return 'fail'
 
 # OGRFeature(entities):64
 #   EntityHandle (String) = 207
-#   POLYGON ((11 2,11.625 2.75,12.375 2.25,11.75 1.5,11 2))
+#   POLYGON Z ((11 2 -1.73205080756888,11.625 2.75 -1.51554445662277,12.375 2.25 -1.94855715851499,11.75 1.5 -2.1650635094611,11 2 -1.73205080756888))
     feat = lyr.GetNextFeature()
-    if ogrtest.check_feature_geometry( feat, 'POLYGON ((11 2,11.625 2.75,12.375 2.25,11.75 1.5,11 2))'):
+    if ogrtest.check_feature_geometry( feat, 'POLYGON Z ((11 2 -1.73205080756888,11.625 2.75 -1.51554445662277,12.375 2.25 -1.94855715851499,11.75 1.5 -2.1650635094611,11 2 -1.73205080756888))'):
         feat.DumpReadable()
         return 'fail'
 
@@ -2396,7 +2442,7 @@ def ogr_dxf_34():
     received_wkt = geom.ExportToWkt()
 
     if expected_wkt != received_wkt:
-        gdaltest.post_reason( 'did not get expected geometry back')
+        gdaltest.post_reason( 'did not get expected geometry back: got %s' % received_wkt )
         return 'fail'
     ds = None
 
@@ -2558,6 +2604,924 @@ def ogr_dxf_37():
 
     return 'success'
 
+###############################################################################
+# Test degenerated cases of SOLID (#7038)
+
+def ogr_dxf_38():
+
+    ds = ogr.Open('data/solid-less-than-4-vertices.dxf')
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    if f.GetGeometryRef().ExportToWkt() != 'POINT (0 2)':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if f.GetGeometryRef().ExportToWkt() != 'LINESTRING (0.5 2.0,1 2)':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test correct reordering of vertices in SOLID (#7038, #7089)
+
+def ogr_dxf_39():
+
+    ds = ogr.Open('data/solid-vertex-ordering.dxf')
+    lyr = ds.GetLayer(0)
+
+    f = lyr.GetNextFeature()
+    if f.GetGeometryRef().ExportToWkt() != 'POLYGON ((0 5,1.5 2.5,1.5 0.0,0.0 2.5,0 5))':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if f.GetGeometryRef().ExportToIsoWkt() != 'POLYGON Z ((-10 13 123,10 10 123,5 12 123,8 13 123,-10 13 123))':
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test handing of OCS vs WCS for MTEXT (#7049)
+
+def ogr_dxf_40():
+
+    ds = ogr.Open('data/mtext-ocs-reduced.dxf')
+    lyr = ds.GetLayer(0)
+    f = lyr.GetFeature(5)
+    if ogrtest.check_feature_geometry(f, 'POINT (320000.0 5815007.5 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test handing of OCS vs WCS for SOLID, HATCH and INSERT (#7077, #7098)
+
+def ogr_dxf_41():
+
+    ds = ogr.Open('data/ocs2wcs3.dxf')
+    lyr = ds.GetLayer(0)
+
+    # INSERT #1: OCS normal vector (0,0,-1)
+    f = lyr.GetFeature(1)
+    if ogrtest.check_feature_geometry(f, 'LINESTRING (45 20,25 20,25 40,45 40,45 20)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # INSERT #2: OCS normal vector (0,1/sqrt(2),-1/sqrt(2))
+    f = lyr.GetFeature(3)
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (10.0 18.0 -76.3675323681472,-10.0 18.0 -76.3675323681472,-10.0 32.142135623731 -62.2253967444162,10.0 32.142135623731 -62.2253967444162,10.0 18.0 -76.3675323681472)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # INSERT #3: OCS normal vector (0.6,sqrt(8)/5,sqrt(8)/5) with
+    # Y scale factor of 2 and rotation angle of 45 degrees
+    f = lyr.GetFeature(5)
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (49.7198871869889 -21.8420670839387 75.1721817670195,34.1976071850546 -17.0401066991021 86.8340855568821,41.9587471852111 -48.595846365317 110.157893136607,57.4810271871454 -53.3978067501536 98.4959893467447,49.7198871869889 -21.8420670839387 75.1721817670195)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # HATCH
+    f = lyr.GetFeature(7)
+    expected_wkt = "POLYGON Z ((-4.0 41.0121933088198 -132.936074863071," + \
+    "-4.40490904691695 41.0186412752948 -132.929626896596," + \
+    "-4.80797195119362 41.0379557758564 -132.910312396034," + \
+    "-5.20735098749398 41.0700487479548 -132.878219423936," + \
+    "-5.60122522671268 41.1147738668667 -132.833494305024," + \
+    "-5.98779883832069 41.1719272128483 -132.776340959042," + \
+    "-6.3653092782765 41.2412482008871 -132.707019971004," + \
+    "-6.73203532517085 41.3224207688135 -132.625847403077," + \
+    "-7.08630492796504 41.4150748183547 -132.533193353536," + \
+    "-7.42650282954181 41.5187879025613 -132.429480269329," + \
+    "-7.75107793130996 41.6330871519123 -132.315181019978," + \
+    "-8.05855036528454 41.7574514303164 -132.190816741574," + \
+    "-8.34751824139814 41.8913137111809 -132.05695446071," + \
+    "-8.61666403927964 42.0340636627126 -131.914204509178," + \
+    "-8.86476061535765 42.1850504306657 -131.763217741225," + \
+    "-9.09067679789991 42.3435856058464 -131.604682566044," + \
+    "-9.29338254447862 42.5089463628474 -131.439321809043," + \
+    "-9.47195363834675 42.6803787556975 -131.267889416193," + \
+    "-9.62557590231259 42.8571011554044 -131.091167016486," + \
+    "-9.75354891089994 43.0383078137139 -130.909960358177," + \
+    "-9.85528918386859 43.2231725368399 -130.725095635051," + \
+    "-9.9303328465346 43.4108524524121 -130.537415719479," + \
+    "-9.97833774476093 43.6004918524697 -130.347776319421," + \
+    "-9.99908500497526 43.7912260949768 -130.157042076914," + \
+    "-9.99248003210238 43.9821855460716 -129.966082625819," + \
+    "-9.95855294086101 44.1724995450765 -129.775768626814," + \
+    "-9.89745841845876 44.3613003741885 -129.586967797702," + \
+    "-9.80947501931113 44.5477272147525 -129.400540957138," + \
+    "-9.80947501928313 44.5477272147525 -129.400540957138," + \
+    "1.0 44.5477272147525 -129.400540957138," + \
+    "0.988343845952696 44.306453848479 -129.641814323412," + \
+    "0.953429730181654 44.0663054100155 -129.881962761875," + \
+    "0.895420438411614 43.828401582239 -130.119866589652," + \
+    "0.814586436738996 43.5938515826157 -130.354416589275," + \
+    "0.711304610594103 43.3637489915164 -130.584519180374," + \
+    "0.586056507527265 43.1391666534406 -130.80910151845," + \
+    "0.439426092011876 42.9211516749198 -131.027116496971," + \
+    "0.272097022732443 42.7107205424238 -131.237547629467," + \
+    "0.084849465052212 42.5088543830312 -131.43941378886," + \
+    "-0.1214435464779 42.3164943899624 -131.631773781928," + \
+    "-0.34582017860938 42.134537434302 -131.813730737589," + \
+    "-0.587234283906729 41.9638318833721 -131.984436288519," + \
+    "-0.844560278369735 41.8051736452522 -132.143094526639," + \
+    "-1.11659838942566 41.6593024578878 -132.288965714003," + \
+    "-1.40208024982283 41.5268984400915 -132.421369731799," + \
+    "-1.69967481134424 41.4085789205144 -132.539689251376," + \
+    "-2.00799455076879 41.3048955593753 -132.643372612515," + \
+    "-2.32560193914507 41.216331776366 -132.731936395525," + \
+    "-2.65101614421488 41.1433004967256 -132.804967675165," + \
+    "-2.98271993473683 41.0861422259924 -132.862125945898," + \
+    "-3.31916675451876 41.04512346241 -132.903144709481," + \
+    "-3.65878793317664 41.0204354543892 -132.927832717502," + \
+    "-4.0 41.0121933088198 -132.936074863071," + \
+    "-4.0 41.0121933088198 -132.936074863071))"
+    if ogrtest.check_feature_geometry(f, expected_wkt) != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # SOLID
+    f = lyr.GetFeature(9)
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((-10.0 13.0 124,8.0 13.0 124,5.0 12.0 123,10.0 10.0 121,-10.0 13.0 124))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test insertion of blocks within blocks (#7106)
+
+def ogr_dxf_42():
+
+    # Inlining, merging
+    ds = ogr.Open('data/block-insert-order.dxf')
+    lyr = ds.GetLayer(0)
+    if lyr.GetFeatureCount() != 2:
+        gdaltest.post_reason( 'Defaults: Expected 2 features, found %d' % lyr.GetFeatureCount() )
+        return 'fail'
+
+    # No inlining, merging
+    gdal.SetConfigOption('DXF_INLINE_BLOCKS', 'FALSE')
+    ds = ogr.Open('data/block-insert-order.dxf')
+    gdal.SetConfigOption('DXF_INLINE_BLOCKS', None)
+
+    lyr = ds.GetLayerByName('entities')
+    if lyr.GetFeatureCount() != 2:
+        gdaltest.post_reason( 'No inlining: Expected 2 features on entities, found %d' % lyr.GetFeatureCount() )
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT Z (8.0 2.5 6)') != 0:
+        gdaltest.post_reason( 'Wrong geometry for first insertion point' )
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT Z (-1 -2 -3)') != 0:
+        gdaltest.post_reason( 'Wrong geometry for second insertion point' )
+        f.DumpReadable()
+        return 'fail'
+
+    lyr = ds.GetLayerByName('blocks')
+    if lyr.GetFeatureCount() != 6:
+        gdaltest.post_reason( 'No inlining: Expected 6 feature on blocks, found %d' % lyr.GetFeatureCount() )
+        return 'fail'
+
+    f = lyr.GetFeature(3)
+    if ogrtest.check_feature_geometry(f, 'POINT Z (5 5 0)') != 0:
+        gdaltest.post_reason( 'Wrong geometry for second insertion of BLOCK4 on BLOCK3' )
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetFeature(4)
+    if ogrtest.check_feature_geometry(f, 'POINT Z (-5.48795472456028 1.69774937525433 4.12310562561766)') != 0:
+        gdaltest.post_reason( 'Wrong geometry for third insertion of BLOCK4 on BLOCK3' )
+        f.DumpReadable()
+        return 'fail'
+
+    if f.GetField('BlockName') != 'BLOCK4':
+        gdaltest.post_reason( 'Wrong BlockName' )
+        return 'fail'
+    if f.GetField('BlockScale') != [0.4,1.0,1.5]:
+        gdaltest.post_reason( 'Wrong BlockScale' )
+        return 'fail'
+    if f.GetField('BlockAngle') != 40:
+        gdaltest.post_reason( 'Wrong BlockAngle' )
+        return 'fail'
+    if f.GetField('BlockOCSNormal') != [0.6,0.565685424949238,0.565685424949238]:
+        gdaltest.post_reason( 'Wrong BlockOCSNormal' )
+        return 'fail'
+    if f.GetField('BlockOCSCoords') != [5,5,0]:
+        gdaltest.post_reason( 'Wrong BlockOCSCoords' )
+        return 'fail'
+    if f.GetField('Block') != 'BLOCK3':
+        gdaltest.post_reason( 'Wrong Block' )
+        return 'fail'
+
+    # Inlining, no merging
+    gdal.SetConfigOption('DXF_MERGE_BLOCK_GEOMETRIES', 'FALSE')
+    ds = ogr.Open('data/block-insert-order.dxf')
+    gdal.SetConfigOption('DXF_MERGE_BLOCK_GEOMETRIES', None)
+
+    lyr = ds.GetLayer(0)
+    if lyr.GetFeatureCount() != 4:
+        gdaltest.post_reason( 'Merging: Expected 4 features, found %d' % lyr.GetFeatureCount() )
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Ensure recursively-included blocks don't fail badly
+
+def ogr_dxf_43():
+
+    ds = ogr.Open('data/insert-recursive-pair.dxf')
+    lyr = ds.GetLayer(0)
+    if lyr.GetFeatureCount() != 1:
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# General tests of LEADER and MULTILEADER entities (#7111)
+
+def ogr_dxf_44():
+
+    ds = ogr.Open('data/leader-mleader.dxf')
+    lyr = ds.GetLayer(0)
+
+    # LEADER with default arrowhead, plus a couple of DIMSTYLE overrides
+    # (6.0 arrowhead size and 1.5 scale factor)
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (30 40 0,10 40 0,19.3125 34.6875 0,10.3125 34.6875 0,-13.5990791268758 34.6875 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((21.0 41.5,30 40,21.0 38.5,21.0 41.5))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Skip text
+    f = lyr.GetNextFeature()
+
+    # Basic LEADER with no dimension style or override information
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (-21.121645731992 38.035579873508 30,-12.2152357926375 44.793971841437 30,-13.7256166009765 49.0748560186272 30,-13.9025293262723 49.0416613258524 30)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((-20.9601206293303 38.1204894796201 30,-21.121645731992 38.035579873508 30,-20.9963899665916 38.1682862909638 30,-20.9601206293303 38.1204894796201 30))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # LEADER with a custom arrowhead that consists of a polygon and line
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (30 80 0,10 65 0,25 55 0,25 50 0,40 65 0,48 65 0,169.282571623465 65.0 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((27.2 80.4,30.4 82.8,32.8 79.6,29.6 77.2,27.2 80.4))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (28.4 78.8 0,26.8 77.6 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Check that the very long text string in the MTEXT entity associated
+    # to this LEADER is captured correctly
+    f = lyr.GetNextFeature()
+    if len( f.GetField('Text') ) != 320:
+        gdaltest.post_reason( 'Wrong text length: got %d' % len( f.GetField('Text') ) )
+        return 'fail'
+
+    # MULTILEADER with custom arrowhead
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((30 35,10 20,25 10,25 5,40 20,48 20))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((27.2 35.4,30.4 37.8,32.8 34.6,29.6 32.2,27.2 35.4))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (28.4 33.8 0,26.8 32.6 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT (50.0 22.0327421555252)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"Basic Multileader",p:7,s:4g,c:#000000)':
+        gdaltest.post_reason( 'Wrong style string on MULTILEADER text' )
+        f.DumpReadable()
+        return 'fail'
+
+    # There are three LEADERs, followed by two MULTILEADERs, without arrowheads.
+    # In the first LEADER/MULTILEADER, the arrowhead is set to an empty block.
+    # In the second LEADER/MULTILEADER, the arrowhead is too large to be displayed.
+    # The third LEADER has the arrow turned off (this isn't possible for MULTILEADER).
+    # We just check each of these to make sure there is no polygon (arrowhead) feature.
+    for x in range(3):
+        f = lyr.GetNextFeature()
+        geom = f.GetGeometryRef()
+        if geom.GetGeometryType() != ogr.wkbLineString25D:
+            gdaltest.post_reason( 'Unexpected LEADER geometry, expected wkbLineString25D on iteration %d' % x )
+            return 'fail'
+
+    for x in range(2):
+        f = lyr.GetNextFeature()
+        geom = f.GetGeometryRef()
+        if geom.GetGeometryType() != ogr.wkbMultiLineString:
+            gdaltest.post_reason( 'Unexpected MULTILEADER geometry, expected wkbMultiLineString on iteration %d' % x )
+            return 'fail'
+
+        f = lyr.GetNextFeature()
+        geom = f.GetGeometryRef()
+        if geom.GetGeometryType() != ogr.wkbPoint:
+            gdaltest.post_reason( 'Unexpected MULTILEADER geometry, expected wkbPoint on iteration %d' % x )
+            return 'fail'
+
+    # MULTILEADER with multiple leader lines and formatted text
+    f = lyr.GetNextFeature()
+    if f.GetStyleString() != 'PEN(c:#0000ff)' \
+    or ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((5 -5,18.2 -20.0),(20 -10,18.2 -20.0),(18.2 -20.0,38 -20),(54.8204921137545 -22.5800753657327,60.2227692307692 -20.0,52.2227692307692 -20.0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if f.GetStyleString() != 'PEN(c:#0000ff)' \
+    or ogrtest.check_feature_geometry(f, 'POLYGON Z ((7.1420359016196 -8.4432726642857 0,5 -5 0,8.1429872575166 -7.56243547109634 0,7.1420359016196 -8.4432726642857 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if f.GetStyleString() != 'PEN(c:#0000ff)' \
+    or ogrtest.check_feature_geometry(f, 'POLYGON Z ((18.6352657907565 -13.8186312970179 0,20 -10 0,19.9475102227214 -14.0548352947716 0,18.6352657907565 -13.8186312970179 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Note, the text actually is nine question marks, this is not an encoding error
+    f = lyr.GetNextFeature()
+    if f.GetStyleString() != 'LABEL(f:"Calibri",it:1,t:"?????????",p:7,s:4g,w:40,c:#0000ff)' \
+    or ogrtest.check_feature_geometry(f, 'POINT (40.0 -17.9846153846154)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Rotated MULTILEADER with scaled block content, block attributes, and
+    # different leader color
+    f = lyr.GetNextFeature()
+    if f.GetStyleString() != 'PEN(c:#ff00ff)' \
+    or ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((-41.8919467995818 -22.8930851139176,-36.1215379759023 -17.6108145786645,-44.0 -19.0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((-40.7553616986189 -14.3661762772835,-44.6945927106677 -15.0607689879512,-44 -19,-40.0607689879512 -18.3054072893323,-40.7553616986189 -14.3661762772835),(-41.9142984770378 -17.0075519687798,-41.126452274628 -16.8686334266463,-40.9875337324945 -17.6564796290561,-41.7753799349043 -17.7953981711896,-41.9142984770378 -17.0075519687798),(-42.0532170191713 -16.2197057663701,-42.1921355613049 -15.4318595639603,-41.4042893588951 -15.2929410218268,-41.2653708167616 -16.0807872242365,-42.0532170191713 -16.2197057663701),(-42.7021446794476 -17.1464705109134,-42.563226137314 -17.9343167133231,-43.3510723397238 -18.0732352554567,-43.4899908818573 -17.2853890530469,-42.7021446794476 -17.1464705109134),(-42.8410632215811 -16.3586243085036,-43.6289094239909 -16.4975428506372,-43.7678279661244 -15.7096966482274,-42.9799817637146 -15.5707781060938,-42.8410632215811 -16.3586243085036))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"Apples",p:2,s:1g,c:#ff0000,a:10)' \
+    or f.GetField('Text') != 'Apples' \
+    or ogrtest.check_feature_geometry(f, 'POINT Z (-42.7597068401767 -14.5165110820149 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # MULTILEADER with no dogleg
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((-1.66964895248111 -10.5867639604754,-3.98423252456234 -23.1105237601191),(-30 -20,-3.98423252456233 -23.1105237601191))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    for x in range(4):
+        f = lyr.GetNextFeature()
+
+    # MULTILEADER with no leader lines (block content only)
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'MULTILINESTRING EMPTY') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((-4.98423252456234 -22.1105237601191,-6.98423252456234 -22.1105237601191,-6.98423252456234 -24.1105237601191,-4.98423252456234 -24.1105237601191,-4.98423252456234 -22.1105237601191),(-5.78423252456234 -23.3105237601191,-5.38423252456234 -23.3105237601191,-5.38423252456234 -23.7105237601191,-5.78423252456234 -23.7105237601191,-5.78423252456234 -23.3105237601191),(-5.78423252456234 -22.9105237601191,-5.78423252456234 -22.5105237601191,-5.38423252456234 -22.5105237601191,-5.38423252456234 -22.9105237601191,-5.78423252456234 -22.9105237601191),(-6.18423252456234 -23.3105237601191,-6.18423252456234 -23.7105237601191,-6.58423252456234 -23.7105237601191,-6.58423252456234 -23.3105237601191,-6.18423252456234 -23.3105237601191),(-6.18423252456234 -22.9105237601191,-6.58423252456234 -22.9105237601191,-6.58423252456234 -22.5105237601191,-6.18423252456234 -22.5105237601191,-6.18423252456234 -22.9105237601191))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test linetype scaling (#7129) and parsing of complex linetypes (#7134)
+
+def ogr_dxf_45():
+
+    ds = ogr.Open('data/linetypes.dxf')
+    lyr = ds.GetLayer(0)
+
+    feat = lyr.GetNextFeature()
+    if feat.GetField('Linetype') != 'DASHED2':
+        gdaltest.post_reason( 'Got wrong linetype (1)' )
+        return 'fail'
+
+    if feat.GetStyleString() != 'PEN(c:#000000,p:"12.5g 6.25g")':
+        print(feat.GetStyleString())
+        gdaltest.post_reason( 'Got wrong style string (1)' )
+        return 'fail'
+
+    feat = lyr.GetNextFeature()
+    if feat.GetField('Linetype') != 'DASHED2':
+        gdaltest.post_reason( 'Got wrong linetype (2)' )
+        return 'fail'
+
+    if feat.GetStyleString() != 'PEN(c:#000000,p:"0.625g 0.3125g")':
+        print(feat.GetStyleString())
+        gdaltest.post_reason( 'Got wrong style string (2)' )
+        return 'fail'
+
+    feat = lyr.GetNextFeature()
+    if feat.GetField('Linetype') != 'DASHED2_FLIPPED':
+        gdaltest.post_reason( 'Got wrong linetype (3)' )
+        return 'fail'
+
+    if feat.GetStyleString() != 'PEN(c:#000000,p:"0.625g 0.3125g")':
+        print(feat.GetStyleString())
+        gdaltest.post_reason( 'Got wrong style string (3)' )
+        return 'fail'
+
+    feat = lyr.GetNextFeature()
+    if feat.GetField('Linetype') != 'Drain_Pipe_Inv_100':
+        gdaltest.post_reason( 'Got wrong linetype (4)' )
+        return 'fail'
+
+    if feat.GetStyleString() != 'PEN(c:#000000,p:"35g 22.5g")':
+        print(feat.GetStyleString())
+        gdaltest.post_reason( 'Got wrong style string (4)' )
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test handling of DIMENSION anonymous block insertion (#7120)
+
+def ogr_dxf_46():
+
+    ds = ogr.Open('data/dimension.dxf')
+    lyr = ds.GetLayer(0)
+
+    # Extension lines
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (320000.0 5820010.0625 0,320000.0 5820010.43087258 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (320010.0 5820010.0625 0,320010.0 5820010.43087258 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Dimension arrow lines
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (320000.18 5820010.25087258 0,320004.475225102 5820010.25087258 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'LINESTRING Z (320009.82 5820010.25087258 0,320005.524774898 5820010.25087258 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Arrowheads
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((320000.18 5820010.28087259,320000.18 5820010.22087258,320000.0 5820010.25087258,320000.18 5820010.28087259))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON ((320009.82 5820010.28087259,320009.82 5820010.22087258,320010.0 5820010.25087258,320009.82 5820010.28087259))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Text
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT Z (320004.537844475 5820010.16240737 0)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"10.0000",p:1,s:0.18g,c:#000000)':
+        gdaltest.post_reason( 'Wrong style string on DIMENSION text from block' )
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test handling of DIMENSION fallback when there is no anonymous block (#7120)
+
+def ogr_dxf_47():
+
+    ds = ogr.Open('data/dimension-entities-only.dxf')
+    lyr = ds.GetLayer(0)
+
+    # Basic DIMENSION inheriting default styling
+
+    # Dimension line and extension lines
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((320010.0 5820010.25087258,320000.0 5820010.25087258),(320010.0 5820010.0625,320010.0 5820010.43087258),(320000.0 5820010.0625,320000.0 5820010.43087258))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Arrowheads
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((320009.82 5820010.28087259 0,320010.0 5820010.25087258 0,320009.82 5820010.22087258 0,320009.82 5820010.28087259 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((320000.18 5820010.22087258 0,320000.0 5820010.25087258 0,320000.18 5820010.28087259 0,320000.18 5820010.22087258 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Text
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT (320005.0 5820010.25087258)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"10.0000",p:11,s:0.18g)':
+        gdaltest.post_reason( 'Wrong style string on first DIMENSION text' )
+        f.DumpReadable()
+        return 'fail'
+
+    # DIMENSION with style overrides
+
+    # Dimension line
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((320005 5820005,320000 5820010))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Arrowheads
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((320004.116116524 5820006.23743687 0,320005 5820005 0,320003.762563133 5820005.88388348 0,320004.116116524 5820006.23743687 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((320000.883883476 5820008.76256313 0,320000 5820010 0,320001.237436867 5820009.11611652 0,320000.883883476 5820008.76256313 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Text
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT (320002.5 5820007.5)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"7.1",p:11,a:-45,s:0.48g)':
+        gdaltest.post_reason( 'Wrong style string on second DIMENSION text' )
+        f.DumpReadable()
+        return 'fail'
+
+    # DIMENSION inheriting styles from a custom DIMSTYLE
+
+    # Dimension line
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'MULTILINESTRING ((320000.0 5820001.5,320005.0 5820001.5),(320000.0 5820002.4,320000 5820001),(320005.0 5820002.4,320005 5820001))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Arrowheads
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((320000.18 5820001.47 0,320000.0 5820001.5 0,320000.18 5820001.53 0,320000.18 5820001.47 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POLYGON Z ((320004.82 5820001.53 0,320005.0 5820001.5 0,320004.82 5820001.47 0,320004.82 5820001.53 0))') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+
+    # Text
+    f = lyr.GetNextFeature()
+    if ogrtest.check_feature_geometry(f, 'POINT (320001.5 5820001.5)') != 0:
+        gdaltest.post_reason('fail')
+        f.DumpReadable()
+        return 'fail'
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"±2 3\n\\P4 5.0000",p:11,s:0.18g)':
+        gdaltest.post_reason( 'Wrong style string on third DIMENSION text' )
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test ByLayer and ByBlock color values (#7130)
+
+def ogr_dxf_48():
+
+    gdal.SetConfigOption('DXF_MERGE_BLOCK_GEOMETRIES', 'FALSE')
+    ds = ogr.Open('data/byblock-bylayer.dxf')
+    gdal.SetConfigOption('DXF_MERGE_BLOCK_GEOMETRIES', None)
+
+    lyr = ds.GetLayer(0)
+
+    # First insert an anonymous dimension block (this is NOT a test of our
+    # basic "dimension" renderer)
+
+    # The dimension extension lines are ByBlock; the INSERT is magenta
+    f = lyr.GetFeature(0)
+    if f.GetStyleString() != 'PEN(c:#ff00ff,p:"1.5875g 1.5875g")':
+        gdaltest.post_reason( 'Wrong style string on feature 0' )
+        f.DumpReadable()
+        return 'fail'
+
+    # The dimension line is set directly to blue
+    f = lyr.GetFeature(2)
+    if f.GetStyleString() != 'PEN(c:#0000ff)':
+        gdaltest.post_reason( 'Wrong style string on feature 2' )
+        f.DumpReadable()
+        return 'fail'
+
+    # The first arrowhead is a custom block; the SOLID in this block is
+    # colored ByLayer; the layer the block is inserted on (_K_POINTS)
+    # is colored red
+    f = lyr.GetFeature(4)
+    if f.GetStyleString() != 'PEN(c:#ff0000)':
+        gdaltest.post_reason( 'Wrong style string on feature 4' )
+        f.DumpReadable()
+        return 'fail'
+
+    # The first arrowhead block also contains a line colored ByBlock.
+    # The arrowhead INSERT is blue, so the line should be blue.
+    # Because this INSERT is within another block, we need to make
+    # sure the ByBlock colouring isn't handled again for the outer
+    # block, which is magenta.
+    f = lyr.GetFeature(5)
+    if f.GetStyleString() != 'PEN(c:#0000ff)':
+        gdaltest.post_reason( 'Wrong style string on feature 5' )
+        f.DumpReadable()
+        return 'fail'
+
+    # The second arrowhead, like the dimension line, is set directly
+    # to blue
+    f = lyr.GetFeature(6)
+    if f.GetStyleString() != 'PEN(c:#0000ff)':
+        gdaltest.post_reason( 'Wrong style string on feature 6' )
+        f.DumpReadable()
+        return 'fail'
+
+    # Like the dimension extension lines, the text is ByBlock (#7099)
+    f = lyr.GetFeature(7)
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"10.141 (2C)",s:0.4g,p:5,c:#ff00ff)':
+        gdaltest.post_reason( 'Wrong style string on feature 7' )
+        f.DumpReadable()
+        return 'fail'
+
+    # ByLayer feature in block
+    f = lyr.GetFeature(11)
+    if f.GetStyleString() != 'PEN(c:#ff0000)':
+        gdaltest.post_reason( 'Wrong style string on feature 11' )
+        f.DumpReadable()
+        return 'fail'
+
+    # ByBlock feature in block
+    f = lyr.GetFeature(12)
+    if f.GetStyleString() != 'PEN(c:#a552a5)':
+        gdaltest.post_reason( 'Wrong style string on feature 12' )
+        f.DumpReadable()
+        return 'fail'
+
+    # ByLayer feature inserted via an INSERT on yellow layer in block
+    # inserted via an INSERT on red layer: should be yellow
+    f = lyr.GetFeature(13)
+    if f.GetStyleString() != 'PEN(c:#ffff00)':
+        gdaltest.post_reason( 'Wrong style string on feature 13' )
+        f.DumpReadable()
+        return 'fail'
+
+    # ByBlock feature inserted via a ByBlock INSERT in block inserted
+    # via a color213 INSERT: should be color213
+    f = lyr.GetFeature(14)
+    if f.GetStyleString() != 'PEN(c:#a552a5)':
+        gdaltest.post_reason( 'Wrong style string on feature 14' )
+        f.DumpReadable()
+        return 'fail'
+
+    # ByBlock entities directly on the canvas show up as black
+    f = lyr.GetFeature(15)
+    if f.GetStyleString() != 'PEN(c:#000000)':
+        gdaltest.post_reason( 'Wrong style string on feature 15' )
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test block attributes (ATTRIB entities) (#7139)
+
+def ogr_dxf_49():
+
+    # Inline blocks mode
+    ds = ogr.Open('data/attrib.dxf')
+    lyr = ds.GetLayer(0)
+    if lyr.GetFeatureCount() != 6:
+        gdaltest.post_reason( 'Wrong feature count, got %d' % lyr.GetFeatureCount() )
+        return 'fail'
+
+    f = lyr.GetFeature(1)
+    if f.GetField('Text') != 'super test':
+        gdaltest.post_reason( 'Wrong Text value on first ATTRIB on first INSERT' )
+        f.DumpReadable()
+        return 'fail'
+    if f.GetStyleString() != 'LABEL(f:"Arial",t:"super test",p:2,s:8g,w:234.6,dx:30.293,c:#ff0000)':
+        gdaltest.post_reason( 'Wrong style string on first ATTRIB on first INSERT' )
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetFeature(4)
+    geom = f.GetGeometryRef()
+    if geom.GetGeometryType() != ogr.wkbLineString25D:
+        gdaltest.post_reason( 'Expected LINESTRING Z' )
+        return 'fail'
+
+    f = lyr.GetFeature(5)
+    if f.GetField('Text') != '':
+        gdaltest.post_reason( 'Wrong Text value on ATTRIB on second INSERT' )
+        f.DumpReadable()
+        return 'fail'
+
+    # No inlining
+    gdal.SetConfigOption('DXF_INLINE_BLOCKS', 'FALSE')
+    ds = ogr.Open('data/attrib.dxf')
+    gdal.SetConfigOption('DXF_INLINE_BLOCKS', None)
+
+    lyr = ds.GetLayerByName('entities')
+
+    f = lyr.GetFeature(0)
+    if f.GetField('BlockAttributes') != ['MYATT1 super test','MYATTMULTI_001 Corps','MYATTMULTI_002 plpl']:
+        gdaltest.post_reason( 'Wrong BlockAttributes value on first INSERT' )
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetFeature(1)
+    if f.GetField('BlockAttributes') != ['MYATTMULTI ']:
+        gdaltest.post_reason( 'Wrong BlockAttributes value on second INSERT' )
+        f.DumpReadable()
+        return 'fail'
+
+    lyr = ds.GetLayerByName('blocks')
+
+    f = lyr.GetFeature(1)
+    if f.GetField('AttributeTag') != 'MYATT1':
+        gdaltest.post_reason( 'Wrong AttributeTag value on first ATTDEF' )
+        f.DumpReadable()
+        return 'fail'
+
+    f = lyr.GetFeature(2)
+    if f.GetField('AttributeTag') != 'MYATTMULTI':
+        gdaltest.post_reason( 'Wrong AttributeTag value on second ATTDEF' )
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test extended text styling (#7151) and additional ByBlock/ByLayer tests (#7130)
+
+def ogr_dxf_50():
+
+    gdal.SetConfigOption('DXF_MERGE_BLOCK_GEOMETRIES', 'FALSE')
+    ds = ogr.Open('data/text-fancy.dxf')
+    gdal.SetConfigOption('DXF_MERGE_BLOCK_GEOMETRIES', None)
+
+    lyr = ds.GetLayer(0)
+
+    # Text in Times New Roman bold italic, stretched 190%, color ByLayer
+    # inside block inserted on a blue layer
+    f = lyr.GetFeature(0)
+    if f.GetStyleString() != 'LABEL(f:"Times New Roman",bo:1,it:1,t:"Some nice text",p:5,s:10g,w:190,dx:84.3151,dy:4.88825,c:#0000ff)':
+        gdaltest.post_reason( 'Wrong style string on feature 0' )
+        f.DumpReadable()
+        return 'fail'
+
+    # Polyline, color and linetype ByBlock inside block with red color
+    # and ByLayer linetype inserted on a layer with DASHED2 linetype
+    f = lyr.GetFeature(1)
+    if f.GetStyleString() != 'PEN(c:#ff0000,w:2.1g,p:"2.5g 1.25g")':
+        gdaltest.post_reason( 'Wrong style string on feature 1' )
+        f.DumpReadable()
+        return 'fail'
+
+    # Make sure TEXT objects don't inherit anything other than font name,
+    # bold and italic from their parent STYLE
+    f = lyr.GetFeature(2)
+    if f.GetStyleString() != 'LABEL(f:"Times New Roman",bo:1,it:1,t:"Good text",p:1,s:5g,c:#000000)':
+        gdaltest.post_reason( 'Wrong style string on feature 2' )
+        f.DumpReadable()
+        return 'fail'
+
+    # Polyline, color ByBlock, inside block inserted on a blue layer
+    f = lyr.GetFeature(3)
+    if f.GetStyleString() != 'PEN(c:#0000ff,w:2.1g)':
+        gdaltest.post_reason( 'Wrong style string on feature 3' )
+        f.DumpReadable()
+        return 'fail'
+
+    # MTEXT stretched 250%, color ByLayer inside block inserted on a blue layer
+    f = lyr.GetFeature(4)
+    if f.GetStyleString() != 'LABEL(f:"Times New Roman",bo:1,it:1,t:"Some nice MTEXT",s:10g,w:250,p:8,c:#0000ff)':
+        gdaltest.post_reason( 'Wrong style string on feature 4' )
+        f.DumpReadable()
+        return 'fail'
+
+
+    # Individually invisible object should be invisible
+    f = lyr.GetFeature(5)
+    if f.GetStyleString() != 'LABEL(f:"Times New Roman",bo:1,it:1,t:"Invisible text",p:1,s:5g,c:#00000000)':
+        gdaltest.post_reason( 'Wrong style string on feature 5' )
+        f.DumpReadable()
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test transformation of text inside blocks (ACAdjustText function)
+
+def ogr_dxf_51():
+
+    ds = ogr.Open('data/text-block-transform.dxf')
+
+    lyr = ds.GetLayer(0)
+
+    wanted_style = ['a:330','c:#000000','dx:1.96672','dy:-1.13549','f:"Arial"','p:2','s:3g','t:"some text"','w:25']
+
+    # Three text features, all with the same effective geometry and style
+    for x in range(3):
+        f = lyr.GetNextFeature()
+
+        if ogrtest.check_feature_geometry(f, 'POINT Z (2.83231568033604 5.98356393304499 0)') != 0:
+            gdaltest.post_reason( 'Wrong geometry on feature %d' % x )
+            f.DumpReadable()
+            return 'fail'
+
+        if sorted( f.GetStyleString()[6:-1].split(',') ) != wanted_style:
+            gdaltest.post_reason( 'Wrong style string on feature %d' % x )
+            f.DumpReadable()
+            return 'fail'
+
+    return 'success'
 
 ###############################################################################
 # cleanup
@@ -2609,6 +3573,20 @@ gdaltest_list = [
     ogr_dxf_35,
     ogr_dxf_36,
     ogr_dxf_37,
+    ogr_dxf_38,
+    ogr_dxf_39,
+    ogr_dxf_40,
+    ogr_dxf_41,
+    ogr_dxf_42,
+    ogr_dxf_43,
+    ogr_dxf_44,
+    ogr_dxf_45,
+    ogr_dxf_46,
+    ogr_dxf_47,
+    ogr_dxf_48,
+    ogr_dxf_49,
+    ogr_dxf_50,
+    ogr_dxf_51,
     ogr_dxf_cleanup ]
 
 if __name__ == '__main__':

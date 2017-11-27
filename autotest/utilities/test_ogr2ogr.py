@@ -1969,8 +1969,9 @@ def test_ogr2ogr_51():
     ds = ogr.Open('tmp/test_ogr2ogr_51_dst.shp')
     lyr = ds.GetLayer(0)
     sr = lyr.GetSpatialRef()
-    if sr is None or sr.ExportToWkt().find('GEOGCS["GCS_WGS_1984"') != 0:
+    if sr is None or sr.ExportToWkt().find('GEOGCS["WGS 84"') != 0:
         gdaltest.post_reason('fail')
+        print(sr.ExportToWkt())
         return 'fail'
     feat = lyr.GetNextFeature()
     if feat.GetGeometryRef().ExportToWkt() != 'POINT (1 2)':
@@ -2621,14 +2622,22 @@ def test_ogr2ogr_64():
     return 'success'
 
 ###############################################################################
-# Test detection of bad extension
+# Test detection of extension
 
 def test_ogr2ogr_65():
     if test_cli_utilities.get_ogr2ogr_path() is None:
         return 'skip'
 
-    (ret, err) = gdaltest.runexternal_out_and_err(test_cli_utilities.get_ogr2ogr_path() + ' /vsimem/out.csv ../ogr/data/poly.shp')
-    if err.find("The target file has a 'csv' extension") < 0:
+    gdaltest.runexternal(test_cli_utilities.get_ogr2ogr_path() + ' tmp/out.csv ../ogr/data/poly.shp')
+    ds = gdal.OpenEx('tmp/out.csv')
+    if ds.GetDriver().ShortName != 'CSV':
+        gdaltest.post_reason('fail')
+        return 'fail'
+    ds = None
+    gdal.Unlink('tmp/out.csv')
+
+    (ret, err) = gdaltest.runexternal_out_and_err(test_cli_utilities.get_ogr2ogr_path() + ' /vsimem/out.xxx ../ogr/data/poly.shp')
+    if err.find("Cannot guess") < 0:
         gdaltest.post_reason('expected a warning about probably wrong extension')
         print(ret)
         print(err)

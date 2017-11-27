@@ -425,6 +425,13 @@ public:
     return OSRAutoIdentifyEPSG( self );
   }
 
+#ifdef SWIGPYTHON
+  void FindMatches( char** options = NULL, OSRSpatialReferenceShadow*** matches = NULL, int* nvalues = NULL, int** confidence_values = NULL )
+  {
+        *matches = OSRFindMatches(self, options, nvalues, confidence_values);
+  }
+#endif
+
   OGRErr SetProjection( char const *arg ) {
     return OSRSetProjection( self, arg );
   }
@@ -947,6 +954,11 @@ public:
 
   OGRErr MorphFromESRI() {
     return OSRMorphFromESRI(self);
+  }
+
+%newobject ConvertToOtherProjection;
+  OSRSpatialReferenceShadow* ConvertToOtherProjection(const char* other_projection, char **options = NULL) {
+    return OSRConvertToOtherProjection(self, other_projection, options);
   }
 
 } /* %extend */

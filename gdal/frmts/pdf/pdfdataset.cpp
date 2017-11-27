@@ -129,7 +129,11 @@ class ObjectAutoFree : public Object
 
 public:
     ObjectAutoFree() {}
-    ~ObjectAutoFree() { obj.free(); }
+    ~ObjectAutoFree() {
+#ifndef POPPLER_0_58_OR_LATER
+        obj.free();
+#endif
+    }
 
     Object* getObj() { return &obj; }
 };
@@ -2290,7 +2294,11 @@ GDALPDFObject* PDFDataset::GetCatalog()
     if (bUseLib.test(PDFLIB_POPPLER))
     {
         poCatalogObjectPoppler = new ObjectAutoFree;
+#ifdef POPPLER_0_58_OR_LATER
+        *poCatalogObjectPoppler->getObj() = poDocPoppler->getXRef()->getCatalog();
+#else
         poDocPoppler->getXRef()->getCatalog(poCatalogObjectPoppler->getObj());
+#endif
         if (!poCatalogObjectPoppler->getObj()->isNull())
             poCatalogObject = new GDALPDFObjectPoppler(poCatalogObjectPoppler->getObj(), FALSE);
     }
@@ -4031,7 +4039,11 @@ GDALDataset *PDFDataset::Open( GDALOpenInfo * poOpenInfo )
     GDALPDFObject* poPageObj = NULL;
 #ifdef HAVE_POPPLER
     PDFDoc* poDocPoppler = NULL;
+#ifdef POPPLER_0_58_OR_LATER
+    Object oObj;
+#else
     ObjectAutoFree oObj;
+#endif
     Page* poPagePoppler = NULL;
     Catalog* poCatalogPoppler = NULL;
 #endif
@@ -4078,8 +4090,12 @@ GDALDataset *PDFDataset::Open( GDALOpenInfo * poOpenInfo )
         if (pszUserPwd)
             poUserPwd = new GooString(pszUserPwd);
 
+#ifdef POPPLER_0_58_OR_LATER
+        poDocPoppler = new PDFDoc(new VSIPDFFileStream(fp, pszFilename, std::move(oObj)), NULL, poUserPwd);
+#else
         oObj.getObj()->initNull();
         poDocPoppler = new PDFDoc(new VSIPDFFileStream(fp, pszFilename, oObj.getObj()), NULL, poUserPwd);
+#endif
         delete poUserPwd;
 
         if ( !poDocPoppler->isOk() || poDocPoppler->getNumPages() == 0 )
@@ -4770,10 +4786,16 @@ GDALDataset *PDFDataset::Open( GDALOpenInfo * poOpenInfo )
     if( poDocPoppler->getXRef()->isOk() )
     {
         Object oInfo;
+#ifdef POPPLER_0_58_OR_LATER
+        oInfo = poDocPoppler->getDocInfo();
+#else
         poDocPoppler->getDocInfo(&oInfo);
+#endif
         GDALPDFObjectPoppler oInfoObjPoppler(&oInfo, FALSE);
         poDS->ParseInfo(&oInfoObjPoppler);
+#ifndef POPPLER_0_58_OR_LATER
         oInfo.free();
+#endif
     }
 
     /* Find layers */
@@ -5986,6 +6008,29 @@ int PDFDataset::ParseVP(GDALPDFObject* poVP, double dfMediaBoxWidth, double dfMe
 
         GDALPDFDictionary* poVPEltDict = poVPElt->GetDictionary();
 
+        GDALPDFObject* poMeasure = poVPEltDict->Get("Measure");
+        if( poMeasure == NULL ||
+            poMeasure->GetType() != PDFObjectType_Dictionary )
+        {
+            continue;
+        }
+/* -------------------------------------------------------------------- */
+/*      Extract Subtype attribute                                       */
+/* -------------------------------------------------------------------- */
+        GDALPDFDictionary* poMeasureDict = poMeasure->GetDictionary();
+        GDALPDFObject* poSubtype = poMeasureDict->Get("Subtype");
+        if( poSubtype == NULL ||
+            poSubtype->GetType() != PDFObjectType_Name )
+        {
+            continue;
+        }
+
+        CPLDebug("PDF", "Subtype = %s", poSubtype->GetName().c_str());
+        if( !EQUAL(poSubtype->GetName(), "GEO") )
+        {
+            continue;
+        }
+
         GDALPDFObject* poBBox = poVPEltDict->Get("BBox");
         if( poBBox == NULL ||
             poBBox->GetType() != PDFObjectType_Array )
@@ -6103,6 +6148,8 @@ int PDFDataset::ParseMeasure(GDALPDFObject* poMeasure,
     }
 
     CPLDebug("PDF", "Subtype = %s", poSubtype->GetName().c_str());
+    if( !EQUAL(poSubtype->GetName(), "GEO") )
+        return FALSE;
 
 /* -------------------------------------------------------------------- */
 /*      Extract Bounds attribute (optional)                             */
@@ -6879,6 +6926,8 @@ void GDALRegister_PDF()
 #if defined(HAVE_POPPLER) || defined(HAVE_PDFIUM)
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 #endif
+
+    poDriver->SetMetadataItem( GDAL_DCAP_FEATURE_STYLES, "YES" );
 
 #ifdef HAVE_POPPLER
     poDriver->SetMetadataItem( "HAVE_POPPLER", "YES" );

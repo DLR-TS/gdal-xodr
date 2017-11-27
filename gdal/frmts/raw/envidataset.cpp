@@ -2305,6 +2305,29 @@ GDALDataset *ENVIDataset::Open( GDALOpenInfo *poOpenInfo )
         nBandOffset = (vsi_l_offset)nLineOffset * nLines;
     }
 
+    const char* pszMajorFrameOffset = CSLFetchNameValue(
+                            poDS->papszHeader, "major_frame_offsets");
+    if (pszMajorFrameOffset != NULL)
+    {
+        char **papszMajorFrameOffsets = poDS->SplitList(pszMajorFrameOffset);
+
+        const int nTempCount = CSLCount(papszMajorFrameOffsets);
+        if (nTempCount == 2)
+        {
+            int nOffset1 = atoi(papszMajorFrameOffsets[0]);
+            int nOffset2 = atoi(papszMajorFrameOffsets[1]);
+            if( nOffset1 >= 0 && nOffset2 >= 0 &&
+                nHeaderSize < INT_MAX - nOffset1 &&
+                nOffset1 < INT_MAX - nOffset2 &&
+                nOffset1 + nOffset2 < INT_MAX - nLineOffset )
+            {
+                nHeaderSize += nOffset1;
+                nLineOffset += nOffset1 + nOffset2;
+            }
+        }
+        CSLDestroy(papszMajorFrameOffsets);
+    }
+
     // Currently each ENVIRasterBand allocates nPixelOffset * nRasterXSize bytes
     // so for a pixel interleaved scheme, this will allocate lots of memory!
     // Actually this is quadratic in the number of bands!
@@ -2316,8 +2339,9 @@ GDALDataset *ENVIDataset::Open( GDALOpenInfo *poOpenInfo )
         static_cast<vsi_l_offset>(nPixelOffset) * poDS->nRasterXSize > 20000 )
     {
         vsi_l_offset nExpectedFileSize =
-                nHeaderSize + nBandOffset * (nBands - 1) +
-                            (poDS->nRasterXSize-1) * nPixelOffset;
+            nHeaderSize + nBandOffset * (nBands - 1) +
+            (poDS->nRasterYSize-1) * static_cast<vsi_l_offset>(nLineOffset) +
+            (poDS->nRasterXSize-1) * static_cast<vsi_l_offset>(nPixelOffset);
         CPL_IGNORE_RET_VAL( VSIFSeekL(poDS->fpImage, 0, SEEK_END) );
         vsi_l_offset nFileSize = VSIFTellL(poDS->fpImage);
         if( nFileSize < nExpectedFileSize )

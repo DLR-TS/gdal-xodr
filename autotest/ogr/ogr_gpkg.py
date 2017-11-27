@@ -218,11 +218,26 @@ def ogr_gpkg_4():
         return 'fail'
 
     lyr0 = gdaltest.gpkg_ds.GetLayer(0)
-    lyr1 = gdaltest.gpkg_ds.GetLayer(1)
+
+    if lyr0.GetFIDColumn() != 'fid':
+        gdaltest.post_reason( 'unexpected FID name for layer 0' )
+        return 'fail'
+
+    gdaltest.gpkg_ds = None
+    gdaltest.gpkg_ds = gdaltest.gpkg_dr.Open( 'tmp/gpkg_test.gpkg', update = 1 )
+
+    lyr0 = gdaltest.gpkg_ds.GetLayer(0)
 
     if lyr0.GetName() != 'first_layer':
         gdaltest.post_reason( 'unexpected layer name for layer 0' )
         return 'fail'
+
+    gdaltest.gpkg_ds = None
+    gdaltest.gpkg_ds = gdaltest.gpkg_dr.Open( 'tmp/gpkg_test.gpkg', update = 1 )
+
+    lyr0 = gdaltest.gpkg_ds.GetLayer(0)
+    lyr1 = gdaltest.gpkg_ds.GetLayer(1)
+
     if lyr0.GetLayerDefn().GetGeomFieldDefn(0).GetName() != 'gpkg_geometry':
         gdaltest.post_reason( 'unexpected geometry field name for layer 0' )
         return 'fail'
@@ -1342,14 +1357,18 @@ def ogr_gpkg_16():
 
     # No warning since we open as read-only
     ds = ogr.Open('/vsimem/ogr_gpk_16.gpkg')
+    lyr = ds.GetLayer(0)
+    lyr.GetLayerDefn()
     ds = None
     if gdal.GetLastErrorMsg() != '':
         gdaltest.post_reason('fail : warning NOT expected')
         return 'fail'
 
     # Warning since we open as read-write
-    gdal.PushErrorHandler('CPLQuietErrorHandler')
     ds = ogr.Open('/vsimem/ogr_gpk_16.gpkg', update = 1)
+    lyr = ds.GetLayer(0)
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+    lyr.GetLayerDefn()
     gdal.PopErrorHandler()
     if gdal.GetLastErrorMsg() == '':
         gdaltest.post_reason('fail : warning expected')
@@ -1359,16 +1378,20 @@ def ogr_gpkg_16():
     ds = None
 
     # Warning since we open as read-only
-    gdal.PushErrorHandler('CPLQuietErrorHandler')
     ds = ogr.Open('/vsimem/ogr_gpk_16.gpkg')
+    lyr = ds.GetLayer(0)
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+    lyr.GetLayerDefn()
     gdal.PopErrorHandler()
     if gdal.GetLastErrorMsg() == '':
         gdaltest.post_reason('fail : warning expected')
         return 'fail'
 
     # and also as read-write
-    gdal.PushErrorHandler('CPLQuietErrorHandler')
     ds = ogr.Open('/vsimem/ogr_gpk_16.gpkg', update = 1)
+    lyr = ds.GetLayer(0)
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+    lyr.GetLayerDefn()
     gdal.PopErrorHandler()
     if gdal.GetLastErrorMsg() == '':
         gdaltest.post_reason('fail : warning expected')
@@ -1384,8 +1407,10 @@ def ogr_gpkg_16():
         "extension_name, definition, scope ) VALUES ( 'foo', 'geom', 'gpkg_geom_XXXX', 'some ext', 'read-write' ) ")
     ds = None
 
-    gdal.PushErrorHandler('CPLQuietErrorHandler')
     ds = ogr.Open('/vsimem/ogr_gpk_16.gpkg')
+    lyr = ds.GetLayer(0)
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+    lyr.GetLayerDefn()
     gdal.PopErrorHandler()
     if gdal.GetLastErrorMsg() == '':
         gdaltest.post_reason('fail : warning expected')
@@ -1402,7 +1427,8 @@ def ogr_gpkg_16():
 
     # No warning since we open as read-only
     ds = ogr.Open('/vsimem/ogr_gpk_16.gpkg')
-    ds = None
+    lyr = ds.GetLayer(0)
+    lyr.GetLayerDefn()
     if gdal.GetLastErrorMsg() != '':
         gdaltest.post_reason('fail : warning NOT expected')
         return 'fail'
@@ -1737,7 +1763,7 @@ def ogr_gpkg_20():
 
     ds = ogr.Open('/vsimem/ogr_gpkg_20.gpkg')
 
-    sql_lyr = ds.ExecuteSQL("SELECT * FROM gpkg_spatial_ref_sys WHERE srs_name='my geogcs' AND srs_id = 4327 AND organization='MY_ORG' AND organization_coordsys_id=4326 AND description is NULL")
+    sql_lyr = ds.ExecuteSQL("SELECT * FROM gpkg_spatial_ref_sys WHERE srs_name='my geogcs' AND srs_id = 100000 AND organization='MY_ORG' AND organization_coordsys_id=4326 AND description is NULL")
     fc = sql_lyr.GetFeatureCount()
     ds.ReleaseResultSet(sql_lyr)
     if fc != 1:
@@ -1745,7 +1771,7 @@ def ogr_gpkg_20():
         print(fc)
         return 'fail'
 
-    sql_lyr = ds.ExecuteSQL("SELECT * FROM gpkg_spatial_ref_sys WHERE srs_name='another geogcs' AND srs_id = 4328 AND organization='NONE' AND organization_coordsys_id=4328 AND description is NULL")
+    sql_lyr = ds.ExecuteSQL("SELECT * FROM gpkg_spatial_ref_sys WHERE srs_name='another geogcs' AND srs_id = 100001 AND organization='NONE' AND organization_coordsys_id=100001 AND description is NULL")
     fc = sql_lyr.GetFeatureCount()
     ds.ReleaseResultSet(sql_lyr)
     if fc != 1:
@@ -3934,11 +3960,11 @@ def ogr_gpkg_46():
 
     ds.ExecuteSQL("CREATE VIEW my_view2 AS SELECT geom, fid AS OGC_FID, 'bla' as another_column FROM foo")
     ds.ExecuteSQL("INSERT INTO gpkg_contents (table_name, identifier, data_type, srs_id) VALUES ( 'my_view2', 'my_view2', 'features', 0 )")
-    ds.ExecuteSQL("INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) values ('my_view2', 'my_geom', 'GEOMETRY', 0, 0, 0)")
+    ds.ExecuteSQL("INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) values ('my_view2', 'geom', 'GEOMETRY', 0, 0, 0)")
 
     ds.ExecuteSQL('CREATE VIEW my_view3 AS SELECT a.fid, a.geom, b.fid as fid2 FROM foo a, foo b')
     ds.ExecuteSQL("INSERT INTO gpkg_contents (table_name, identifier, data_type, srs_id) VALUES ( 'my_view3', 'my_view3', 'features', 0 )")
-    ds.ExecuteSQL("INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) values ('my_view3', 'my_geom', 'GEOMETRY', 0, 0, 0)")
+    ds.ExecuteSQL("INSERT INTO gpkg_geometry_columns (table_name, column_name, geometry_type_name, srs_id, z, m) values ('my_view3', 'geom', 'GEOMETRY', 0, 0, 0)")
 
     ds = None
 
@@ -4508,6 +4534,44 @@ def ogr_gpkg_56():
     return 'success'
 
 ###############################################################################
+# Test opening a corrupted gpkg with duplicated layer names
+
+def ogr_gpkg_57():
+
+    if gdaltest.gpkg_dr is None:
+        return 'skip'
+
+    if gdaltest.gpkg_dr.GetMetadataItem("ENABLE_SQL_GPKG_FORMAT") != 'YES':
+        return 'skip'
+
+    tmpfile = '/vsimem/tmp.gpkg.txt'
+    gdal.FileFromMemBuffer(tmpfile,
+"""-- SQL GPKG
+CREATE TABLE gpkg_spatial_ref_sys (srs_name,srs_id,organization,organization_coordsys_id,definition,description);
+INSERT INTO "gpkg_spatial_ref_sys" VALUES('',0,'NONE',0,'undefined','');
+CREATE TABLE gpkg_contents (table_name,data_type,identifier,description,last_change,min_x, min_y,max_x, max_y,srs_id);
+INSERT INTO "gpkg_contents" VALUES('poly','features','poly','','',NULL,NULL,NULL,NULL,0);
+INSERT INTO "gpkg_contents" VALUES('poly','features','poly','','',NULL,NULL,NULL,NULL,0);
+CREATE TABLE gpkg_geometry_columns (table_name,column_name,geometry_type_name,srs_id,z,m);
+INSERT INTO "gpkg_geometry_columns" VALUES('poly','geom','POLYGON',0,0,0);
+CREATE TABLE "poly"("fid" INTEGER PRIMARY KEY, "geom" POLYGON);
+""")
+
+    with gdaltest.error_handler():
+        ds = ogr.Open(tmpfile)
+    if ds.GetLayerCount() != 1:
+        gdaltest.post_reason('bad layer count')
+        return 'fail'
+    if gdal.GetLastErrorMsg().find('Table poly appearing several times') < 0:
+        gdaltest.post_reason('should NOT have warned')
+        return 'fail'
+    ds = None
+
+    gdal.Unlink(tmpfile)
+
+    return 'success'
+
+###############################################################################
 # Remove the test db from the tmp directory
 
 def ogr_gpkg_cleanup():
@@ -4588,11 +4652,12 @@ gdaltest_list = [
     ogr_gpkg_54,
     ogr_gpkg_55,
     ogr_gpkg_56,
+    ogr_gpkg_57,
     ogr_gpkg_test_ogrsf,
     ogr_gpkg_cleanup,
 ]
 
-# gdaltest_list = [ ogr_gpkg_1, ogr_gpkg_38, ogr_gpkg_cleanup ]
+# gdaltest_list = [ ogr_gpkg_1, ogr_gpkg_46, ogr_gpkg_cleanup ]
 
 if __name__ == '__main__':
 

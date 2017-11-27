@@ -99,19 +99,20 @@ static GDALGridOptionsForBinary *GDALGridOptionsForBinaryNew(void)
 
 static void GDALGridOptionsForBinaryFree( GDALGridOptionsForBinary* psOptionsForBinary )
 {
-    if( psOptionsForBinary )
-    {
-        CPLFree(psOptionsForBinary->pszSource);
-        CPLFree(psOptionsForBinary->pszDest);
-        CPLFree(psOptionsForBinary->pszFormat);
-        CPLFree(psOptionsForBinary);
-    }
+    if( psOptionsForBinary == NULL )
+        return;
+
+    CPLFree(psOptionsForBinary->pszSource);
+    CPLFree(psOptionsForBinary->pszDest);
+    CPLFree(psOptionsForBinary->pszFormat);
+    CPLFree(psOptionsForBinary);
 }
+
 /************************************************************************/
 /*                                main()                                */
 /************************************************************************/
 
-int main(int argc, char** argv)
+MAIN_START(argc, argv)
 {
     /* Check strict compilation and runtime library version as we use C++ API */
     if (! GDAL_CHECK_VERSION(argv[0]))
@@ -164,9 +165,7 @@ int main(int argc, char** argv)
 
     if( psOptionsForBinary->pszDest == NULL )
         psOptionsForBinary->pszDest = CPLStrdup(psOptionsForBinary->pszSource);
-    else if (!psOptionsForBinary->bQuiet && !psOptionsForBinary->bFormatExplicitlySet)
-        CheckExtensionConsistency(psOptionsForBinary->pszDest, psOptionsForBinary->pszFormat);
-
+ 
 /* -------------------------------------------------------------------- */
 /*      Open input file.                                                */
 /* -------------------------------------------------------------------- */
@@ -181,7 +180,7 @@ int main(int argc, char** argv)
                                    psOptions, &bUsageError);
     if(bUsageError == TRUE)
         Usage();
-    int nRetCode = (hOutDS) ? 0 : 1;
+    int nRetCode = hOutDS ? 0 : 1;
 
     GDALClose(hInDS);
     GDALClose(hOutDS);
@@ -193,3 +192,4 @@ int main(int argc, char** argv)
 
     return nRetCode;
 }
+MAIN_END

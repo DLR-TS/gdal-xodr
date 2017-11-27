@@ -2949,7 +2949,7 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
     GDALRasterIOExtraArg sExtraArg;
     INIT_RASTERIO_EXTRA_ARG(sExtraArg);
 
-    const double dfScale = nBuckets / (dfMax - dfMin);
+    const double dfScale = (dfMax > dfMin) ? nBuckets / (dfMax - dfMin) : 0.0;
     memset( panHistogram, 0, sizeof(GUIntBig) * nBuckets );
 
     int bGotNoDataValue = FALSE;
@@ -3639,6 +3639,9 @@ CPLErr CPL_STDCALL GDALGetDefaultHistogramEx(
  *
  * Many drivers just ignore the AdviseRead() call, but it can dramatically
  * accelerate access via some drivers.
+ *
+ * Depending on call paths, drivers might receive several calls to
+ * AdviseRead() with the same parameters.
  *
  * @param nXOff The pixel offset to the top left corner of the region
  * of the band to be accessed.  This would be zero to start from the left side.

@@ -103,15 +103,15 @@ typedef OGRMultiPolygon* (*OGRPolyhedralSurfaceCastToMultiPolygon)(OGRPolyhedral
  * relationships between geometries is described in the SFCOM, or other simple
  * features interface specifications, like "OpenGIS® Implementation
  * Specification for Geographic information - Simple feature access - Part 1:
- * Common architecture"
- * (<a href="http://www.opengeospatial.org/standards/sfa">OGC 06-103r4</a>)
+ * Common architecture":
+ * <a href="http://www.opengeospatial.org/standards/sfa">OGC 06-103r4</a>
  *
  * In GDAL 2.0, the hierarchy of classes has been extended with
  * <a href="https://portal.opengeospatial.org/files/?artifact_id=32024">
  * (working draft) ISO SQL/MM Part 3 (ISO/IEC 13249-3)</a> curve geometries :
  * CIRCULARSTRING (OGRCircularString), COMPOUNDCURVE (OGRCompoundCurve),
  * CURVEPOLYGON (OGRCurvePolygon), MULTICURVE (OGRMultiCurve) and
- *  MULTISURFACE (OGRMultiSurface).
+ * MULTISURFACE (OGRMultiSurface).
  *
  */
 
@@ -238,7 +238,7 @@ class CPL_DLL OGRGeometry
     virtual void set3D( OGRBoolean bIs3D );
     virtual void setMeasured( OGRBoolean bIsMeasured );
 
-    void    assignSpatialReference( OGRSpatialReference * poSR );
+    virtual void    assignSpatialReference( OGRSpatialReference * poSR );
     OGRSpatialReference *getSpatialReference( void ) const { return poSRS; }
 
     virtual OGRErr  transform( OGRCoordinateTransformation *poCT ) = 0;
@@ -449,7 +449,8 @@ class CPL_DLL OGRCurve : public OGRGeometry
     friend class OGRCurvePolygon;
     friend class OGRCompoundCurve;
 //! @endcond
-    virtual int    ContainsPoint( const OGRPoint* p ) const;
+    virtual int ContainsPoint( const OGRPoint* p ) const;
+    virtual int IntersectsPoint( const OGRPoint* p ) const;
     virtual double get_AreaOfCurveSegments() const = 0;
 
   public:
@@ -778,6 +779,7 @@ class CPL_DLL OGRCircularString : public OGRSimpleCurve
         const CPL_OVERRIDE;
     virtual OGRCurveCasterToLinearRing GetCasterToLinearRing()
         const CPL_OVERRIDE;
+    virtual int    IntersectsPoint( const OGRPoint* p ) const CPL_OVERRIDE;
     virtual int    ContainsPoint( const OGRPoint* p ) const CPL_OVERRIDE;
     virtual double get_AreaOfCurveSegments() const CPL_OVERRIDE;
 //! @endcond
@@ -893,6 +895,7 @@ class CPL_DLL OGRCurveCollection
                                             int nNewDimension );
     void            set3D( OGRGeometry* poGeom, OGRBoolean bIs3D );
     void            setMeasured( OGRGeometry* poGeom, OGRBoolean bIsMeasured );
+    void            assignSpatialReference( OGRGeometry* poGeom, OGRSpatialReference * poSR );
     int             getNumCurves() const;
     OGRCurve       *getCurve( int );
     const OGRCurve *getCurve( int ) const;
@@ -1003,6 +1006,8 @@ class CPL_DLL OGRCompoundCurve : public OGRCurve
     virtual void set3D( OGRBoolean bIs3D ) CPL_OVERRIDE;
     virtual void setMeasured( OGRBoolean bIsMeasured ) CPL_OVERRIDE;
 
+    virtual void    assignSpatialReference( OGRSpatialReference * poSR ) CPL_OVERRIDE;
+
     OGRErr         addCurve( OGRCurve*, double dfToleranceEps = 1e-14  );
     OGRErr         addCurveDirectly( OGRCurve*, double dfToleranceEps = 1e-14 );
     OGRCurve      *stealCurve( int );
@@ -1071,6 +1076,7 @@ class CPL_DLL OGRCurvePolygon : public OGRSurface
     static OGRPolygon*      CasterToPolygon(OGRSurface* poSurface);
 
   private:
+    OGRBoolean      IntersectsPoint( const OGRPoint* p ) const;
     OGRBoolean      ContainsPoint( const OGRPoint* p ) const;
     virtual int   checkRing( OGRCurve * poNewRing ) const;
     OGRErr        addRingDirectlyInternal( OGRCurve* poCurve,
@@ -1153,6 +1159,8 @@ class CPL_DLL OGRCurvePolygon : public OGRSurface
     virtual void setCoordinateDimension( int nDimension ) CPL_OVERRIDE;
     virtual void set3D( OGRBoolean bIs3D ) CPL_OVERRIDE;
     virtual void setMeasured( OGRBoolean bIsMeasured ) CPL_OVERRIDE;
+
+    virtual void    assignSpatialReference( OGRSpatialReference * poSR ) CPL_OVERRIDE;
 
     virtual OGRErr addRing( OGRCurve * );
     virtual OGRErr addRingDirectly( OGRCurve * );
@@ -1405,6 +1413,8 @@ class CPL_DLL OGRGeometryCollection : public OGRGeometry
     virtual OGRErr addGeometryDirectly( OGRGeometry * );
     virtual OGRErr removeGeometry( int iIndex, int bDelete = TRUE );
 
+    virtual void    assignSpatialReference( OGRSpatialReference * poSR ) CPL_OVERRIDE;
+
     void closeRings() CPL_OVERRIDE;
 
     virtual void swapXY() CPL_OVERRIDE;
@@ -1589,6 +1599,8 @@ class CPL_DLL OGRPolyhedralSurface : public OGRSurface
     virtual void setMeasured( OGRBoolean bIsMeasured ) CPL_OVERRIDE;
     virtual void swapXY() CPL_OVERRIDE;
     OGRErr removeGeometry( int iIndex, int bDelete = TRUE );
+
+    virtual void    assignSpatialReference( OGRSpatialReference * poSR ) CPL_OVERRIDE;
 };
 
 /************************************************************************/

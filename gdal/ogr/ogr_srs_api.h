@@ -536,6 +536,11 @@ OGRErr CPL_DLL OSRExportToERM( OGRSpatialReferenceH, char *, char *, char * );
 OGRErr CPL_DLL OSRMorphToESRI( OGRSpatialReferenceH );
 OGRErr CPL_DLL OSRMorphFromESRI( OGRSpatialReferenceH );
 
+OGRSpatialReferenceH CPL_DLL OSRConvertToOtherProjection(
+                                    OGRSpatialReferenceH hSRS,
+                                    const char* pszTargetProjection,
+                                    const char* const* papszOptions );
+
 OGRErr CPL_DLL CPL_STDCALL OSRSetAttrValue( OGRSpatialReferenceH hSRS,
                                 const char * pszNodePath,
                                 const char * pszNewNodeValue );
@@ -629,6 +634,12 @@ OGRErr CPL_DLL OSRSetStatePlaneWithUnits( OGRSpatialReferenceH hSRS,
                                           const char *pszOverrideUnitName,
                                           double dfOverrideUnit );
 OGRErr CPL_DLL OSRAutoIdentifyEPSG( OGRSpatialReferenceH hSRS );
+
+OGRSpatialReferenceH CPL_DLL *OSRFindMatches( OGRSpatialReferenceH hSRS,
+                                          char** papszOptions,
+                                          int* pnEntries,
+                                          int** ppanMatchConfidence );
+void CPL_DLL OSRFreeSRSArray(OGRSpatialReferenceH* pahSRS);
 
 int    CPL_DLL OSREPSGTreatsAsLatLong( OGRSpatialReferenceH hSRS );
 int    CPL_DLL OSREPSGTreatsAsNorthingEasting( OGRSpatialReferenceH hSRS );

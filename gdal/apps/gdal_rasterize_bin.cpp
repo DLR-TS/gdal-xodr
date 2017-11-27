@@ -73,19 +73,18 @@ static GDALRasterizeOptionsForBinary *GDALRasterizeOptionsForBinaryNew(void)
 static void GDALRasterizeOptionsForBinaryFree(
     GDALRasterizeOptionsForBinary* psOptionsForBinary )
 {
-    if( psOptionsForBinary )
-    {
-        CPLFree(psOptionsForBinary->pszSource);
-        CPLFree(psOptionsForBinary->pszDest);
-        CPLFree(psOptionsForBinary->pszFormat);
-        CPLFree(psOptionsForBinary);
-    }
+    if( psOptionsForBinary == NULL )
+        return;
+
+    CPLFree(psOptionsForBinary->pszSource);
+    CPLFree(psOptionsForBinary->pszDest);
+    CPLFree(psOptionsForBinary);
 }
 /************************************************************************/
 /*                                main()                                */
 /************************************************************************/
 
-int main(int argc, char** argv)
+MAIN_START(argc, argv)
 {
     /* Check strict compilation and runtime library version as we use C++ API */
     if (! GDAL_CHECK_VERSION(argv[0]))
@@ -164,7 +163,8 @@ int main(int argc, char** argv)
         CPLPopErrorHandler();
     }
 
-    if( psOptionsForBinary->bCreateOutput || hDstDS == NULL )
+    if( psOptionsForBinary->pszFormat != NULL &&
+        (psOptionsForBinary->bCreateOutput || hDstDS == NULL) )
     {
         GDALDriverManager *poDM = GetGDALDriverManager();
         GDALDriver *poDriver =
@@ -202,11 +202,6 @@ int main(int argc, char** argv)
         }
     }
 
-    if (hDstDS == NULL && !psOptionsForBinary->bQuiet &&
-        !psOptionsForBinary->bFormatExplicitlySet)
-        CheckExtensionConsistency(psOptionsForBinary->pszDest,
-                                  psOptionsForBinary->pszFormat);
-
     int bUsageError = FALSE;
     GDALDatasetH hRetDS = GDALRasterize(psOptionsForBinary->pszDest,
                                         hDstDS,
@@ -225,3 +220,4 @@ int main(int argc, char** argv)
 
     return nRetCode;
 }
+MAIN_END

@@ -117,7 +117,6 @@ static void GDALDEMProcessingOptionsForBinaryFree(
         CPLFree(psOptionsForBinary->pszSrcFilename);
         CPLFree(psOptionsForBinary->pszColorFilename);
         CPLFree(psOptionsForBinary->pszDstFilename);
-        CPLFree(psOptionsForBinary->pszFormat);
         CPLFree(psOptionsForBinary);
     }
 }
@@ -125,7 +124,7 @@ static void GDALDEMProcessingOptionsForBinaryFree(
 /*                                main()                                */
 /************************************************************************/
 
-int main( int argc, char ** argv )
+MAIN_START(argc, argv)
 
 {
     /* Check strict compilation and runtime library version as we use C++ API */
@@ -186,13 +185,6 @@ int main( int argc, char ** argv )
         Usage("Missing destination.");
     }
 
-    if( !psOptionsForBinary->bQuiet &&
-        !psOptionsForBinary->bFormatExplicitlySet)
-    {
-        CheckExtensionConsistency(psOptionsForBinary->pszDstFilename,
-                                  psOptionsForBinary->pszFormat);
-    }
-
     // Open Dataset and get raster band.
     GDALDatasetH hSrcDataset =
         GDALOpen( psOptionsForBinary->pszSrcFilename, GA_ReadOnly );
@@ -225,3 +217,4 @@ int main( int argc, char ** argv )
 
     return nRetCode;
 }
+MAIN_END

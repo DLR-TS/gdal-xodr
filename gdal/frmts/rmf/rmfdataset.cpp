@@ -180,6 +180,11 @@ CPLErr RMFRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
     vsi_l_offset nTileOffset =
         poGDS->GetFileOffset( poGDS->paiTiles[2 * nTile] );
 
+    if( nTileOffset == 0 )
+    {
+        return CE_None;
+    }
+
     if( VSIFSeekL( poGDS->fp, nTileOffset, SEEK_SET ) < 0 )
     {
         // XXX: We will not report error here, because file just may be
@@ -753,6 +758,25 @@ CPLErr RMFRasterBand::SetColorTable( GDALColorTable *poColorTable )
     return CE_Failure;
 }
 
+int RMFRasterBand::GetOverviewCount()
+{
+    RMFDataset *poGDS = reinterpret_cast<RMFDataset *>( poDS );
+    if( poGDS->poOvrDatasets.empty() )
+        return GDALRasterBand::GetOverviewCount();
+    else
+        return static_cast<int>( poGDS->poOvrDatasets.size() );
+}
+
+GDALRasterBand* RMFRasterBand::GetOverview(int i)
+{
+    RMFDataset *poGDS = reinterpret_cast<RMFDataset *>( poDS );
+    size_t      n = static_cast<size_t>( i );
+    if( poGDS->poOvrDatasets.empty() )
+        return GDALRasterBand::GetOverview(i);
+    else
+        return poGDS->poOvrDatasets[n]->GetRasterBand(nBand);
+}
+
 /************************************************************************/
 /*                       GetColorInterpretation()                       */
 /************************************************************************/
@@ -832,6 +856,9 @@ RMFDataset::~RMFDataset()
         delete poColorTable;
     if( fp )
         VSIFCloseL( fp );
+
+    for( size_t n = 0; n != poOvrDatasets.size(); ++n )
+        GDALClose( poOvrDatasets[n] );
 }
 
 /************************************************************************/
@@ -1122,6 +1149,11 @@ int RMFDataset::Identify( GDALOpenInfo *poOpenInfo )
 
 GDALDataset *RMFDataset::Open( GDALOpenInfo * poOpenInfo )
 {
+    return Open( poOpenInfo, NULL, 0 );
+}
+
+GDALDataset *RMFDataset::Open(GDALOpenInfo * poOpenInfo, RMFDataset* poParentDS, vsi_l_offset nNextHeaderOffset )
+{
     if( !Identify(poOpenInfo) )
         return NULL;
 
@@ -1197,7 +1229,7 @@ do {                                                                    \
     {
         GByte abyHeader[RMF_HEADER_SIZE] = {};
 
-        VSIFSeekL( poDS->fp, 0, SEEK_SET );
+        VSIFSeekL( poDS->fp, nNextHeaderOffset, SEEK_SET );
         if( VSIFReadL( abyHeader, 1, sizeof(abyHeader),
                        poDS->fp ) != sizeof(abyHeader) )
         {
@@ -1459,6 +1491,11 @@ do {                                                                    \
             case 1:
             case 4:
             case 8:
+                if( poParentDS != NULL && poParentDS->poColorTable != NULL )
+                {
+                    poDS->poColorTable = poParentDS->poColorTable->Clone();
+                }
+                else
                 {
                     // Allocate memory for colour table and read it
                     poDS->nColorTableSize = 1 << poDS->sHeader.nBitDepth;
@@ -1697,7 +1734,16 @@ do {                                                                    \
 /* -------------------------------------------------------------------- */
 /*      Check for overviews.                                            */
 /* -------------------------------------------------------------------- */
-    poDS->oOvManager.Initialize( poDS, poOpenInfo->pszFilename );
+    if( poParentDS == NULL )
+    {
+        poParentDS = poDS;
+    }
+
+    if( ( !poDS->OpenOverviews( poParentDS, poOpenInfo ) ) &&
+        ( nNextHeaderOffset == 0 ) )
+    {
+        poDS->oOvManager.Initialize( poDS, poOpenInfo->pszFilename );
+    }
 
     return poDS;
 }
@@ -1990,6 +2036,36 @@ GUInt32 RMFDataset::GetRMFOffset( vsi_l_offset nFileOffset,
         *pnNewFileOffset = nFileOffset;
     }
     return static_cast<GUInt32>(nFileOffset);
+}
+
+bool RMFDataset::OpenOverviews(RMFDataset* poParentDS, GDALOpenInfo* poOpenInfo)
+{
+    if( sHeader.nOvrOffset == 0 )
+    {
+        return false;
+    }
+
+    if( poParentDS == NULL )
+    {
+        return false;
+    }
+
+    vsi_l_offset nSubOffset = GetFileOffset(sHeader.nOvrOffset);
+
+    CPLDebug( "RMF",
+              "Try to open overview subfile at " CPL_FRMT_GUIB " for '%s'",
+              nSubOffset, poOpenInfo->pszFilename );
+
+    GDALDataset*    poSub = (GDALDataset*)Open( poOpenInfo, poParentDS, nSubOffset );
+
+    if( poSub == NULL )
+    {
+        return false;
+    }
+
+    poParentDS->poOvrDatasets.push_back( poSub );
+
+    return true;
 }
 
 /************************************************************************/

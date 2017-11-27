@@ -440,6 +440,11 @@ void OGR_G_DumpReadable( OGRGeometryH hGeom, FILE *fp, const char *pszPrefix )
  * geometry.  Note that assigning a spatial reference increments the
  * reference count on the OGRSpatialReference, but does not copy it.
  *
+ * Starting with GDAL 2.3, this will also assign the spatial reference to
+ * potential sub-geometries of the geometry (OGRGeometryCollection,
+ * OGRCurvePolygon/OGRPolygon, OGRCompoundCurve, OGRPolyhedralSurface and their
+ * derived classes).
+ *
  * This is similar to the SFCOM IGeometry::put_SpatialReference() method.
  *
  * This method is the same as the C function OGR_G_AssignSpatialReference().
@@ -469,6 +474,11 @@ void OGRGeometry::assignSpatialReference( OGRSpatialReference * poSR )
  * being reprojected.  It is just changing the interpretation of the existing
  * geometry.  Note that assigning a spatial reference increments the
  * reference count on the OGRSpatialReference, but does not copy it.
+ *
+ * Starting with GDAL 2.3, this will also assign the spatial reference to
+ * potential sub-geometries of the geometry (OGRGeometryCollection,
+ * OGRCurvePolygon/OGRPolygon, OGRCompoundCurve, OGRPolyhedralSurface and their
+ * derived classes).
  *
  * This is similar to the SFCOM IGeometry::put_SpatialReference() method.
  *
@@ -2101,7 +2111,8 @@ OGRGeometry::IsValid() const
     else
     {
 #ifndef HAVE_GEOS
-
+        CPLError( CE_Failure, CPLE_NotSupported,
+                    "GEOS support not enabled." );
         return FALSE;
 
 #else
@@ -2173,7 +2184,8 @@ OGRGeometry::IsSimple() const
 
 {
 #ifndef HAVE_GEOS
-
+    CPLError( CE_Failure, CPLE_NotSupported,
+                "GEOS support not enabled." );
     return FALSE;
 
 #else
@@ -2244,7 +2256,8 @@ OGRGeometry::IsRing() const
 
 {
 #ifndef HAVE_GEOS
-
+    CPLError( CE_Failure, CPLE_NotSupported,
+                "GEOS support not enabled." );
     return FALSE;
 
 #else
@@ -5753,6 +5766,24 @@ OGRGeometryH OGR_G_Polygonize( OGRGeometryH hTarget )
 void OGRGeometry::swapXY()
 
 {
+}
+
+/************************************************************************/
+/*                               swapXY()                               */
+/************************************************************************/
+
+/**
+ * \brief Swap x and y coordinates.
+ *
+ * @param hGeom geometry.
+ * @since OGR 2.3.0
+ */
+
+void OGR_G_SwapXY( OGRGeometryH hGeom )
+{
+    VALIDATE_POINTER0( hGeom, "OGR_G_SwapXY" );
+
+    reinterpret_cast<OGRGeometry *>(hGeom)->swapXY();
 }
 
 /************************************************************************/

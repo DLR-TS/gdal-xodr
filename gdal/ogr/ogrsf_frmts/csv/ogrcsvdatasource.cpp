@@ -188,6 +188,18 @@ OGRErr OGRCSVEditableLayerSynchronizer::EditableSyncToDisk(
 
     OGRFeature *poFeature = NULL;
     poEditableLayer->ResetReading();
+
+    // Disable all filters.
+    const char* pszQueryStringConst = poEditableLayer->GetAttrQueryString();
+    char* pszQueryStringBak = pszQueryStringConst ? CPLStrdup(pszQueryStringConst) : NULL;
+    poEditableLayer->SetAttributeFilter(NULL);
+
+    const int iFilterGeomIndexBak = poEditableLayer->GetGeomFieldFilter();
+    OGRGeometry* poFilterGeomBak = poEditableLayer->GetSpatialFilter();
+    if( poFilterGeomBak )
+        poFilterGeomBak = poFilterGeomBak->clone();
+    poEditableLayer->SetSpatialFilter(NULL);
+
     while( eErr == OGRERR_NONE &&
            (poFeature = poEditableLayer->GetNextFeature()) != NULL )
     {
@@ -217,6 +229,13 @@ OGRErr OGRCSVEditableLayerSynchronizer::EditableSyncToDisk(
         delete poNewFeature;
     }
     delete poCSVTmpLayer;
+
+    // Restore filters.
+    poEditableLayer->SetAttributeFilter(pszQueryStringBak);
+    CPLFree(pszQueryStringBak);
+    poEditableLayer->SetSpatialFilter(iFilterGeomIndexBak, poFilterGeomBak);
+    delete poFilterGeomBak;
+
 
     if( eErr != OGRERR_NONE )
     {
@@ -656,13 +675,13 @@ bool OGRCSVDataSource::OpenTable( const char *pszFilename,
     VSILFILE *fp = NULL;
 
     if( bUpdate )
-        fp = VSIFOpenL(pszFilename, "rb+");
+        fp = VSIFOpenExL(pszFilename, "rb+", true);
     else
-        fp = VSIFOpenL(pszFilename, "rb");
+        fp = VSIFOpenExL(pszFilename, "rb", true);
     if( fp == NULL )
     {
-        CPLError(CE_Warning, CPLE_OpenFailed, "Failed to open %s, %s.",
-                 pszFilename, VSIStrerror(errno));
+        CPLError(CE_Warning, CPLE_OpenFailed, "Failed to open %s.",
+                 VSIGetLastErrorMsg());
         return false;
     }
 

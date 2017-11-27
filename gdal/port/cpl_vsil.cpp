@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -191,7 +192,8 @@ char **VSIReadDirRecursive( const char *pszPathIn )
             // Build complete file name for stat.
             osTemp1.clear();
             osTemp1.append( pszPath );
-            osTemp1.append( "/" );
+            if( !osTemp1.empty() && osTemp1.back() != '/' )
+                osTemp1.append( "/" );
             osTemp1.append( papszFiles[i] );
 
             // If is file, add it.
@@ -204,7 +206,8 @@ char **VSIReadDirRecursive( const char *pszPathIn )
                 {
                     osTemp1.clear();
                     osTemp1.append( pszDisplayedPath );
-                    osTemp1.append( "/" );
+                    if( !osTemp1.empty() && osTemp1.back() != '/' )
+                        osTemp1.append( "/" );
                     osTemp1.append( papszFiles[i] );
                     oFiles.AddString( osTemp1 );
                 }
@@ -221,7 +224,8 @@ char **VSIReadDirRecursive( const char *pszPathIn )
                     osTemp2.append( "/" );
                 }
                 osTemp2.append( papszFiles[i] );
-                osTemp2.append( "/" );
+                if( !osTemp2.empty() && osTemp2.back() != '/' )
+                    osTemp2.append( "/" );
                 oFiles.AddString( osTemp2.c_str() );
 
                 VSIReadDirRecursiveTask sTask;
@@ -573,6 +577,32 @@ int VSISupportsSparseFiles( const char* pszPath )
         VSIFileManager::GetHandler( pszPath );
 
     return poFSHandler->SupportsSparseFiles( pszPath );
+}
+
+/************************************************************************/
+/*                     VSIHasOptimizedReadMultiRange()                  */
+/************************************************************************/
+
+/**
+ * \brief Returns if the filesystem supports efficient multi-range reading.
+ *
+ * Currently only returns TRUE for /vsicurl/ and derived file systems.
+ *
+ * @param pszPath the path of the filesystem object to be tested.
+ * UTF-8 encoded.
+ *
+ * @return TRUE if the file system is known to have an efficient multi-range
+ * reading.
+ *
+ * @since GDAL 2.3
+ */
+
+int VSIHasOptimizedReadMultiRange( const char* pszPath )
+{
+    VSIFilesystemHandler *poFSHandler =
+        VSIFileManager::GetHandler( pszPath );
+
+    return poFSHandler->HasOptimizedReadMultiRange( pszPath );
 }
 
 /************************************************************************/
@@ -1203,8 +1233,6 @@ int VSIFPutcL( int nChar, VSILFILE * fp )
 /*                        VSIFGetRangeStatusL()                        */
 /************************************************************************/
 
-// TODO(rouault): "exte,t" in r34586?
-
 /**
  * \fn VSIVirtualHandle::GetRangeStatus( vsi_l_offset nOffset,
  *                                       vsi_l_offset nLength )
@@ -1215,7 +1243,7 @@ int VSIFPutcL( int nChar, VSILFILE * fp )
  * implemented for Linux (and no other Unix derivatives) and Windows.
  *
  * Note: A return of VSI_RANGE_STATUS_DATA doesn't exclude that the
- * exte,t is filled with zeroes! It must be interpreted as "may
+ * extent is filled with zeroes! It must be interpreted as "may
  * contain non-zero data".
  *
  * @param nOffset offset of the start of the extent.
@@ -1234,7 +1262,7 @@ int VSIFPutcL( int nChar, VSILFILE * fp )
  * implemented for Linux (and no other Unix derivatives) and Windows.
  *
  * Note: A return of VSI_RANGE_STATUS_DATA doesn't exclude that the
- * exte,t is filled with zeroes! It must be interpreted as "may
+ * extent is filled with zeroes! It must be interpreted as "may
  * contain non-zero data".
  *
  * @param fp file handle opened with VSIFOpenL().
@@ -1538,12 +1566,17 @@ VSIFileManager::VSIFileManager() :
 
 VSIFileManager::~VSIFileManager()
 {
+    std::set<VSIFilesystemHandler*> oSetAlreadyDeleted;
     for( std::map<std::string, VSIFilesystemHandler*>::const_iterator iter =
              oHandlers.begin();
          iter != oHandlers.end();
          ++iter )
     {
-        delete iter->second;
+        if( oSetAlreadyDeleted.find(iter->second) == oSetAlreadyDeleted.end() )
+        {
+            oSetAlreadyDeleted.insert(iter->second);
+            delete iter->second;
+        }
     }
 
     delete poDefaultHandler;
@@ -1603,6 +1636,10 @@ VSIFileManager *VSIFileManager::Get()
         VSIInstallS3StreamingFileHandler();
         VSIInstallGSFileHandler();
         VSIInstallGSStreamingFileHandler();
+        VSIInstallAzureFileHandler();
+        VSIInstallAzureStreamingFileHandler();
+        VSIInstallOSSFileHandler();
+        VSIInstallOSSStreamingFileHandler();
 #endif
         VSIInstallStdinHandler();
         VSIInstallStdoutHandler();

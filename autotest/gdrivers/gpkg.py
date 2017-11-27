@@ -1334,8 +1334,7 @@ def gpkg_14():
     ds = None
 
     ds = gdal.OpenEx('/vsimem/tmp.gpkg', open_options = ['MINX=-10','MAXY=10','MINY=-30','MAXX=30'])
-    ## There's some non null data in R,G,B bands that is masked by the alpha. Oh well...
-    expected_cs = [2762,2762,2762,1223]
+    expected_cs = [1223,1223,1223,1223]
     got_cs = [ds.GetRasterBand(i+1).Checksum() for i in range(4)]
     if got_cs != expected_cs:
         gdaltest.post_reason('fail')
@@ -1356,7 +1355,7 @@ def gpkg_14():
     ds = None
 
     ds = gdal.OpenEx('/vsimem/tmp.gpkg')
-    expected_cs = [15080,15080,15080,13365]
+    expected_cs = [13365, 13365, 13365, 13365]
     got_cs = [ds.GetRasterBand(i+1).Checksum() for i in range(4)]
     if got_cs != expected_cs:
         gdaltest.post_reason('fail')
@@ -3428,6 +3427,43 @@ cellsize     60
     ds.GetRasterBand(1).Fill(0)
     ds.GetRasterBand(1).FlushCache()
     sql_lyr = ds.ExecuteSQL('SELECT scale, offset FROM gpkg_2d_gridded_tile_ancillary')
+    f = sql_lyr.GetNextFeature()
+    if f is not None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    ds.ReleaseResultSet(sql_lyr)
+    ds = None
+
+    gdal.Unlink('/vsimem/gpkg_39.gpkg')
+
+    # Test detecting tiles at zero (without nodata value)
+    ds = gdaltest.gpkg_dr.Create('/vsimem/gpkg_39.gpkg', 256, 256, 1, gdal.GDT_Float32)
+    ds.SetGeoTransform([2,0.001,0,49,0,-0.001])
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    ds.SetProjection(sr.ExportToWkt())
+    ds.GetRasterBand(1).Fill(0)
+    ds.GetRasterBand(1).FlushCache()
+    sql_lyr = ds.ExecuteSQL('SELECT * FROM gpkg_39')
+    f = sql_lyr.GetNextFeature()
+    if f is not None:
+        gdaltest.post_reason('fail')
+        return 'fail'
+    ds.ReleaseResultSet(sql_lyr)
+    ds = None
+
+    gdal.Unlink('/vsimem/gpkg_39.gpkg')
+
+    # Test detecting tiles at nodata value
+    ds = gdaltest.gpkg_dr.Create('/vsimem/gpkg_39.gpkg', 256, 256, 1, gdal.GDT_Float32)
+    ds.SetGeoTransform([2,0.001,0,49,0,-0.001])
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    ds.SetProjection(sr.ExportToWkt())
+    ds.GetRasterBand(1).SetNoDataValue(2)
+    ds.GetRasterBand(1).Fill(2)
+    ds.GetRasterBand(1).FlushCache()
+    sql_lyr = ds.ExecuteSQL('SELECT * FROM gpkg_39')
     f = sql_lyr.GetNextFeature()
     if f is not None:
         gdaltest.post_reason('fail')

@@ -677,6 +677,7 @@ public:
                         int update=0 ) {
     CPLErrorReset();
     OGRDataSourceShadow* ds = (OGRDataSourceShadow*) OGR_Dr_Open(self, utf8_path, update);
+#ifndef SWIGPYTHON
     if( CPLGetLastErrorType() == CE_Failure && ds != NULL )
     {
         CPLDebug(
@@ -687,6 +688,7 @@ public:
         OGRReleaseDataSource(ds);
         ds = NULL;
     }
+#endif
     return ds;
   }
 #ifdef SWIGPYTHON
@@ -2906,6 +2908,11 @@ public:
     OGR_G_SetPoint_2D(self, point, x, y);
   }
 
+  /* OGR >= 2.3 */
+  void SwapXY() {
+    OGR_G_SwapXY(self);
+  }
+
   /* Geometries own their internal geometries */
   OGRGeometryShadow* GetGeometryRef(int geom) {
     return (OGRGeometryShadow*) OGR_G_GetGeometryRef(self, geom);
@@ -3326,6 +3333,7 @@ int OGRGetNonLinearGeometriesEnabledFlag(void);
   OGRDataSourceShadow* Open( const char *utf8_path, int update =0 ) {
     CPLErrorReset();
     OGRDataSourceShadow* ds = (OGRDataSourceShadow*)OGROpen(utf8_path,update,NULL);
+#ifndef SWIGPYTHON
     if( CPLGetLastErrorType() == CE_Failure && ds != NULL )
     {
         CPLDebug( "SWIG",
@@ -3334,7 +3342,7 @@ int OGRGetNonLinearGeometriesEnabledFlag(void);
         OGRReleaseDataSource(ds);
         ds = NULL;
     }
-
+#endif
     return ds;
   }
 %}
@@ -3353,12 +3361,13 @@ int OGRGetNonLinearGeometriesEnabledFlag(void);
   OGRDataSourceShadow* OpenShared( const char *utf8_path, int update =0 ) {
     CPLErrorReset();
     OGRDataSourceShadow* ds = (OGRDataSourceShadow*)OGROpenShared(utf8_path,update,NULL);
+#ifndef SWIGPYTHON
     if( CPLGetLastErrorType() == CE_Failure && ds != NULL )
     {
         OGRReleaseDataSource(ds);
         ds = NULL;
     }
-
+#endif
     return ds;
   }
 %}
