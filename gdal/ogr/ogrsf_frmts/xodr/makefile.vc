@@ -29,3 +29,5 @@ plugin-install: plugin
 	-mkdir $(PLUGINDIR)
 	$(INSTALL) $(PLUGIN_DLL) $(PLUGINDIR)
 	$(INSTALL) $(XERCES_DLL) $(BINDIR)
+    $(INSTALL) $(GEOS_DIR)\bin\geos.dll $(BINDIR)
+    $(INSTALL) $(GEOS_DIR)\bin\geos_c.dll $(BINDIR)

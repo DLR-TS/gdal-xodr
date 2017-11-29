@@ -6,9 +6,9 @@ XSD_INCLUDE = -ID:\Tools\xsd-4.0.0-i686-windows\libxsd
 # odrSpiral
 ODRSPIRAL_DIR = D:\dev\odrSpiral
 ODRSPIRAL_INCLUDE = -I$(ODRSPIRAL_DIR)\include
-ODRSPIRAL_LIB = $(ODRSPIRAL_DIR)\lib\Release\odrSpiral.lib
+ODRSPIRAL_LIB = $(ODRSPIRAL_DIR)\lib\Debug\odrSpiral.lib
 
 # xodr
 XODR_DIR = D:\dev\xodr
 XODR_INCLUDE = -I$(XODR_DIR)\include
-XODR_LIB = $(XODR_DIR)\lib\Release\xodr.lib
+XODR_LIB = $(XODR_DIR)\lib\Debug\xodr.lib
