@@ -1,7 +1,5 @@
 # OpenDRIVE Driver for OGR
-By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is based on the [master's thesis by Ana Orozco](http://elib.dlr.de/103827/) and further described in a scientific paper which has been submitted for the [Driving Simulation Conference 2017 Europe<sup>VR</sup>](http://dsc2017.org/), going to be published in September 2017.
-
-This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library (OGR). Currently, the still prototypical OpenDRIVE driver is not yet integrated into GDAL but can be built as shared library against GDAL to provide a pluggable extension. For the development of our driver the original GDAL repository has been forked for easier integration into GDAL later.
+This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library. By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is based on the work by [Orozco Idrobo (2015)][@OrozcoIdrobo2015] and [Scholz et al. (2017)][@Scholz2017]. Currently, the still prototypical OpenDRIVE driver is not yet integrated into the official GDAL distribution. Steps to built the driver as a shared library against GDAL to provide a pluggable extension are described below.
 
 ## Current Functionality
 As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now one `MultiLineString` layer is created containing just the road reference line geometries.
@@ -52,7 +50,7 @@ Configure GDAL to support creation of shared libraries. At least for our Ubuntu 
 cd <gdal>/gdal/
 ./configure --prefix ~/dev/gdal/gdal/build -enable-shared --without-libtool --with-geos=yes
 ```
-Check the output for successful recognition of geos and xerces. For Debug configuration append `--enable-debug` to `./configure`. Build with
+Check the output for successful recognition of geos and xerces. For Debug configuration append `--enable-debug`. Build with
 ```bash
 make -f GNUmakefile
 ```
@@ -84,8 +82,8 @@ Now configure your GEOS and Xerces dependencies by adding the corresponding incl
 ```bash
 # GEOS
 GEOS_DIR    = D:\dev\geos\distro
-GEOS_CFLAGS = -I$(GEOS_DIR)/include -DHAVE_GEOS
-GEOS_LIB    = $(GEOS_DIR)/lib/geos_c.lib
+GEOS_CFLAGS = -I$(GEOS_DIR)\include -DHAVE_GEOS
+GEOS_LIB    = $(GEOS_DIR)\lib\geos_c.lib
 
 # Xerces
 XERCES_DIR     = D:\dev\xerces-c-3.1.1-x86_64-windows-vc-10.0
@@ -140,3 +138,5 @@ OpenDRIVE datasets for testing can be found in the official [OpenDRIVE download 
 ## General Development Notes
 To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](http://www.gdal.org/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [FileGDB Building Notes](http://www.gdal.org/drv_filegdb.html).
 
+[@OrozcoIdrobo2015]: http://elib.dlr.de/103827/ "Orozco Idrobo, Ana Maria (2015). Extension of the Geospatial Data Abstraction Library (GDAL/OGR) for OpenDRIVE Support in GIS Applications for Visualisation and Data Accumulation for Driving Simulators. Master's thesis, Technical University of Munich."
+[@Scholz2017]: http://elib.dlr.de/110123/ "Scholz, Michael and Orozco Idrobo, Ana Maria (2017). Supporting the Implementation of Driving Simulator Environments Through Established GIS Approaches by Extending the Geospatial Data Abstraction Library (GDAL) with OpenDRIVE. In: Proceedings of the Driving Simulator Conference 2017 Europe VR, pp. 51-54. Driving Simulation Conference 2017, Stuttgart, Germany."
