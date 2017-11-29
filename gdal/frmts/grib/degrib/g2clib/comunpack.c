@@ -134,7 +134,7 @@ int comunpack(unsigned char *cpack,g2int cpack_length,g2int lensec,g2int idrsnum
 //
       if (idrsnum == 3) {
          if (nbitsd != 0) {
-// wne mistake here shoujld be unsigned int
+// one mistake here should be unsigned int
               gbit(cpack,&ival1,iofst,nbitsd);
               iofst=iofst+nbitsd;
 //              gbit(cpack,&isign,iofst,1);
@@ -143,7 +143,7 @@ int comunpack(unsigned char *cpack,g2int cpack_length,g2int lensec,g2int idrsnum
 //              iofst=iofst+nbitsd-1;
 //              if (isign == 1) ival1=-ival1;
               if (idrstmpl[16] == 2) {
-// wne mistake here shoujld be unsigned int
+// one mistake here should be unsigned int
                  gbit(cpack,&ival2,iofst,nbitsd);
                  iofst=iofst+nbitsd;
 //                 gbit(cpack,&isign,iofst,1);
@@ -400,14 +400,16 @@ int comunpack(unsigned char *cpack,g2int cpack_length,g2int lensec,g2int idrsnum
             if ( idrstmpl[6] == 0 ) itemp=ndpts;        // no missing values
             else  itemp=non;
             for (n=1;n<itemp;n++) {
-               if( ifld[n] > INT_MAX - minsd )
+               if( (minsd > 0 && ifld[n] > INT_MAX - minsd) ||
+                   (minsd < 0 && ifld[n] < INT_MIN - minsd) )
                {
                    free(ifldmiss);
                    free(ifld);
                    return -1;
                }
                ifld[n]=ifld[n]+minsd;
-               if( ifld[n] > INT_MAX - ifld[n-1] )
+               if( (ifld[n-1] > 0 && ifld[n] > INT_MAX - ifld[n-1]) ||
+                   (ifld[n-1] < 0 && ifld[n] < INT_MIN - ifld[n-1]) )
                {
                    free(ifldmiss);
                    free(ifld);

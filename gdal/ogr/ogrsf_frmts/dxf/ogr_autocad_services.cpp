@@ -191,6 +191,8 @@ CPLString ACTextUnescape( const char *pszRawInput, const char *pszEncoding,
                 {
                     osMtextResult += pszInput[1];
                     pszInput++;
+                    if( pszInput[0] == '\0' )
+                        break;
                 }
                 else if( strchr( "^/#~", pszInput[0] ) == NULL )
                 {
@@ -200,6 +202,8 @@ CPLString ACTextUnescape( const char *pszRawInput, const char *pszEncoding,
             }
             if( pszInput[0] == ';' )
                 pszInput++;
+            if( pszInput[0] == '\0' )
+                break;
         }
         else if( pszInput[0] == '\\'
                  && strchr( "\\{}", pszInput[1] ) != NULL )
@@ -208,6 +212,8 @@ CPLString ACTextUnescape( const char *pszRawInput, const char *pszEncoding,
 
             osMtextResult += pszInput[1];
             pszInput++;
+            if( pszInput[0] == '\0' )
+                break;
         }
         else
         {

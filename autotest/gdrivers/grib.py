@@ -395,6 +395,26 @@ def grib_grib2_read_template_4_40():
     return 'success'
 
 ###############################################################################
+# Test support for a unhandled GRIB2 Section 4 Template 
+
+def grib_grib2_read_template_4_unhandled():
+
+    if gdaltest.grib_drv is None:
+        return 'skip'
+
+    with gdaltest.error_handler():
+        ds = gdal.Open('data/template_4_65535.grb2')
+    md = ds.GetRasterBand(1).GetMetadata()
+    expected_md = {'GRIB_PDS_TEMPLATE_NUMBERS': '0 1 2 3 4 5', 'GRIB_PDS_PDTN': '65535'}
+    for k in expected_md:
+        if k not in md or md[k] != expected_md[k]:
+            gdaltest.post_reason('Did not get expected metadata')
+            print(md)
+            return 'fail'
+
+    return 'success'
+
+###############################################################################
 # Test reading GRIB2 Transverse Mercator grid
 
 def grib_grib2_read_transverse_mercator():
@@ -442,6 +462,35 @@ def grib_grib2_read_mercator():
 
     gt = ds.GetGeoTransform()
     expected_gt = (-13095853.598139772, 72.237, 0.0, 3991876.4600486886, 0.0, -72.237)
+    if max([abs(gt[i] - expected_gt[i]) for i in range(6)]) > 1e-3:
+        gdaltest.post_reason('Did not get expected geotransform')
+        print(gt)
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
+# Test reading GRIB2 Mercator grid
+
+def grib_grib2_read_mercator_2sp():
+
+    if gdaltest.grib_drv is None:
+        return 'skip'
+
+    if gdaltest.have_proj4 == 0:
+        return 'skip'
+
+    ds = gdal.Open('data/mercator_2sp.grb2')
+
+    projection = ds.GetProjectionRef()
+    expected_projection = """PROJCS["unnamed",GEOGCS["Coordinate System imported from GRIB file",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Mercator_2SP"],PARAMETER["standard_parallel_1",33.5],PARAMETER["central_meridian",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0]]"""
+    if projection != expected_projection:
+        gdaltest.post_reason('Did not get expected projection')
+        print(projection)
+        return 'fail'
+
+    gt = ds.GetGeoTransform()
+    expected_gt = (-10931598.94836207, 60.299, 0.0, 3332168.629121481, 0.0, -60.299)
     if max([abs(gt[i] - expected_gt[i]) for i in range(6)]) > 1e-3:
         gdaltest.post_reason('Did not get expected geotransform')
         print(gt)
@@ -623,6 +672,23 @@ def grib_grib2_read_section_5_nbits_zero_decimal_scaled():
     return 'success'
 
 ###############################################################################
+# Test reading GRIB2 with complex packing and spatial differencing of order 1
+
+def grib_grib2_read_spatial_differencing_order_1():
+
+    if gdaltest.grib_drv is None:
+        return 'skip'
+
+    ds = gdal.Open('data/spatial_differencing_order_1.grb2')
+    cs = ds.GetRasterBand(1).Checksum()
+    if cs != 46650:
+        gdaltest.post_reason('Did not get expected checksum')
+        print(cs)
+        return 'fail'
+
+    return 'success'
+
+###############################################################################
 # Test GRIB2 file with JPEG2000 codestream on a single line (#6719)
 def grib_online_grib2_jpeg2000_single_line():
 
@@ -667,14 +733,17 @@ gdaltest_list = [
     grib_grib2_read_all_zero_data,
     grib_grib2_read_rotated_pole_lonlat,
     grib_grib2_read_template_4_40,
+    grib_grib2_read_template_4_unhandled,
     grib_grib2_read_transverse_mercator,
     grib_grib2_read_mercator,
+    grib_grib2_read_mercator_2sp,
     grib_grib2_read_lcc,
     grib_grib2_read_polar_stereo,
     grib_grib2_read_aea,
     grib_grib2_read_laea,
     grib_grib2_read_template_5_4_grid_point_ieee_floating_point,
     grib_grib2_read_section_5_nbits_zero_decimal_scaled,
+    grib_grib2_read_spatial_differencing_order_1,
     grib_online_grib2_jpeg2000_single_line
     ]
 

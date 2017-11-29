@@ -61,6 +61,7 @@
 #include "degrib/degrib/type.h"
 CPL_C_START
 #include "degrib/g2clib/grib2.h"
+#include "degrib/g2clib/pdstemplates.h"
 CPL_C_END
 #include "gdal.h"
 #include "gdal_frmts.h"
@@ -190,22 +191,30 @@ void GRIBRasterBand::FindPDSTemplate()
             VSIFReadL(pabyBody + 5, 1, nSectSize - 5, poGDS->fp);
 
             CPLString osIDS;
-            osIDS += "CENTER=";
             unsigned short nCenter = static_cast<unsigned short>(
                                         pabyBody[6-1] * 256 + pabyBody[7-1]);
-            osIDS += CPLSPrintf("%d", nCenter);
-            const char* pszCenter = centerLookup(nCenter);
-            if( pszCenter )
-                osIDS += CPLString("(")+pszCenter+")";
-            osIDS += " ";
-            osIDS += "SUBCENTER=";
+            if( nCenter != GRIB2MISSING_u1 && nCenter != GRIB2MISSING_u2 )
+            {
+                osIDS += "CENTER=";
+                osIDS += CPLSPrintf("%d", nCenter);
+                const char* pszCenter = centerLookup(nCenter);
+                if( pszCenter )
+                    osIDS += CPLString("(")+pszCenter+")";
+            }
+
             unsigned short nSubCenter = static_cast<unsigned short>(
                                         pabyBody[8-1] * 256 + pabyBody[9-1]);
-            osIDS += CPLSPrintf("%d", nSubCenter);
-            const char* pszSubCenter = subCenterLookup(nCenter, nSubCenter);
-            if( pszSubCenter )
-                osIDS += CPLString("(")+pszSubCenter+")";
-            osIDS += " ";
+            if( nSubCenter != GRIB2MISSING_u2 )
+            {
+                if( !osIDS.empty() ) osIDS += " ";
+                osIDS += "SUBCENTER=";
+                osIDS += CPLSPrintf("%d", nSubCenter);
+                const char* pszSubCenter = subCenterLookup(nCenter, nSubCenter);
+                if( pszSubCenter )
+                    osIDS += CPLString("(")+pszSubCenter+")";
+            }
+
+            if( !osIDS.empty() ) osIDS += " ";
             osIDS += "MASTER_TABLE=";
             osIDS += CPLSPrintf("%d", pabyBody[10-1]);
             osIDS += " ";
@@ -227,23 +236,14 @@ void GRIBRasterBand::FindPDSTemplate()
                     CPLString(table12[nSignRefTime]).replaceAll(' ','_') + ")";
             }
             osIDS += " ";
-            osIDS += "YEAR=";
-            osIDS += CPLSPrintf("%d", pabyBody[13-1] * 256 + pabyBody[14-1]);
-            osIDS += " ";
-            osIDS += "MONTH=";
-            osIDS += CPLSPrintf("%d", pabyBody[15-1]);
-            osIDS += " ";
-            osIDS += "DAY=";
-            osIDS += CPLSPrintf("%d", pabyBody[16-1]);
-            osIDS += " ";
-            osIDS += "HOUR=";
-            osIDS += CPLSPrintf("%d", pabyBody[17-1]);
-            osIDS += " ";
-            osIDS += "MINUTE=";
-            osIDS += CPLSPrintf("%d", pabyBody[18-1]);
-            osIDS += " ";
-            osIDS += "SECOND=";
-            osIDS += CPLSPrintf("%d", pabyBody[19-1]);
+            osIDS += "REF_TIME=";
+            osIDS += CPLSPrintf("%04d-%02d-%02dT%02d:%02d:%02dZ",
+                                pabyBody[13-1] * 256 + pabyBody[14-1],
+                                pabyBody[15-1],
+                                pabyBody[16-1],
+                                pabyBody[17-1],
+                                pabyBody[18-1],
+                                pabyBody[19-1]);
             osIDS += " ";
             osIDS += "PROD_STATUS=";
             unsigned nProdStatus = pabyBody[20-1];
@@ -351,7 +351,13 @@ void GRIBRasterBand::FindPDSTemplate()
             g2int mappdslen = 0;
             g2float *coordlist = NULL;
             g2int numcoord = 0;
-            if( g2_unpack4(pabyBody,nSectSize,&iofst,
+            if( getpdsindex(nPDTN) < 0 )
+            {
+                CPLError(CE_Warning, CPLE_NotSupported,
+                         "Template 4.%d is not recognized currently",
+                         nPDTN);
+            }
+            else if ( g2_unpack4(pabyBody,nSectSize,&iofst,
                            &pdsnum,&pdstempl,&mappdslen,
                            &coordlist,&numcoord) == 0 )
             {
@@ -366,10 +372,18 @@ void GRIBRasterBand::FindPDSTemplate()
                     if( nTemplateByteCount == nTemplateFoundByteCount )
                     {
                         CPLString osValues;
-                        for(g2int i = 0; i < mappdslen; i++)
+                        for(g2int i = 0; i < mappds->maplen+mappds->extlen; i++)
                         {
-                            if( i > 0 ) osValues += " ";
-                            osValues += CPLSPrintf("%d", pdstempl[i]);
+                            if( i > 0 )
+                                osValues += " ";
+                            const int nEltSize = (i < mappds->maplen) ?
+                                mappds->map[i] :
+                                mappds->ext[i - mappds->maplen];
+                            if( nEltSize == 4 )
+                                osValues += CPLSPrintf("%u",
+                                            static_cast<GUInt32>(pdstempl[i]));
+                            else
+                                osValues += CPLSPrintf("%d", pdstempl[i]);
                         }
                         SetMetadataItem("GRIB_PDS_TEMPLATE_ASSEMBLED_VALUES", osValues);
                     }
@@ -378,7 +392,7 @@ void GRIBRasterBand::FindPDSTemplate()
                         CPLDebug("GRIB",
                                  "Cannot expose GRIB_PDS_TEMPLATE_ASSEMBLED_VALUES "
                                  "as we would expect %d bytes from the "
-                                 "tables, but only %d are available",
+                                 "tables, but %d are available",
                                  nTemplateByteCount,
                                  nTemplateFoundByteCount);
                     }
@@ -440,7 +454,7 @@ void GRIBRasterBand::FindNoDataGrib2(bool bSeekToStart)
     {
         memcpy(&nSectSize, abyHead, 4);
         CPL_MSBPTR32(&nSectSize);
-        if( nSectSize >= 10 &&
+        if( nSectSize >= 11 &&
             nSectSize <= 100000  /* arbitrary upper limit */ )
         {
             GByte *pabyBody = static_cast<GByte *>(CPLMalloc(nSectSize));
@@ -453,46 +467,23 @@ void GRIBRasterBand::FindNoDataGrib2(bool bSeekToStart)
 
             // 2 = Grid Point Data - Complex Packing
             // 3 = Grid Point Data - Complex Packing and Spatial Differencing
-            if( (nDRTN == 2 || nDRTN == 3) && nSectSize >= 31 )
+            if( (nDRTN == GS5_CMPLX || nDRTN == GS5_CMPLXSEC) && nSectSize >= 31 )
             {
                 const int nMiss = pabyBody[23-1];
                 if( nMiss == 1 || nMiss == 2 )
                 {
-                    double dfSecondaryNoData = 0.0;
-                    const int nNoDataType = pabyBody[21-1];
-                    if( nNoDataType == 0 ) // Floating Point
-                    {
-                        float fTemp;
-                        memcpy(&fTemp, &pabyBody[24-1], 4);
-                        CPL_MSBPTR32(&fTemp);
-                        m_dfNoData = fTemp;
-                        m_bHasNoData = true;
-
-                        memcpy(&fTemp, &pabyBody[28-1], 4);
-                        CPL_MSBPTR32(&fTemp);
-                        dfSecondaryNoData = fTemp;
-                    }
-                    else if( nNoDataType == 1 ) // Integer
-                    {
-                        int nTemp;
-                        memcpy(&nTemp, &pabyBody[24-1], 4);
-                        CPL_MSBPTR32(&nTemp);
-                        m_dfNoData = nTemp;
-                        m_bHasNoData = true;
-
-                        memcpy(&nTemp, &pabyBody[28-1], 4);
-                        CPL_MSBPTR32(&nTemp);
-                        dfSecondaryNoData = nTemp;
-                    }
-                    else
-                    {
-                        CPLDebug("GRIB",
-                                 "Unhandled Type of original field values = %d",
-                                 nNoDataType);
-                    }
+                    float fTemp;
+                    memcpy(&fTemp, &pabyBody[24-1], 4);
+                    CPL_MSBPTR32(&fTemp);
+                    m_dfNoData = fTemp;
+                    m_bHasNoData = true;
 
                     if( nMiss == 2 )
                     {
+                        memcpy(&fTemp, &pabyBody[28-1], 4);
+                        CPL_MSBPTR32(&fTemp);
+                        double dfSecondaryNoData = fTemp;
+
                         // What TODO?
                         CPLDebug("GRIB",
                                  "Secondary missing value also set for band %d : %f",
@@ -1066,7 +1057,10 @@ void GRIBDataset::SetGribMetaData(grib_MetaData *meta)
     case GS3_MERCATOR:
         if( meta->gds.orientLon == 0.0 )
         {
-            oSRS.SetMercator(meta->gds.meshLat, 0.0, 1.0, 0.0, 0.0);
+            if( meta->gds.meshLat == 0.0 )
+                oSRS.SetMercator(0.0, 0.0, 1.0, 0.0, 0.0);
+            else
+                oSRS.SetMercator2SP(meta->gds.meshLat, 0.0, 0.0, 0.0, 0.0);
         }
         else
         {
