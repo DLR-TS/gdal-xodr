@@ -1,3 +1,5 @@
+# *DEPRECATED* branch which is based on the ancient trunk upstream repository. Use new master-based branch ogr/xodr instead.
+
 # OpenDRIVE Driver for OGR
 This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library. By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is based on the work by [Orozco Idrobo (2015)][@OrozcoIdrobo2015] and [Scholz et al. (2017)][@Scholz2017]. Currently, the still prototypical OpenDRIVE driver is not yet integrated into the official GDAL distribution. Steps to built the driver as a shared library against GDAL to provide a pluggable extension are described below.
 
