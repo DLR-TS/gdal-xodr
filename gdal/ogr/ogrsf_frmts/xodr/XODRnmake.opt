@@ -6,9 +6,17 @@ XSD_INCLUDE = -ID:\dev\xsd-4.0.0-i686-windows\libxsd
 # odrSpiral
 ODRSPIRAL_DIR = D:\dev\odrSpiral
 ODRSPIRAL_INCLUDE = -I$(ODRSPIRAL_DIR)\include
+!IFNDEF DEBUG
 ODRSPIRAL_LIB = $(ODRSPIRAL_DIR)\lib\Release\odrSpiral.lib
+!ELSE
+ODRSPIRAL_LIB = $(ODRSPIRAL_DIR)\lib\Debug\odrSpiral.lib
+!ENDIF
 
 # xodr
 XODR_DIR = D:\dev\xodr
 XODR_INCLUDE = -I$(XODR_DIR)\include
+!IFNDEF DEBUG
 XODR_LIB = $(XODR_DIR)\lib\Release\xodr.lib
+!ELSE
+XODR_LIB = $(XODR_DIR)\lib\Debug\xodr.lib
+!ENDIF
