@@ -103,7 +103,7 @@ nmake -f makefile.vc MSVC_VER=1900 WIN64=1
 ```
 Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` by adding the following in your lokal configuration file `nmake.local`
 ```bash
-GDAL_HOME="C:\dev\gdal\gdal\build"
+GDAL_HOME="D:\dev\gdal\gdal\build"
 ```
 and run `nmake install` afterwards
 ```bash
