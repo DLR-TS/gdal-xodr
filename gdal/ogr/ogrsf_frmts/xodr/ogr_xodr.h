@@ -4,6 +4,7 @@
  * Project:  OpenGIS Simple Features for OpenDRIVE
  * Purpose:  Definition of OGR driver components for OpenDRIVE.
  * Author:   Michael Scholz, michael.scholz@dlr.de, German Aerospace Center (DLR)
+ *			 Cristhian Eduardo Murcia Galeano, cristhianmurcia182@gmail.com
  *			 Ana Maria Orozco, ana.orozco.net@gmail.com
  *
  ******************************************************************************
@@ -49,13 +50,14 @@ public:
      * C-tor.
      * @param pszName Layer name.
      */
-    OGRXODRLayer(XODR* xodr, const char* pszName);
-
+    OGRXODRLayer(XODR* xodr, const char* pszName, std::string lName);
+	int roadElement;
+	std::string layerName;
     /**
      * D-tor.
      */
     ~OGRXODRLayer();
-
+	bool print = true;
     void ResetReading();
 
     /**
@@ -76,7 +78,37 @@ public:
     int TestCapability(const char *) {
         return FALSE;
     }
+
+	OGRFeature* referenceLineFeature();
+	OGRFeature* laneFeature();
+	OGRFeature* roadMarkFeature();
+	OGRFeature* signalFeature(std::vector<road> signalRoads);
+	OGRFeature* objectFeature(std::vector<road> objectRoads);
+	OGRFeature* objectFeaturePolygon();
+	OGRFeature* objectFeatureLine();
+	std::vector<Lane> lanesList;
+	std::vector<RoadMark> roadMarkList;
+	std::vector<Signal> signalList;
+	std::vector<Object> objectList;
+	int roadMarkIndex =0;
+	int roadMarksSize;
+	int laneIndex = 0;
+	int laneSize;
+	int signalIndex = 0;
+	int signalRoadIndex = 0;
+	int signalRoadSize;
+	int signalSize;
+	bool firstIteration = true;
+	//const road& xodrRoad;
+	std::vector<road> signalRoads;
+	std::vector<road> objectRoads;
+	std::vector<road> objectRoadsPolygon;
+	int objectRoadIndex = 0;
+	int objectIndex = 0;
+	int objectRoadSize;
+	int objectSize;
 };
+
 
 /************************************************************************/
 /*                           OGRXODRDataSource                          */
@@ -116,6 +148,8 @@ public:
      * @return True if requested capability is supported.
      */
     int TestCapability(const char *);
+	int Create(const char *pszFilename, char **papszOptions);
+
 };
 
 #endif /* ndef _OGR_XODR_H_INCLUDED */

@@ -4,6 +4,7 @@
  * Project:  OpenGIS Simple Features for OpenDRIVE
  * Purpose:  Implementation of OGRXODRDataSource.
  * Author:   Michael Scholz, michael.scholz@dlr.de, German Aerospace Center (DLR)
+ *			 Cristhian Eduardo Murcia Galeano, cristhianmurcia182@gmail.com
  *			 Ana Maria Orozco, ana.orozco.net@gmail.com
  *
  ******************************************************************************
@@ -50,18 +51,33 @@ int OGRXODRDataSource::Open(GDALOpenInfo* openInfo) {
                 "Update access not supported by the XODR driver.");
         return FALSE;
     }
-    xodr = new XODR(openInfo->pszFilename);
+	// add error when trying to opening versions previous to 1.4
 
-    nLayers = 1;
-    papoLayers = (OGRXODRLayer **)
-            CPLRealloc(papoLayers, sizeof (OGRXODRLayer *) * (nLayers));
-    std::string layer1Name = "reference line";
-    papoLayers[0] = new OGRXODRLayer(xodr, layer1Name.c_str());
+    xodr = new XODR(openInfo->pszFilename);
+    nLayers = 7;
+    papoLayers = (OGRXODRLayer **)  CPLRealloc(papoLayers, sizeof (OGRXODRLayer *) * (nLayers));
+
+	std::string layer1Name = "referenceLine";
+	std::string layer2Name = "lane";
+	std::string layer3Name = "roadMark";
+	std::string layer4Name = "signal";
+	std::string layer5Name = "objectPoint";
+	std::string layer6Name = "objectPolygon";
+	std::string layer7Name = "objectLine";
+	
+    papoLayers[0] = new OGRXODRLayer(xodr, layer1Name.c_str(), layer1Name);
+	papoLayers[1] = new OGRXODRLayer(xodr, layer2Name.c_str(), layer2Name);
+	papoLayers[2] = new OGRXODRLayer(xodr, layer3Name.c_str(), layer3Name);
+	papoLayers[3] = new OGRXODRLayer(xodr, layer4Name.c_str(), layer4Name);
+	papoLayers[4] = new OGRXODRLayer(xodr, layer5Name.c_str(), layer5Name);
+	papoLayers[5] = new OGRXODRLayer(xodr, layer6Name.c_str(), layer6Name);
+	papoLayers[6] = new OGRXODRLayer(xodr, layer7Name.c_str(), layer7Name);
     return TRUE;
 }
 
 OGRLayer *OGRXODRDataSource::GetLayer(int iLayer) {
-    if (iLayer < 0 || iLayer >= nLayers)
+	
+	if (iLayer < 0 || iLayer >= nLayers)
         return NULL;
     else
         return papoLayers[iLayer];
@@ -73,3 +89,6 @@ int OGRXODRDataSource::TestCapability(const char * capability) {
     else
         return FALSE;
 }
+
+
+

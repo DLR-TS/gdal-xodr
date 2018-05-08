@@ -4,6 +4,7 @@
  * Project:  OpenGIS Simple Features for OpenDRIVE
  * Purpose:  Definition of algorithms for conversion of OpenDRIVE to OGC Simple Features.
  * Author:   Michael Scholz, michael.scholz@dlr.de, German Aerospace Center (DLR)
+ *			 Cristhian Eduardo Murcia Galeano, cristhianmurcia182@gmail.com
  *			 Ana Maria Orozco, ana.orozco.net@gmail.com
  *
  ******************************************************************************
@@ -24,7 +25,9 @@
 
 #ifndef _XODR_H_INCLUDED
 #define _XODR_H_INCLUDED
+#include <math.h>       /* atan2 */
 
+#define PI 3.14159265
 #include "OpenDRIVE_1.4H.h"
 #include "ogr_geometry.h"
 #include <cmath>
@@ -34,6 +37,12 @@
 #include <typeinfo>
 #include <vector>
 #include "MatrixTransformations2D.h"
+#include "laneWidth.h"
+#include "Border.h"
+#include "Lane.h"
+#include "RoadMark.h"
+#include "Signal.h"
+#include "Object.h"
 
 class XODR {
     std::auto_ptr<OpenDRIVE> op;
@@ -64,7 +73,8 @@ public:
     // TODO Move sampleDistance out into layer creation option
     std::auto_ptr<OGRLineString> paramPoly3ToLinestring(const geometry &geoParam, const double sampleDistance) const;
     std::auto_ptr<OGRLineString> toOGRGeometry(const geometry& xodrGeometry) const;
-    OGRMultiLineString toOGRGeometry(const planView& planView) const;
+    
+
 
     /**
      * Samples an arc.
@@ -129,5 +139,84 @@ public:
      * @param matrix The 2D affine transformation matrix.
      */
     void transformLineString(OGRLineString* geom, const Matrix2D& matrix) const;
+
+
+
+	//Helper Functions
+	
+	OGRLineString multiLineStringToLineString(OGRMultiLineString* multiple) const;
+	OGRPoint normalUnitaryVector(OGRLineString line) const;
+	OGRPoint normalProjectedPoint(OGRPoint roadPoint, OGRPoint normalUnitaryVector, double borderWidth) const;
+	OGRMultiLineString splitLineWithSpace(OGRLineString *lineSegment, double length, double space) const;
+	std::vector<double> samplingRange(double init, double end, double increment)const;
+	void printLine(OGRLineString line)const;
+	OGRPoint valueInLine(OGRLineString line, double s)const;
+	OGRLineString adjustLine(std::vector<double> range, OGRLineString line) const;
+	void offsetLine(OGRLineString* lineSegment, double tOffset) const;
+	void translate(OGRLineString* lineString, double x, double y) const;
+	void samplePoly3(double init, double end, double a, double b, double c, double d, double sampleDistance, OGRLineString* lineString) const;
+	
+	//**********REFERENCE LINE********//
+
+	OGRMultiLineString toOGRGeometry(const planView& planView) const;
+
+
+	//********* LANES **********//
+
+	std::vector<Lane> roadLanes(const road& xodrRoad)const;
+	
+	// When Lanes are defined with "BORDER" elements we use the following algorithms
+	std::vector<Lane>  roadLanesB(const road& xodrRoad) const;
+	bool rightBorderPresent(const lanes& lanes)const;
+	bool leftBorderPresent(const lanes& lanes)const;		
+	void samplePoly3Border(const border& borderSegment, double init, double end, const double sampleDistance, OGRLineString* lineString, char direction) const;
+	OGRLineString projectLanesB(OGRLineString baseLine, OGRLineString lineSegment) const;	
+	std::vector<OGRLineString> projectLanesW(std::vector<Lane> lanesRight, OGRMultiLineString referenceLine) const;
+	std::vector<Border> createBorderList(double sLaneSectionI, double sLaneSectionE, const lane::border_sequence& borderSequence)const;
+	OGRLineString borderLine(std::vector<Border> bList, char direction)const;
+	void samplePoly3Border(Border b, OGRLineString* lineString, char direction) const;	
+	std::vector<Lane> borderRight(const road& xodrRoad, OGRLineString  referenceLine)const;
+	std::vector<Lane> borderLeft(const road& xodrRoad, OGRLineString  referenceLine)const;	
+	
+	
+	//When Lanes are defined with "WIDTH" elements we use the following algorithms
+	std::vector<Lane> roadLanesW(const road& xodrRoad)const;
+	void samplePoly3Width(laneWidth w, OGRLineString* lineString, char direction) const;
+	std::vector<laneWidth> createWidthList(double sLaneSectionI, double sLaneSectionE, const lane::width_sequence& widthSequence)const;
+	OGRLineString widthLine(std::vector<laneWidth> wList, std::vector<double> fixedSamplingRange, char direction)const;
+	std::vector<Lane> lanesWidthRight(const road& xodrRoad, const right::lane_sequence& lanes, double laneSectionI, double laneSectionE, std::string singleSide)const;
+	std::vector<Lane> lanesWidthLeft(const road& xodrRoad, const left::lane_sequence& lanes, double laneSectionI, double laneSectionE, std::string singleSide)const;
+	std::vector<Lane> lanesWidthRight(const road& xodrRoad, int laneSectionIndex, double roadLength)const;
+	std::vector<Lane> lanesWidthLeft(const road& xodrRoad, int laneSectionIndex, double roadLength)const;	
+	Lane laneOffset(const lanes::laneOffset_sequence& laneOffsetSeq, OGRLineString  referenceLine, std::string roadId)const;
+	bool leftWidthPresent(const lanes& lanes)const;
+	bool rightWidthPresent(const lanes& lanes)const;
+
+
+	//********* ROAD MARKS **********//
+	std::vector<RoadMark> roadMarks(const road& xodrRoad)const;
+	std::vector<RoadMark> roadMarks(const lane::roadMark_sequence roadMarkSequence, double sLaneSectionI, double sLaneSectionE, Lane laneElement)const;
+	RoadMark roadMarkElement(const roadMark& rMark, double roadMarkSI, double roadMarkSE, Lane laneElement)const;
+	RoadMark roadMarkElement(const roadMark1& rMark, double roadMarkSI, double roadMarkSE, Lane laneElement)const;
+	std::vector<RoadMark> roadMarksLanes(const road& xodrRoad)const;
+	std::vector<RoadMark> roadMarksReferenceLine(const road& xodrRoad)const;
+	RoadMark roadMarkElement(const roadMark1& rMark, double roadMarkSI, double roadMarkSE, OGRLineString  referenceLine, std::string roadId)const;
+
+	//*****Signals****//
+	std::vector<Signal> roadSignals(const road& xodrRoad) const;
+	bool signalPresent(const road& xodrRoad) const;
+
+	//*****Object****//
+	bool objectPresent(const road& xodrRoad) const;
+	bool objectLinePresent(const road& xodrRoad) const;
+	bool objectPolygonPresent(const road& xodrRoad) const;
+	std::vector<Object> roadObject(const road& xodrRoad) const;
+
+	Object createPointObject(double s, double t, const object& o, OGRLineString  referenceLine, std::string roadId) const;
+	OGRPolygon createPolygonObject(Object o, const outline::cornerLocal_sequence& cornerLocalSeq) const;
+	OGRPolygon createPolygonObject(Object o, const outline::cornerRoad_sequence& cornerRoadSeq, OGRLineString  referenceLine) const;
 };
+
+
+
 #endif /* ndef _XODR_H_INCLUDED */

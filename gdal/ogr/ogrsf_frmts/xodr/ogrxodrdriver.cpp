@@ -4,6 +4,7 @@
  * Project:  OpenGIS Simple Features for OpenDRIVE
  * Purpose:  Implementation of OGRXODRDriver.
  * Author:   Michael Scholz, michael.scholz@dlr.de, German Aerospace Center (DLR)
+ *			 Cristhian Eduardo Murcia Galeano, cristhianmurcia182@gmail.com
  *			 Ana Maria Orozco, ana.orozco.net@gmail.com
  *
  ******************************************************************************
@@ -28,6 +29,8 @@
 
 extern "C" void CPL_DLL RegisterOGRXODR();
 
+
+
 /**
  * Identify compatible driver by checking if input file (extension) is supported
  * by this driver.
@@ -38,7 +41,7 @@ static int OGRXODRDriverIdentify(GDALOpenInfo* openInfo) {
     // -------------------------------------------------------------------- 
     //      Does this appear to be an .xodr file?                           
     // --------------------------------------------------------------------
-    return EQUAL(CPLGetExtension(openInfo->pszFilename), "xodr");
+	return EQUAL(CPLGetExtension(openInfo->pszFilename), "xodr");
 }
 
 /**
@@ -47,7 +50,8 @@ static int OGRXODRDriverIdentify(GDALOpenInfo* openInfo) {
  * @return Dataset for the input file.
  */
 static GDALDataset* OGRXODRDriverOpen(GDALOpenInfo* openInfo) {
-    if (!OGRXODRDriverIdentify(openInfo))
+	
+	if (!OGRXODRDriverIdentify(openInfo))
         return NULL;
 
     OGRXODRDataSource* ds = new OGRXODRDataSource();
@@ -82,3 +86,6 @@ static GDALDataset* OGRXODRDriverOpen(GDALOpenInfo* openInfo) {
         GetGDALDriverManager()->RegisterDriver(driver);
     }
 }
+
+
+
