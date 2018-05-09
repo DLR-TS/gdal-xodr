@@ -2,23 +2,24 @@
 This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library. By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is based on the work by [Orozco Idrobo (2015)][@OrozcoIdrobo2015] and [Scholz et al. (2017)][@Scholz2017]. Currently, the still prototypical OpenDRIVE driver is not yet integrated into the official GDAL distribution. Steps to built the driver as a shared library against GDAL to provide a pluggable extension are described below.
 
 ## Current Functionality
-As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now one `MultiLineString` layer is created containing just the road reference line geometries.
+As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now multipe `MultiLineString`, `Point` and `Polygon` layers are created for the desired elemnt output. Details on driver capabilities can be found in the [driver documentation](https://github.com/DLR-TS/gdal/blob/ogr/xodr/gdal/ogr/ogrsf_frmts/xodr/drv_xodr.html).
 
 ## Further To-Dos
 Geometry:
 - [ ] Specify point sampling distance for mathematical geometries as layer creation option
 - [ ] Create 3D geometries from polynomial OpenDRIVE elevation profile
-- [ ] Add `Point` layer for road objects (e.g. signals, signs)
-- [ ] Add `Polygon` layer for driving lanes, parking spaces
+- [x] Add `Point` layer for road objects (e.g. signals, signs)
+- [x] Add `Polygon` layer for parking spaces
+- [ ] Add `Polygon` layer for driving lanes
 - [ ] Add additional `LineString` layer(s) to contain
-  - [ ] driving lane boundaries
-  - [ ] road marks
-  - [ ] linear objects (e.g. guardrails, barriers)
+  - [x] driving lane boundaries
+  - [x] road marks
+  - [x] linear objects (e.g. guardrails, barriers)
 - [ ] Implement sampling of `spiral` geometries, with both `curvStart` and `curvEnd` `!= 0`
 
 Misc:
-- [ ] Catch invalid XODR file path ("terminate called after throwing an instance of 'xsd::cxx::tree::parsing<char>'")
-- [ ] [Insure proper resource deallocation](https://trac.osgeo.org/gdal/wiki/FAQMiscellaneous#HowshouldIdeallocateresourcesacquaintedfromGDALonWindows)
+- [x] Catch invalid XODR file path ("terminate called after throwing an instance of 'xsd::cxx::tree::parsing<char>'")
+- [ ] [Ensure proper resource deallocation](https://trac.osgeo.org/gdal/wiki/FAQMiscellaneous#HowshouldIdeallocateresourcesacquaintedfromGDALonWindows)
 
 ## Building
 ### 0 Dependencies
@@ -131,7 +132,7 @@ If everything went right the built GDAL/OGR is extended by our OpenDRIVE driver 
 
 This should yield the an OGR driver list extended by the new **OpenDRIVE** driver. To convert an OpenDRIVE XML file into, e.g., an ESRI Shapefile, use the provided utility `ogr2ogr`:
 ```bash
-ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr
+ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr referenceLine
 ```
 OpenDRIVE datasets for testing can be found in the official [OpenDRIVE download section](http://opendrive.org/download.html). For advanced debug console output of those utility programs and the implemented drivers add `CPL_DEBUG=ON` to your running environment.
   				
