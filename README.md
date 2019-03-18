@@ -75,32 +75,33 @@ This will build a shared library of the plugin and automatically copy it into GD
 
 ### 2 Building on Windows
 #### 2.1 GDAL Base on Windows
-We basically follow the official [GDAL building instructions for Windows](https://trac.osgeo.org/gdal/wiki/BuildingOnWindows). Things have gotten easier starting from GDAL 2.3.x. where GDAL provides a comfortable script `generate_vcxproj.bat` to generate project definitions for recent Microsoft's Visual Studio editions. An exemplary project for Visual Studio 2015 x64 can be generated from the "VS2015 x64 Native Tools Command Prompt" as follows:
+We basically follow the official [GDAL building instructions for Windows](https://trac.osgeo.org/gdal/wiki/BuildingOnWindows). Things have gotten easier starting from GDAL 2.3.x. where GDAL provides a comfortable script `generate_vcxproj.bat` to generate project definitions for recent Microsoft's Visual Studio editions. An exemplary project for Visual Studio 2017 x64 can be generated from the "VS2017 x64 Native Tools Command Prompt" as follows:
 ```bash
-generate_vcxproj.bat 14.0 64 gdal_vs2015
+generate_vcxproj.bat 15.0 64 gdal_vs2017
 ```
 Now configure your GEOS and Xerces dependencies by adding the corresponding include directory and library paths into a _new_ lokal NMake configuration file `nmake.local`. It should contain something like the following (consider `nmake.opt` as a reference):
 ```bash
 # GEOS
-GEOS_DIR    = D:\dev\geos\distro
+#GEOS_DIR    = D:\dev\geos\distro
+GEOS_DIR    = C:\OSGeo4W64
 GEOS_CFLAGS = -I$(GEOS_DIR)\include -DHAVE_GEOS
 GEOS_LIB    = $(GEOS_DIR)\lib\geos_c.lib
 
 # Xerces
-XERCES_DIR     = D:\dev\xerces-c-3.1.1-x86_64-windows-vc-10.0
+XERCES_DIR     = D:\dev\xerces-c-3.2.1\distro
 XERCES_INCLUDE = -I$(XERCES_DIR)\include  -I$(XERCES_DIR)\include\xercesc
-!IFNDEF DEBUG
+!IF "$(DEBUG)" == "0"
 XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3.lib
-XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1.dll
+XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_2.dll
 !ELSE
 XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3D.lib
-XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_1D.dll
+XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_2D.dll
 !ENDIF
 ```
 Open the generated `.vcxproj` in Visual Studio and build *the base* GDAL library for the desired configuration (e.g. Release or Debug). Alternatively, for an exemplary Release build use `nmake` from command line:
 ```bash
 cd <gdal>/gdal/
-nmake -f makefile.vc MSVC_VER=1900 WIN64=1
+nmake -f makefile.vc MSVC_VER=1910 WIN64=1
 ```
 Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` by adding the following in your lokal configuration file `nmake.local`
 ```bash
@@ -108,7 +109,7 @@ GDAL_HOME="D:\dev\gdal\gdal\build"
 ```
 and run `nmake install` afterwards
 ```bash
-nmake -f makefile.vc MSVC_VER=1900 WIN64=1 install
+nmake -f makefile.vc MSVC_VER=1910 WIN64=1 install
 ```
 
 #### 2.2 OpenDRIVE Driver as Shared Library on Windows
@@ -118,7 +119,7 @@ cd <gdal>/gdal/ogr/ogrsf_frmts/xodr/
 ```
 Configure the paths for all required Windows dependencies in the provided `XODRnmake.opt`. Then
 ```bash
-nmake -f makefile.vc MSVC_VER=1900 WIN64=1 plugin-install
+nmake -f makefile.vc MSVC_VER=1910 WIN64=1 plugin-install
 ```
 This also copies the required Xerces DLL into GDAL's binary install directory!
 
