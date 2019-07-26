@@ -104,6 +104,18 @@ XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_2.dll
 XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3D.lib
 XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_2D.dll
 !ENDIF
+
+# PROJ >= 6
+PROJ_INCLUDE = -ID:\dev\proj-6.1.1\distro\include
+!IFNDEF DEBUG
+PROJ_LIBRARY = D:\dev\proj-6.1.1\distro\lib\proj_6_1.lib
+!ELSE
+PROJ_LIBRARY = D:\dev\proj-6.1.1\distro\lib\proj_6_1_d.lib
+!ENDIF
+
+# SQLite3
+SQLITE_INC=-IC:\OSGeo4W64\include
+SQLITE_LIB=C:\OSGeo4W64\lib\sqlite3_i.lib
 ```
 Open the generated `.vcxproj` in Visual Studio and build *the base* GDAL library for the desired configuration (e.g. Release or Debug). Alternatively, for an exemplary Release build use `nmake` from command line:
 ```bash
