@@ -2,7 +2,7 @@
 This repository focusses on the development of an OpenDRIVE driver for the OGR [Simple Features](http://www.opengeospatial.org/standards/sfa) Library. By extending GDAL/OGR with the ability to read [OpenDRIVE](http://www.opendrive.org/) XML files, a broad and well-established toolset of GIS functions will be made available for OpenDRIVE processing. This OGR extension is based on the work by [Orozco Idrobo (2015)][@OrozcoIdrobo2015] and [Scholz et al. (2017)][@Scholz2017]. Currently, the still prototypical OpenDRIVE driver is not yet integrated into the official GDAL distribution. Steps to built the driver as a shared library against GDAL to provide a pluggable extension are described below.
 
 ## Current Functionality
-As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now multipe `MultiLineString`, `Point` and `Polygon` layers are created for the desired elemnt output. Details on driver capabilities can be found in the [driver documentation](https://github.com/DLR-TS/gdal/blob/ogr/xodr/gdal/ogr/ogrsf_frmts/xodr/drv_xodr.html).
+As of OpenDRIVE version 1.4 the specified coordinate reference system, given as PROJ.4 string, is correctly interpreted. For now multipe `MultiLineString`, `Point` and `Polygon` layers are created for the desired elemnt output. Details on driver capabilities can be found in the [driver documentation](https://github.com/DLR-TS/gdal/blob/ogr/xodr/gdal/doc/source/drivers/vector/xodr.rst).
 
 ## Further To-Dos
 Geometry:
