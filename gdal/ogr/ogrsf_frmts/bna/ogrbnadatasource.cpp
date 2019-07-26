@@ -2,10 +2,10 @@
  *
  * Project:  BNA Translator
  * Purpose:  Implements OGRBNADataSource class
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2007-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -42,7 +42,6 @@ OGRBNADataSource::OGRBNADataSource() :
     pszName(nullptr),
     papoLayers(nullptr),
     nLayers(0),
-    bUpdate(false),
     fpOutput(nullptr),
     bUseCRLF(false),
     bMultiLine(FALSE),
@@ -150,13 +149,12 @@ OGRLayer * OGRBNADataSource::ICreateLayer( const char * pszLayerName,
 /*                                Open()                                */
 /************************************************************************/
 
-int OGRBNADataSource::Open( const char * pszFilename, int bUpdateIn)
+int OGRBNADataSource::Open( const char * pszFilename )
 
 {
     int ok = FALSE;
 
     pszName = CPLStrdup( pszFilename );
-    bUpdate = CPL_TO_BOOL(bUpdateIn);
 
     VSILFILE* fp = VSIFOpenL(pszFilename, "rb");
     if (fp)

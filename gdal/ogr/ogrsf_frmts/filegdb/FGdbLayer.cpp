@@ -8,7 +8,7 @@
 ******************************************************************************
 * Copyright (c) 2010, Ragi Yaser Burhum
 * Copyright (c) 2011, Paul Ramsey <pramsey at cleverelephant.ca>
- * Copyright (c) 2011-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2014, Even Rouault <even dot rouault at spatialys.com>
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -930,7 +930,7 @@ void FGdbLayer::WorkAroundExtentProblem()
     m_bLayerJustCreated = FALSE;
 
     OGREnvelope sEnvelope;
-    if (GetExtent(&sEnvelope, TRUE) != OGRERR_NONE)
+    if (FGdbLayer::GetExtent(&sEnvelope, TRUE) != OGRERR_NONE)
         return;
 
     /* The characteristic of the bug is that the reported extent */
@@ -2719,6 +2719,7 @@ bool FGdbLayer::ParseGeometryDef(CPLXMLNode* psRoot)
     {
         int bSuccess = FALSE;
         m_pSRS = new OGRSpatialReference();
+        m_pSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         CPLPushErrorHandler(CPLQuietErrorHandler);
         if( latestwkid.length() > 0 )
         {

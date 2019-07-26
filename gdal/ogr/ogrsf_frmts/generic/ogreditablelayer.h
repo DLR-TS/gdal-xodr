@@ -33,6 +33,7 @@
 //! @cond Doxygen_Suppress
 #include "ogrlayerdecorator.h"
 #include <set>
+#include <map>
 
 class CPL_DLL IOGREditableLayerSynchronizer
 {
@@ -53,15 +54,16 @@ class CPL_DLL OGREditableLayer : public OGRLayerDecorator
     bool                           m_bTakeOwnershipSynchronizer;
     OGRFeatureDefn                *m_poEditableFeatureDefn;
     GIntBig                        m_nNextFID;
-    std::set<GIntBig>              m_oSetCreated;
-    std::set<GIntBig>              m_oSetEdited;
-    std::set<GIntBig>              m_oSetDeleted;
-    std::set<GIntBig>::iterator    m_oIter;
-    std::set<CPLString>            m_oSetDeletedFields;
+    std::set<GIntBig>              m_oSetCreated{};
+    std::set<GIntBig>              m_oSetEdited{};
+    std::set<GIntBig>              m_oSetDeleted{};
+    std::set<GIntBig>::iterator    m_oIter{};
+    std::set<CPLString>            m_oSetDeletedFields{};
     OGRLayer                      *m_poMemLayer;
     bool                           m_bStructureModified;
     bool                           m_bSupportsCreateGeomField;
     bool                           m_bSupportsCurveGeometries;
+    std::map<CPLString, int>       m_oMapEditableFDefnFieldNameToIdx{};
 
     OGRFeature                    *Translate(OGRFeatureDefn* poTargetDefn,
                                              OGRFeature* poSrcFeature,

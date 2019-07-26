@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -66,6 +66,9 @@ CPL_CVSID("$Id$")
  * GDALSuggestedWarpOutput() function is used to determine the bounds and
  * resolution of the output virtual file which should be large enough to
  * include all the input image
+ *
+ * If you want to create an alpha band if the source dataset has none, set
+ * psOptionsIn->nDstAlphaBand = GDALGetRasterCount(hSrcDS) + 1.
  *
  * Note that the constructed GDALDatasetH will acquire one or more references
  * to the passed in hSrcDS.  Reference counting semantics on the source
@@ -129,16 +132,25 @@ GDALAutoCreateWarpedVRT( GDALDatasetH hSrcDS,
     for( int i = 0; i < psWO->nBandCount; i++ )
     {
         GDALRasterBandH rasterBand = GDALGetRasterBand(psWO->hSrcDS, psWO->panSrcBands[i]);
-        
+
         int hasNoDataValue;
         double noDataValue = GDALGetRasterNoDataValue(rasterBand, &hasNoDataValue);
 
         if( hasNoDataValue )
         {
-            GDALWarpInitNoDataReal(psWO, -1e10);
-            
-            psWO->padfSrcNoDataReal[i] = noDataValue;
-            psWO->padfDstNoDataReal[i] = noDataValue;
+            // Check if the nodata value is out of range
+            int bClamped = FALSE;
+            int bRounded = FALSE;
+            CPL_IGNORE_RET_VAL(
+                GDALAdjustValueToDataType(GDALGetRasterDataType(rasterBand),
+                                      noDataValue, &bClamped, &bRounded ));
+            if( !bClamped )
+            {
+                GDALWarpInitNoDataReal(psWO, -1e10);
+
+                psWO->padfSrcNoDataReal[i] = noDataValue;
+                psWO->padfDstNoDataReal[i] = noDataValue;
+            }
         }
     }
 
@@ -236,6 +248,9 @@ GDALAutoCreateWarpedVRT( GDALDatasetH hSrcDS,
  * input image warped based on a provided transformation.  Output bounds
  * and resolution are provided explicitly.
  *
+ * If you want to create an alpha band if the source dataset has none, set
+ * psOptions->nDstAlphaBand = GDALGetRasterCount(hSrcDS) + 1.
+ *
  * Note that the constructed GDALDatasetH will acquire one or more references
  * to the passed in hSrcDS.  Reference counting semantics on the source
  * dataset should be honoured.  That is, don't just GDALClose() it unless it
@@ -295,7 +310,12 @@ GDALCreateWarpedVRT( GDALDatasetH hSrcDS,
     {
         poDS->AddBand( psOptions->eWorkingDataType, nullptr );
     }
-    
+    if( psOptions->nDstAlphaBand )
+    {
+        poDS->GetRasterBand(psOptions->nDstAlphaBand)->
+                                SetColorInterpretation(GCI_AlphaBand);
+    }
+
 /* -------------------------------------------------------------------- */
 /*      Initialize the warp on the VRTWarpedDataset.                    */
 /* -------------------------------------------------------------------- */
@@ -342,6 +362,7 @@ VRTWarpedDataset::VRTWarpedDataset( int nXSize, int nYSize ) :
 VRTWarpedDataset::~VRTWarpedDataset()
 
 {
+    VRTWarpedDataset::FlushCache();
     VRTWarpedDataset::CloseDependentDatasets();
 }
 
@@ -351,8 +372,6 @@ VRTWarpedDataset::~VRTWarpedDataset()
 
 int VRTWarpedDataset::CloseDependentDatasets()
 {
-    VRTWarpedDataset::FlushCache();
-
     bool bHasDroppedRef = CPL_TO_BOOL( VRTDataset::CloseDependentDatasets() );
 
 /* -------------------------------------------------------------------- */
@@ -503,14 +522,10 @@ public:
 
     virtual OGRSpatialReference *GetTargetCS() override { return nullptr; }
 
-    virtual int Transform( int nCount, double *x, double *y, double *z )
-                                                                    override
-    {
-        return TransformEx( nCount, x, y, z, nullptr );
-    }
 
-    virtual int TransformEx( int nCount, double *x, double *y, double * /*z*/,
-                             int *pabSuccess ) override
+    virtual int Transform( int nCount, double *x, double *y,
+                           double * /*z*/, double * /*t*/,
+                           int *pabSuccess ) override
     {
         for( int i = 0; i < nCount; i++ )
         {
@@ -1618,7 +1633,7 @@ CPLErr VRTWarpedDataset::ProcessBlock( int iBlockX, int iBlockY )
             = poBand->GetLockedBlockRef( iBlockX, iBlockY, TRUE );
 
         const GByte* pabyDstBandBuffer = 
-            pabyDstBuffer + i*nReqXSize*nReqYSize*nWordSize;
+            pabyDstBuffer + static_cast<GPtrDiff_t>(i)*nReqXSize*nReqYSize*nWordSize;
 
         if( poBlock != nullptr )
         {
@@ -1626,13 +1641,13 @@ CPLErr VRTWarpedDataset::ProcessBlock( int iBlockX, int iBlockY )
             {
                 if( nReqXSize == m_nBlockXSize && nReqYSize == m_nBlockYSize )
                 {
-                    GDALCopyWords(
+                    GDALCopyWords64(
                         pabyDstBandBuffer,
                         psWO->eWorkingDataType, nWordSize,
                         poBlock->GetDataRef(),
                         poBlock->GetDataType(),
                         GDALGetDataTypeSizeBytes(poBlock->GetDataType()),
-                        m_nBlockXSize * m_nBlockYSize );
+                        static_cast<GPtrDiff_t>(m_nBlockXSize) * m_nBlockYSize );
                 }
                 else
                 {
@@ -1729,8 +1744,8 @@ CPLErr VRTWarpedRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
 
     if( eErr == CE_None && pImage != poBlock->GetDataRef() )
     {
-        const int nDataBytes
-            = (GDALGetDataTypeSize(poBlock->GetDataType()) / 8)
+        const GPtrDiff_t nDataBytes
+            = static_cast<GPtrDiff_t>(GDALGetDataTypeSize(poBlock->GetDataType()) / 8)
             * poBlock->GetXSize() * poBlock->GetYSize();
         memcpy( pImage, poBlock->GetDataRef(), nDataBytes );
     }

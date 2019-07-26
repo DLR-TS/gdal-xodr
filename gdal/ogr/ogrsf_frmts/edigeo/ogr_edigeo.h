@@ -3,10 +3,10 @@
  *
  * Project:  EDIGEO Translator
  * Purpose:  Definition of classes for OGR .edigeo driver.
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -195,7 +195,7 @@ class OGREDIGEODataSource : public OGRDataSource
     std::map< CPLString, xyPairListType >             mapPAR; /* Map Arc_X to ((x1,y1),...(xn,yn)) */
     std::map< CPLString, OGREDIGEOFEADesc >           mapFEA; /* Map Object_X to FEADesc */
     std::map< CPLString, strListType >                mapPFE_PAR; /* Map Face_X to (Arc_X1,..Arc_Xn) */
-    std::vector< strstrType >                         listFEA_PFE; /* List of (Object_X,Face_Y) */
+    std::vector< std::pair<CPLString, strListType > > listFEA_PFE; /* List of (Object_X,(Face_Y1,..Face_Yn)) */
     std::vector< std::pair<CPLString, strListType > > listFEA_PAR; /* List of (Object_X,(Arc_Y1,..Arc_Yn))) */
     std::vector< strstrType >                         listFEA_PNO; /* List of (Object_X,Noeud_Y) */
     std::map< CPLString, CPLString>                   mapFEA_FEA; /* Map Attribut_TEX{X}_id_Objet_{Y} to Objet_Y */
@@ -209,7 +209,7 @@ class OGREDIGEODataSource : public OGRDataSource
     int                 BuildPoints();
     int                 BuildLineStrings();
     int                 BuildPolygon(const CPLString& osFEA,
-                                     const CPLString& osPFE);
+                                     const strListType& aosPFE);
     int                 BuildPolygons();
 
     int                 iATR, iDI3, iDI4, iHEI, iFON;

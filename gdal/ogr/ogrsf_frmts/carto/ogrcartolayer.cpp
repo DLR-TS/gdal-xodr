@@ -2,10 +2,10 @@
  *
  * Project:  Carto Translator
  * Purpose:  Implements OGRCARTOLayer class.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -235,7 +235,7 @@ OGRFeature *OGRCARTOLayer::GetNextRawFeature()
             json_object_put(poCachedObj);
         poCachedObj = poObj;
 
-        nFetchedObjects = json_object_array_length(poRows);
+        nFetchedObjects = static_cast<decltype(nFetchedObjects)>(json_object_array_length(poRows));
         iNextInFetchedObjects = 0;
     }
 
@@ -451,6 +451,7 @@ OGRSpatialReference* OGRCARTOLayer::GetSRS(const char* pszGeomCol,
     {
         const char* pszSRTEXT = json_object_get_string(poSRTEXT);
         l_poSRS = new OGRSpatialReference();
+        l_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         if( l_poSRS->importFromWkt(pszSRTEXT) != OGRERR_NONE )
         {
             delete l_poSRS;

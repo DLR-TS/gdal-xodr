@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Ivan Lucena
- * Copyright (c) 2007-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files ( the "Software" ),
@@ -70,5 +70,8 @@ public:
 
     virtual CPLErr GetGeoTransform( double *padfTransform ) override;
     virtual CPLErr SetGeoTransform( double *padfTransform ) override;
-    virtual CPLErr SetProjection( const char *pszProjString ) override;
+    virtual CPLErr _SetProjection( const char *pszProjString ) override;
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 };

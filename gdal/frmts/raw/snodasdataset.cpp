@@ -2,10 +2,10 @@
  *
  * Project:  SNODAS driver
  * Purpose:  Implementation of SNODASDataset
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -41,9 +41,9 @@ CPL_CVSID("$Id$")
 
 class SNODASRasterBand;
 
-class SNODASDataset : public RawDataset
+class SNODASDataset final: public RawDataset
 {
-    CPLString   osDataFilename;
+    CPLString   osDataFilename{};
     bool        bGotTransform;
     double      adfGeoTransform[6];
     bool        bHasNoData;
@@ -55,12 +55,17 @@ class SNODASDataset : public RawDataset
 
     friend class SNODASRasterBand;
 
+    CPL_DISALLOW_COPY_ASSIGN(SNODASDataset)
+
   public:
     SNODASDataset();
     ~SNODASDataset() override;
 
     CPLErr GetGeoTransform( double * padfTransform ) override;
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     char **GetFileList() override;
 
@@ -74,8 +79,10 @@ class SNODASDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class SNODASRasterBand : public RawRasterBand
+class SNODASRasterBand final: public RawRasterBand
 {
+    CPL_DISALLOW_COPY_ASSIGN(SNODASRasterBand)
+
   public:
     SNODASRasterBand( VSILFILE* fpRaw, int nXSize, int nYSize );
     ~SNODASRasterBand() override {}
@@ -93,7 +100,7 @@ SNODASRasterBand::SNODASRasterBand( VSILFILE* fpRawIn,
                                     int nXSize, int nYSize ) :
     RawRasterBand( fpRawIn, 0, 2,
                    nXSize * 2, GDT_Int16,
-                   !CPL_IS_LSB, nXSize, nYSize, TRUE, TRUE)
+                   !CPL_IS_LSB, nXSize, nYSize, RawRasterBand::OwnFP::YES)
 {}
 
 /************************************************************************/
@@ -185,10 +192,10 @@ SNODASDataset::~SNODASDataset()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *SNODASDataset::GetProjectionRef()
+const char *SNODASDataset::_GetProjectionRef()
 
 {
-    return SRS_WKT_WGS84;
+    return SRS_WKT_WGS84_LAT_LONG;
 }
 
 /************************************************************************/

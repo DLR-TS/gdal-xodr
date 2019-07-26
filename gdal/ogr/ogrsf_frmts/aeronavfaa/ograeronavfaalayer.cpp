@@ -2,10 +2,10 @@
  *
  * Project:  AeronavFAA Translator
  * Purpose:  Implements OGRAeronavFAALayer class.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2011-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -43,12 +43,13 @@ CPL_CVSID("$Id$")
 OGRAeronavFAALayer::OGRAeronavFAALayer( VSILFILE* fp,
                                         const char* pszLayerName ) :
     poFeatureDefn(new OGRFeatureDefn(pszLayerName)),
-    poSRS(new OGRSpatialReference(SRS_WKT_WGS84)),
+    poSRS(new OGRSpatialReference(SRS_WKT_WGS84_LAT_LONG)),
     fpAeronavFAA(fp),
     bEOF(false),
     nNextFID(0),
     psRecordDesc(nullptr)
 {
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     poFeatureDefn->Reference();
     poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(poSRS);
     SetDescription( poFeatureDefn->GetName() );

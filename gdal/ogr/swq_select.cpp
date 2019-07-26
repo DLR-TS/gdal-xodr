@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (C) 2010 Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2010-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -48,22 +48,7 @@ CPL_CVSID("$Id$")
 /*                             swq_select()                             */
 /************************************************************************/
 
-swq_select::swq_select() :
-    query_mode(0),
-    raw_select(nullptr),
-    result_columns(0),
-    column_defs(nullptr),
-    table_count(0),
-    table_defs(nullptr),
-    join_count(0),
-    join_defs(nullptr),
-    where_expr(nullptr),
-    order_specs(0),
-    order_defs(nullptr),
-    limit(-1),
-    offset(0),
-    poOtherSelect(nullptr)
-{}
+swq_select::swq_select() = default;
 
 /************************************************************************/
 /*                            ~swq_select()                             */

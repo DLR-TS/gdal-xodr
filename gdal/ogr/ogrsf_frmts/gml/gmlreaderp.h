@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -213,7 +213,7 @@ public:
 /************************************************************************/
 /*                         GMLXercesHandler                             */
 /************************************************************************/
-class GMLXercesHandler : public DefaultHandler, public GMLHandler
+class GMLXercesHandler final: public DefaultHandler, public GMLHandler
 {
     int        m_nEntityCounter;
     CPLString  m_osElement;
@@ -257,7 +257,7 @@ class GMLXercesHandler : public DefaultHandler, public GMLHandler
 /************************************************************************/
 /*                           GMLExpatHandler                            */
 /************************************************************************/
-class GMLExpatHandler : public GMLHandler
+class GMLExpatHandler final: public GMLHandler
 {
     XML_Parser m_oParser;
     bool       m_bStopParsing;
@@ -321,7 +321,7 @@ public:
 /*                              GMLReader                               */
 /************************************************************************/
 
-class GMLReader : public IGMLReader
+class GMLReader final: public IGMLReader
 {
   private:
     bool          m_bClassListLocked;

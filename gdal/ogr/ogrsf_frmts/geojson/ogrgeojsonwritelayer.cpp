@@ -5,7 +5,7 @@
  * Author:   Mateusz Loskot, mateusz@loskot.net
  *
  ******************************************************************************
- * Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2007, Mateusz Loskot
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -33,11 +33,6 @@
 #include <algorithm>
 
 CPL_CVSID("$Id$")
-
-// Remove annoying warnings Microsoft Visual C++.
-#if defined(_MSC_VER)
-#  pragma warning(disable:4512)
-#endif
 
 /************************************************************************/
 /*                         OGRGeoJSONWriteLayer()                       */
@@ -76,21 +71,9 @@ OGRGeoJSONWriteLayer::OGRGeoJSONWriteLayer( const char* pszName,
     {
         oWriteOptions_.SetRFC7946Settings();
     }
-    oWriteOptions_.osIDField = CSLFetchNameValueDef(papszOptions, "ID_FIELD", "");
-    const char* pszIDFieldType = CSLFetchNameValue(papszOptions, "ID_TYPE");
-    if( pszIDFieldType )
-    {
-        if( EQUAL(pszIDFieldType, "String") )
-        {
-            oWriteOptions_.bForceIDFieldType = true;
-            oWriteOptions_.eForcedIDFieldType = OFTString;
-        }
-        else if( EQUAL(pszIDFieldType, "Integer") )
-        {
-            oWriteOptions_.bForceIDFieldType = true;
-            oWriteOptions_.eForcedIDFieldType = OFTInteger64;
-        }
-    }
+    oWriteOptions_.SetIDOptions(papszOptions);
+    oWriteOptions_.bAllowNonFiniteValues = CPLTestBool(
+        CSLFetchNameValueDef(papszOptions, "WRITE_NON_FINITE_VALUES", "FALSE"));
 }
 
 /************************************************************************/
@@ -173,7 +156,8 @@ OGRErr OGRGeoJSONWriteLayer::ICreateFeature( OGRFeature* poFeature )
             const char* const apszOptions[] = { "WRAPDATELINE=YES", nullptr };
             OGRGeometry* poNewGeom =
                 OGRGeometryFactory::transformWithOptions(
-                    poGeometry, poCT_, const_cast<char**>(apszOptions));
+                    poGeometry, poCT_, const_cast<char**>(apszOptions),
+                    oTransformCache_);
             if( poNewGeom == nullptr )
             {
                 delete poFeatureToWrite;
@@ -309,19 +293,13 @@ OGRErr OGRGeoJSONWriteLayer::ICreateFeature( OGRFeature* poFeature )
 OGRErr OGRGeoJSONWriteLayer::CreateField( OGRFieldDefn* poField,
                                           int /* bApproxOK */  )
 {
-    for( int i = 0; i < poFeatureDefn_->GetFieldCount(); ++i )
+    if( poFeatureDefn_->GetFieldIndexCaseSensitive(poField->GetNameRef()) >= 0 )
     {
-        OGRFieldDefn* poDefn = poFeatureDefn_->GetFieldDefn(i);
-        CPLAssert( nullptr != poDefn );
+        CPLDebug( "GeoJSON", "Field '%s' already present in schema",
+                    poField->GetNameRef() );
 
-        if( EQUAL( poDefn->GetNameRef(), poField->GetNameRef() ) )
-        {
-            CPLDebug( "GeoJSON", "Field '%s' already present in schema",
-                      poField->GetNameRef() );
-
-            // TODO - mloskot: Is this return code correct?
-            return OGRERR_NONE;
-        }
+        // TODO - mloskot: Is this return code correct?
+        return OGRERR_NONE;
     }
 
     poFeatureDefn_->AddFieldDefn( poField );

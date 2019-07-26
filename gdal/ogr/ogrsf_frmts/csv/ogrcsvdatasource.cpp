@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -299,11 +299,15 @@ OGRErr OGRCSVEditableLayerSynchronizer::EditableSyncToDisk(
 
 class OGRCSVEditableLayer: public OGREditableLayer
 {
+    std::set<CPLString> m_oSetFields;
+
   public:
     OGRCSVEditableLayer(OGRCSVLayer *poCSVLayer, char **papszOpenOptions);
 
     virtual OGRErr      CreateField( OGRFieldDefn *poField,
                                      int bApproxOK = TRUE ) override;
+    virtual OGRErr      DeleteField( int iField ) override;
+    virtual OGRErr      AlterFieldDefn( int iField, OGRFieldDefn* poNewFieldDefn, int nFlagsIn ) override;
     virtual GIntBig     GetFeatureCount( int bForce = TRUE ) override;
 };
 
@@ -330,13 +334,46 @@ OGRErr OGRCSVEditableLayer::CreateField( OGRFieldDefn *poNewField,
                                          int bApproxOK )
 
 {
+    if( m_poEditableFeatureDefn->GetFieldCount() >= 10000 )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Limiting to 10000 fields");
+        return OGRERR_FAILURE;
+    }
+
+    if( m_oSetFields.empty() )
+    {
+        for( int i = 0; i < m_poEditableFeatureDefn->GetFieldCount(); i++ )
+        {
+            m_oSetFields.insert(CPLString(
+                m_poEditableFeatureDefn->GetFieldDefn(i)->GetNameRef()).toupper());
+        }
+    }
+
     const OGRCSVCreateFieldAction eAction = OGRCSVLayer::PreCreateField(
-        m_poEditableFeatureDefn, poNewField, bApproxOK);
+        m_poEditableFeatureDefn, m_oSetFields, poNewField, bApproxOK);
     if( eAction == CREATE_FIELD_DO_NOTHING )
         return OGRERR_NONE;
     if( eAction == CREATE_FIELD_ERROR )
         return OGRERR_FAILURE;
-    return OGREditableLayer::CreateField(poNewField, bApproxOK);
+    OGRErr eErr = OGREditableLayer::CreateField(poNewField, bApproxOK);
+    if( eErr == OGRERR_NONE )
+    {
+        m_oSetFields.insert(CPLString(poNewField->GetNameRef()).toupper());
+    }
+    return eErr;
+}
+
+OGRErr OGRCSVEditableLayer::DeleteField( int iField )
+{
+    m_oSetFields.clear();
+    return OGREditableLayer::DeleteField(iField);
+}
+
+OGRErr OGRCSVEditableLayer::AlterFieldDefn( int iField, OGRFieldDefn* poNewFieldDefn, int nFlagsIn )
+{
+    m_oSetFields.clear();
+    return OGREditableLayer::AlterFieldDefn(iField, poNewFieldDefn, nFlagsIn);
 }
 
 /************************************************************************/

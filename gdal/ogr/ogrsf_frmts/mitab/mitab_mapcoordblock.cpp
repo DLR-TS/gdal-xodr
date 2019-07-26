@@ -190,11 +190,11 @@ int     TABMAPCoordBlock::CommitToFile()
 
     WriteInt16(TABMAP_COORD_BLOCK);    // Block type code
     CPLAssert(m_nSizeUsed >= MAP_COORD_HEADER_SIZE && m_nSizeUsed < MAP_COORD_HEADER_SIZE + 32768);
-    WriteInt16((GInt16)(m_nSizeUsed - MAP_COORD_HEADER_SIZE)); // num. bytes used
+    WriteInt16(static_cast<GInt16>(m_nSizeUsed - MAP_COORD_HEADER_SIZE)); // num. bytes used
     WriteInt32(m_nNextCoordBlock);
 
     if( CPLGetLastErrorType() == CE_Failure )
-        nStatus = CPLGetLastErrorNo();
+        nStatus = -1;
 
     /*-----------------------------------------------------------------
      * OK, call the base class to write the block to disk.
@@ -361,7 +361,7 @@ int     TABMAPCoordBlock::ReadIntCoords(GBool bCompressed, int numCoordPairs,
             panXY[i+1] = ReadInt16();
             TABSaturatedAdd(panXY[i], m_nComprOrgX);
             TABSaturatedAdd(panXY[i+1], m_nComprOrgY);
-            if (CPLGetLastErrorType() != 0)
+            if (CPLGetLastErrorType() == CE_Failure)
                 return -1;
         }
     }
@@ -371,7 +371,7 @@ int     TABMAPCoordBlock::ReadIntCoords(GBool bCompressed, int numCoordPairs,
         {
             panXY[i]   = ReadInt32();
             panXY[i+1] = ReadInt32();
-            if (CPLGetLastErrorType() != 0)
+            if (CPLGetLastErrorType() == CE_Failure)
                 return -1;
         }
     }
@@ -578,11 +578,11 @@ int     TABMAPCoordBlock::WriteCoordSecHdrs(int nVersion,
         if (nVersion >= 450)
             WriteInt32(pasHdrs[i].numVertices);
         else
-            WriteInt16((GInt16)pasHdrs[i].numVertices);
+            WriteInt16(static_cast<GInt16>(pasHdrs[i].numVertices));
         if (nVersion >= 800)
             WriteInt32(pasHdrs[i].numHoles);
         else
-            WriteInt16((GInt16)pasHdrs[i].numHoles);
+            WriteInt16(static_cast<GInt16>(pasHdrs[i].numHoles));
         WriteIntCoord(pasHdrs[i].nXMin, pasHdrs[i].nYMin, bCompressed);
         WriteIntCoord(pasHdrs[i].nXMax, pasHdrs[i].nYMax, bCompressed);
         WriteInt32(pasHdrs[i].nDataOffset);

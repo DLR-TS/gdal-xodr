@@ -2,10 +2,10 @@
  *
  * Project:  GeoRSS Translator
  * Purpose:  Implements OGRGeoRSSLayer class.
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -180,7 +180,7 @@ OGRGeoRSSLayer::OGRGeoRSSLayer( const char* pszFilename,
         }
     }
 
-    ResetReading();
+    OGRGeoRSSLayer::ResetReading();
 }
 
 /************************************************************************/
@@ -533,43 +533,54 @@ void OGRGeoRSSLayer::startElementCbk(const char *pszName, const char **ppszAttr)
         while(CPLHashSetLookup(setOfFoundFields, pszSubElementName) != nullptr)
         {
             count ++;
+            if( count == 100 )
+            {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "Too many repeated fields");
+                CPLFree(pszSubElementName);
+                pszSubElementName = nullptr;
+                break;
+            }
             CPLFree(pszSubElementName);
             pszSubElementName = CPLStrdup(CPLSPrintf("%s%d", pszName, count));
         }
-        CPLHashSetInsert(setOfFoundFields, CPLStrdup(pszSubElementName));
-
-        char* pszCompatibleName =
-            OGRGeoRSS_GetOGRCompatibleTagName(pszSubElementName);
-        iCurrentField = poFeatureDefn->GetFieldIndex(pszCompatibleName);
-        CPLFree(pszSubElementName);
-
-        for( int i = 0; ppszAttr[i] != nullptr && ppszAttr[i+1] != nullptr;
-             i += 2 )
+        if( pszSubElementName )
         {
-            char* pszAttrCompatibleName =
-                    OGRGeoRSS_GetOGRCompatibleTagName(
-                        CPLSPrintf("%s_%s", pszCompatibleName, ppszAttr[i]));
-            const int iAttrField =
-                poFeatureDefn->GetFieldIndex(pszAttrCompatibleName);
-            if (iAttrField >= 0)
+            CPLHashSetInsert(setOfFoundFields, CPLStrdup(pszSubElementName));
+
+            char* pszCompatibleName =
+                OGRGeoRSS_GetOGRCompatibleTagName(pszSubElementName);
+            iCurrentField = poFeatureDefn->GetFieldIndex(pszCompatibleName);
+            CPLFree(pszSubElementName);
+
+            for( int i = 0; ppszAttr[i] != nullptr && ppszAttr[i+1] != nullptr;
+                i += 2 )
             {
-                if( poFeatureDefn->GetFieldDefn(iAttrField)->GetType() ==
-                        OFTReal)
-                    poFeature->SetField(iAttrField, CPLAtof(ppszAttr[i+1]));
-                else
-                    poFeature->SetField(iAttrField, ppszAttr[i+1]);
-            }            CPLFree(pszAttrCompatibleName);
-        }
+                char* pszAttrCompatibleName =
+                        OGRGeoRSS_GetOGRCompatibleTagName(
+                            CPLSPrintf("%s_%s", pszCompatibleName, ppszAttr[i]));
+                const int iAttrField =
+                    poFeatureDefn->GetFieldIndex(pszAttrCompatibleName);
+                if (iAttrField >= 0)
+                {
+                    if( poFeatureDefn->GetFieldDefn(iAttrField)->GetType() ==
+                            OFTReal)
+                        poFeature->SetField(iAttrField, CPLAtof(ppszAttr[i+1]));
+                    else
+                        poFeature->SetField(iAttrField, ppszAttr[i+1]);
+                }            CPLFree(pszAttrCompatibleName);
+            }
 
-        if (iCurrentField < 0)
-        {
-            pszSubElementName = nullptr;
+            if (iCurrentField < 0)
+            {
+                pszSubElementName = nullptr;
+            }
+            else
+            {
+                pszSubElementName = CPLStrdup(pszCompatibleName);
+            }
+            CPLFree(pszCompatibleName);
         }
-        else
-        {
-            pszSubElementName = CPLStrdup(pszCompatibleName);
-        }
-        CPLFree(pszCompatibleName);
     }
     else if( bInFeature &&
              currentDepth > featureDepth + 1 &&
@@ -1868,7 +1879,8 @@ void OGRGeoRSSLayer::LoadSchema()
         if( pszGMLSRSName == nullptr )
         {
             poSRS = new OGRSpatialReference();
-            poSRS->SetWellKnownGeogCS( "WGS84" ); /* no AXIS definition ! */
+            poSRS->SetWellKnownGeogCS( "WGS84" );
+            poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         }
         else
         {

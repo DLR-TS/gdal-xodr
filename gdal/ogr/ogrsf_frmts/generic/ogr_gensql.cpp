@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -105,7 +105,8 @@ OGRGenSQLResultsLayer::OGRGenSQLResultsLayer( GDALDataset *poSrcDSIn,
     iFIDFieldIndex(),
     nExtraDSCount(0),
     papoExtraDS(nullptr),
-    nIteratedFeatures(-1)
+    nIteratedFeatures(-1),
+    m_oDistinctList{}
 {
     swq_select *psSelectInfo = static_cast<swq_select*>(pSelectInfoIn);
 
@@ -420,6 +421,7 @@ OGRGenSQLResultsLayer::OGRGenSQLResultsLayer( GDALDataset *poSrcDSIn,
             if( psColDef->nSRID > 0 )
             {
                 OGRSpatialReference* poSRS = new OGRSpatialReference();
+                poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
                 if( poSRS->importFromEPSG( psColDef->nSRID ) == OGRERR_NONE )
                 {
                     oGFDefn.SetSpatialRef( poSRS );

@@ -1140,7 +1140,7 @@ OGRGeometry* OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
 
 void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry*& poGeom)
 {
-    OGRwkbGeometryType eInGeomType = poGeom->getGeometryType();
+    OGRwkbGeometryType eInGeomType = wkbFlatten(poGeom->getGeometryType());
     const OGRwkbGeometryType eLayerGeomType = GetGeomType();
     if( eLayerGeomType == wkbUnknown )
     {
@@ -1170,7 +1170,7 @@ void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry*& poGeom)
         }
         for( auto&& poSubGeom: poGC )
         {
-            if( poSubGeom->getGeometryType() == ePartGeom )
+            if( wkbFlatten(poSubGeom->getGeometryType()) == ePartGeom )
             {
                 if( poTargetSingleGeom != nullptr )
                 {
@@ -1195,7 +1195,7 @@ void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry*& poGeom)
         {
             delete poGC;
         }
-        eInGeomType = poGeom->getGeometryType();
+        eInGeomType = wkbFlatten(poGeom->getGeometryType());
     }
 
     // Wrap single into multi if requested by the layer geometry type
@@ -1324,9 +1324,6 @@ OGRFeature* OGRMVTLayer::GetNextRawFeature()
                         ParseGeometry(nGeomType, pabyDataGeometryEnd);
                     if( poGeom )
                     {
-                        poGeom->assignSpatialReference(GetSpatialRef());
-                        poFeature->SetGeometryDirectly(poGeom);
-
                         // Clip geometry to tile extent if requested
                         if( m_poDS->m_bClip && OGRGeometryFactory::haveGEOS() )
                         {
@@ -1359,6 +1356,8 @@ OGRFeature* OGRMVTLayer::GetNextRawFeature()
                                         poClipped->assignSpatialReference(
                                             GetSpatialRef());
                                         poFeature->SetGeometryDirectly(poClipped);
+                                        delete poGeom;
+                                        poGeom = nullptr;
                                     }
                                 }
                             }
@@ -1366,6 +1365,12 @@ OGRFeature* OGRMVTLayer::GetNextRawFeature()
                             {
                                 bOK = false;
                             }
+                        }
+
+                        if( poGeom )
+                        {
+                            poGeom->assignSpatialReference(GetSpatialRef());
+                            poFeature->SetGeometryDirectly(poGeom);
                         }
                     }
 
@@ -1865,6 +1870,8 @@ OGRMVTDataset::OGRMVTDataset(GByte* pabyData):
     m_pabyData(pabyData),
     m_poSRS(new OGRSpatialReference())
 {
+    m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
     m_bClip = CPLTestBool(CPLGetConfigOption("OGR_MVT_CLIP", "YES"));
 
     // Default WebMercator tiling scheme
@@ -1995,6 +2002,11 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
     if( poOpenInfo->pabyHeader[0] == 0x1F &&
         poOpenInfo->pabyHeader[1] == 0x8B )
     {
+        // Prevent recursion
+        if( STARTS_WITH(poOpenInfo->pszFilename, "/vsigzip/") )
+        {
+            return FALSE;
+        }
         CPLConfigOptionSetter oSetter(
             "CPL_VSIL_GZIP_WRITE_PROPERTIES", "NO", false);
         GDALOpenInfo oOpenInfo( (CPLString("/vsigzip/") +
@@ -2042,8 +2054,14 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
         while( pabyData < pabyLayerEnd )
         {
             READ_VARUINT32(pabyData, pabyLayerEnd, nKey);
-            if( nKey == MAKE_KEY(knLAYER_NAME, WT_DATA) )
+            auto nFieldNumber = GET_FIELDNUMBER(nKey);
+            auto nWireType = GET_WIRETYPE(nKey);
+            if( nFieldNumber == knLAYER_NAME )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for layer_name field");
+                }
                 char* pszLayerName = nullptr;
                 unsigned int nTextSize = 0;
                 READ_TEXT_WITH_SIZE(pabyData, pabyLayerEnd, pszLayerName,
@@ -2058,8 +2076,12 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 CPLFree(pszLayerName);
                 bLayerNameFound = true;
             }
-            else if( nKey == MAKE_KEY(knLAYER_FEATURES, WT_DATA) )
+            else if( nFieldNumber == knLAYER_FEATURES )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for layer_features field");
+                }
                 unsigned int nFeatureLength = 0;
                 unsigned int nGeomType = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nFeatureLength);
@@ -2077,8 +2099,15 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 while( pabyData < pabyDataFeatureEnd )
                 {
                     READ_VARUINT32(pabyData, pabyDataFeatureEnd, nKey);
-                    if( nKey == MAKE_KEY(knFEATURE_TYPE, WT_VARINT) )
+                    nFieldNumber = GET_FIELDNUMBER(nKey);
+                    nWireType = GET_WIRETYPE(nKey);
+                    if( nFieldNumber == knFEATURE_TYPE)
                     {
+                        if( nWireType != WT_VARINT )
+                        {
+                            CPLDebug("MVT", "Invalid wire type for feature_type field");
+                            return FALSE;
+                        }
                         READ_VARUINT32(pabyData, pabyDataFeatureEnd, nGeomType);
                         if( nGeomType > knGEOM_TYPE_POLYGON )
                         {
@@ -2086,8 +2115,13 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                             return FALSE;
                         }
                     }
-                    else if( nKey == MAKE_KEY(knFEATURE_TAGS, WT_DATA) )
+                    else if( nFieldNumber == knFEATURE_TAGS )
                     {
+                        if( nWireType != WT_DATA )
+                        {
+                            CPLDebug("MVT", "Invalid wire type for feature_tags field");
+                            return FALSE;
+                        }
                         unsigned int nTagsSize = 0;
                         READ_VARUINT32(pabyData, pabyDataFeatureEnd, nTagsSize);
                         if( nTagsSize == 0 || nTagsSize >
@@ -2113,6 +2147,11 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                                 return FALSE;
                             }
                         }
+                    }
+                    else if( nFieldNumber == knFEATURE_GEOMETRY && nWireType != WT_DATA )
+                    {
+                        CPLDebug("MVT", "Invalid wire type for feature_geometry field");
+                        return FALSE;
                     }
                     else if( nKey == MAKE_KEY(knFEATURE_GEOMETRY, WT_DATA) &&
                             nGeomType >= 1 && nGeomType <= 3 )
@@ -2237,8 +2276,13 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
 
                 pabyData = pabyDataFeatureEnd;
             }
-            else if( nKey == MAKE_KEY(knLAYER_KEYS, WT_DATA) )
+            else if( nFieldNumber == knLAYER_KEYS )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for keys field");
+                    return FALSE;
+                }
                 char* pszKey = nullptr;
                 unsigned int nTextSize = 0;
                 READ_TEXT_WITH_SIZE(pabyData, pabyLayerEnd, pszKey, nTextSize);
@@ -2251,8 +2295,13 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 CPLFree(pszKey);
                 bKeyFound = true;
             }
-            else if( nKey == MAKE_KEY(knLAYER_VALUES, WT_DATA) )
+            else if( nFieldNumber == knLAYER_VALUES )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for values field");
+                    return FALSE;
+                }
                 unsigned int nValueLength = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nValueLength);
                 if( nValueLength == 0 ||
@@ -2263,18 +2312,32 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 }
                 pabyData += nValueLength;
             }
+            else if( GET_FIELDNUMBER(nKey) == knLAYER_EXTENT &&
+                     GET_WIRETYPE(nKey) != WT_VARINT )
+            {
+                CPLDebug("MVT", "Invalid wire type for extent field");
+                return FALSE;
+            }
+#if 0
+            // The check on extent is too fragile. Values of 65536 can be found
             else if( nKey == MAKE_KEY(knLAYER_EXTENT, WT_VARINT) )
             {
                 unsigned int nExtent = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nExtent);
-                if( nExtent < 128 || nExtent > 16384 )
+                if( nExtent < 128 || nExtent > 16834 )
                 {
                     CPLDebug("MVT", "Invalid extent: %u", nExtent);
                     return FALSE;
                 }
             }
-            else if( nKey == MAKE_KEY(knLAYER_VERSION, WT_VARINT) )
+#endif
+            else if( nFieldNumber == knLAYER_VERSION )
             {
+                if( nWireType != WT_VARINT )
+                {
+                    CPLDebug("MVT", "Invalid wire type for version field");
+                    return FALSE;
+                }
                 unsigned int nVersion = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nVersion);
                 if( nVersion != 1 && nVersion != 2 )
@@ -2414,7 +2477,8 @@ static void ConvertFromWGS84(OGRSpatialReference* poTargetSRS,
     else
     {
         OGRSpatialReference oSRS_EPSG4326;
-        oSRS_EPSG4326.SetFromUserInput(SRS_WKT_WGS84);
+        oSRS_EPSG4326.SetFromUserInput(SRS_WKT_WGS84_LAT_LONG);
+        oSRS_EPSG4326.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         OGRCoordinateTransformation* poCT = 
             OGRCreateCoordinateTransformation(&oSRS_EPSG4326, poTargetSRS);
         if( poCT )
@@ -3202,9 +3266,9 @@ class OGRMVTWriterDataset final: public GDALDataset
         OGRErr              PreGenerateForTile(int nZ, int nX, int nY,
                                                const CPLString& osTargetName,
                                                bool bIsMaxZoomForLayer,
-                                               OGRFeature* poFeature,
+                                               std::shared_ptr<OGRFeature> poFeature,
                                                GIntBig nSerial,
-                                               OGRGeometry* poGeom,
+                                               std::shared_ptr<OGRGeometry> poGeom,
                                                const OGREnvelope& sEnvelope) const;
 
         static void         WriterTaskFunc(void* pParam);
@@ -3212,9 +3276,9 @@ class OGRMVTWriterDataset final: public GDALDataset
         OGRErr              PreGenerateForTileReal(int nZ, int nX, int nY,
                                                const CPLString& osTargetName,
                                                bool bIsMaxZoomForLayer,
-                                               OGRFeature* poFeature,
+                                               const OGRFeature* poFeature,
                                                GIntBig nSerial,
-                                               OGRGeometry* poGeom,
+                                               const OGRGeometry* poGeom,
                                                const OGREnvelope& sEnvelope) const;
 
         void                ConvertToTileCoords(double dfX,
@@ -3225,7 +3289,7 @@ class OGRMVTWriterDataset final: public GDALDataset
                                                   double dfTopY,
                                                   double dfTileDim) const;
         bool                EncodeLineString(MVTTileLayerFeature *poGPBFeature,
-                                             OGRLineString* poLS,
+                                             const OGRLineString* poLS,
                                              OGRLineString* poOutLS,
                                              bool bWriteLastPoint,
                                              bool bReverseOrder,
@@ -3236,7 +3300,7 @@ class OGRMVTWriterDataset final: public GDALDataset
                                              int& nLastX,
                                              int& nLastY) const;
         bool                EncodePolygon(MVTTileLayerFeature *poGPBFeature,
-                                             OGRPolygon* poPoly,
+                                             const OGRPolygon* poPoly,
                                              double dfTopX,
                                              double dfTopY,
                                              double dfTileDim,
@@ -3370,9 +3434,7 @@ OGRMVTWriterLayer::OGRMVTWriterLayer(OGRMVTWriterDataset* poDS,
             CPLError(
                 CE_Warning, CPLE_AppDefined,
                 "Failed to create coordinate transformation between the "
-                "input and target coordinate systems.  This may be because "
-                "they are not transformable, or because projection "
-                "services (PROJ.4 DLL/.so) could not be loaded.");
+                "input and target coordinate systems.");
         }
     }
 }
@@ -3434,6 +3496,8 @@ OGRMVTWriterDataset::OGRMVTWriterDataset()
 {
     // Default WebMercator tiling scheme
     m_poSRS = new OGRSpatialReference();
+    m_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
     InitWebMercatorTilingScheme(m_poSRS,
                                 m_dfTopX,
                                 m_dfTopY,
@@ -3509,7 +3573,7 @@ static unsigned GetCmdCountCombined(unsigned int nCmdId,
 /************************************************************************/
 
 bool OGRMVTWriterDataset::EncodeLineString(MVTTileLayerFeature *poGPBFeature,
-                                           OGRLineString* poLS,
+                                           const OGRLineString* poLS,
                                            OGRLineString* poOutLS,
                                            bool bWriteLastPoint,
                                            bool bReverseOrder,
@@ -3626,12 +3690,12 @@ bool OGRMVTWriterDataset::EncodeRepairedOuterRing(
     }
 
     OGRPolygon* poPoly = nullptr;
-    if( poFixedGeom->getGeometryType() == wkbMultiPolygon )
+    if( wkbFlatten(poFixedGeom->getGeometryType()) == wkbMultiPolygon )
     {
         OGRMultiPolygon* poMP = poFixedGeom.get()->toMultiPolygon();
         poPoly = poMP->getGeometryRef(0)->toPolygon();
     }
-    else if( poFixedGeom->getGeometryType() == wkbPolygon )
+    else if( wkbFlatten(poFixedGeom->getGeometryType()) == wkbPolygon )
     {
         poPoly = poFixedGeom.get()->toPolygon();
     }
@@ -3720,7 +3784,7 @@ bool OGRMVTWriterDataset::EncodeRepairedOuterRing(
 /************************************************************************/
 
 bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
-                                           OGRPolygon* poPoly,
+                                           const OGRPolygon* poPoly,
                                            double dfTopX,
                                            double dfTopY,
                                            double dfTileDim,
@@ -3735,7 +3799,7 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
 
     for( int i = 0; i < 1 + poPoly->getNumInteriorRings(); i++ )
     {
-        OGRLinearRing* poRing = (i == 0) ? poPoly->getExteriorRing():
+        const OGRLinearRing* poRing = (i == 0) ? poPoly->getExteriorRing():
                                            poPoly->getInteriorRing(i-1);
         if( poRing->getNumPoints() < 4 ||
             poRing->getX(0) != poRing->getX(poRing->getNumPoints()-1) ||
@@ -3863,7 +3927,7 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
                     if( !poSimplified.get() || poSimplified->IsEmpty() )
                         return false;
 
-                    if( poSimplified->getGeometryType() == wkbPolygon )
+                    if( wkbFlatten(poSimplified->getGeometryType()) == wkbPolygon )
                     {
                         OGRPolygon* poSimplifiedPoly =
                             poSimplified.get()->toPolygon();
@@ -3874,7 +3938,7 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
                                             nLastX, nLastY, dfArea);
                     }
 #ifdef likely_not_possible
-                    else if( poSimplified->getGeometryType() == wkbMultiPolygon )
+                    else if( wkbFlatten(poSimplified->getGeometryType()) == wkbMultiPolygon )
                     {
                         OGRMultiPolygon* poMP = poSimplified.get()->toMultiPolygon();
                         bool bRet = true;
@@ -3911,9 +3975,9 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
                                                int nZ, int nTileX, int nTileY,
                                                const CPLString& osTargetName,
                                                bool bIsMaxZoomForLayer,
-                                               OGRFeature* poFeature,
+                                               const OGRFeature* poFeature,
                                                GIntBig nSerial,
-                                               OGRGeometry* poGeom,
+                                               const OGRGeometry* poGeom,
                                                const OGREnvelope& sEnvelope) const
 {
     double dfTileDim = m_dfTileDim0 / (1 << nZ);
@@ -3927,7 +3991,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
     double dfIntersectBottomRightX = dfBottomRightX + dfBuffer;
     double dfIntersectBottomRightY = dfBottomRightY - dfBuffer;
 
-    OGRGeometry* poIntersection;
+    const OGRGeometry* poIntersection;
     std::unique_ptr<OGRGeometry> poIntersectionHolder;
     if( sEnvelope.MinX >= dfIntersectTopX &&
         sEnvelope.MinY >= dfIntersectBottomRightY &&
@@ -3949,8 +4013,9 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
 
         CPLErrorStateBackuper oErrorStateBackuper;
         CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
-        poIntersection = poGeom->Intersection(&oPoly);
-        poIntersectionHolder = std::unique_ptr<OGRGeometry>(poIntersection);
+        auto poTmp = poGeom->Intersection(&oPoly);
+        poIntersection = poTmp;
+        poIntersectionHolder = std::unique_ptr<OGRGeometry>(poTmp);
         if( poIntersection == nullptr || poIntersection->IsEmpty() )
         {
             return OGRERR_NONE;
@@ -3977,10 +4042,10 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         return OGRERR_NONE;
     }
 
-    OGRwkbGeometryType eGeomToEncodeType = poIntersection->getGeometryType();
+    OGRwkbGeometryType eGeomToEncodeType = wkbFlatten(poIntersection->getGeometryType());
 
     // Simplify contour if requested by user
-    OGRGeometry* poGeomToEncode = poIntersection;
+    const OGRGeometry* poGeomToEncode = poIntersection;
     std::unique_ptr<OGRGeometry> poGeomSimplified;
     const double dfSimplification = bIsMaxZoomForLayer ?
                                 m_dfSimplificationMaxZoom : m_dfSimplification;
@@ -3994,7 +4059,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         if( poGeomSimplified.get() )
         {
             poGeomToEncode = poGeomSimplified.get();
-            eGeomToEncodeType = poGeomSimplified->getGeometryType();
+            eGeomToEncodeType = wkbFlatten(poGeomSimplified->getGeometryType());
         }
     }
 
@@ -4004,7 +4069,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
     {
         if( eGeomToEncodeType == wkbPoint )
         {
-            OGRPoint* poPoint = poIntersection->toPoint();
+            const OGRPoint* poPoint = poIntersection->toPoint();
             int nX, nY;
             double dfX = poPoint->getX();
             double dfY = poPoint->getY();
@@ -4018,7 +4083,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         else if( eGeomToEncodeType == wkbMultiPoint ||
                  eGeomToEncodeType == wkbGeometryCollection )
         {
-            OGRGeometryCollection* poGC = poIntersection->toGeometryCollection();
+            const OGRGeometryCollection* poGC = poIntersection->toGeometryCollection();
             std::set<std::pair<int,int>> oSetUniqueCoords;
             poGPBFeature->addGeometry(
                 GetCmdCountCombined(knCMD_MOVETO, 0) ); // To be modified later
@@ -4026,9 +4091,9 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
             int nLastY = 0;
             for( auto&& poSubGeom: poGC )
             {
-                if( poSubGeom->getGeometryType() == wkbPoint )
+                if( wkbFlatten(poSubGeom->getGeometryType()) == wkbPoint )
                 {
-                    OGRPoint* poPoint = poSubGeom->toPoint();
+                    const OGRPoint* poPoint = poSubGeom->toPoint();
                     int nX, nY;
                     double dfX = poPoint->getX();
                     double dfY = poPoint->getY();
@@ -4062,7 +4127,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
 
         if( eGeomToEncodeType == wkbLineString )
         {
-            OGRLineString* poLS = poGeomToEncode->toLineString();
+            const OGRLineString* poLS = poGeomToEncode->toLineString();
             int nLastX = 0;
             int nLastY = 0;
             OGRLineString oOutLS;
@@ -4076,14 +4141,14 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         else if( eGeomToEncodeType == wkbMultiLineString ||
                  eGeomToEncodeType == wkbGeometryCollection )
         {
-            OGRGeometryCollection* poGC = poGeomToEncode->toGeometryCollection();
+            const OGRGeometryCollection* poGC = poGeomToEncode->toGeometryCollection();
             int nLastX = 0;
             int nLastY = 0;
             for( auto&& poSubGeom: poGC )
             {
-                if( poSubGeom->getGeometryType() == wkbLineString )
+                if( wkbFlatten(poSubGeom->getGeometryType()) == wkbLineString )
                 {
-                    OGRLineString* poLS = poSubGeom->toLineString();
+                    const OGRLineString* poLS = poSubGeom->toLineString();
                     OGRLineString oOutLS;
                     bool bSubGeomOK = EncodeLineString(
                                      poGPBFeature.get(), poLS, &oOutLS,
@@ -4102,7 +4167,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
     {
         if( eGeomToEncodeType == wkbPolygon )
         {
-            OGRPolygon* poPoly = poGeomToEncode->toPolygon();
+            const OGRPolygon* poPoly = poGeomToEncode->toPolygon();
             int nLastX = 0;
             int nLastY = 0;
             bGeomOK = EncodePolygon(poGPBFeature.get(), poPoly,
@@ -4113,14 +4178,14 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         else if( eGeomToEncodeType == wkbMultiPolygon ||
                  eGeomToEncodeType == wkbGeometryCollection )
         {
-            OGRGeometryCollection* poGC = poGeomToEncode->toGeometryCollection();
+            const OGRGeometryCollection* poGC = poGeomToEncode->toGeometryCollection();
             int nLastX = 0;
             int nLastY = 0;
             for( auto&& poSubGeom: poGC )
             {
-                if( poSubGeom->getGeometryType() == wkbPolygon )
+                if( wkbFlatten(poSubGeom->getGeometryType()) == wkbPolygon )
                 {
-                    OGRPolygon* poPoly = poSubGeom->toPolygon();
+                    const OGRPolygon* poPoly = poSubGeom->toPolygon();
                     double dfPartArea = 0.0;
                     bGeomOK |= EncodePolygon(
                                   poGPBFeature.get(), poPoly,
@@ -4135,13 +4200,13 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
     if( !bGeomOK )
         return OGRERR_NONE;
 
-    OGRFeatureDefn* poFDefn = poFeature->GetDefnRef();
+    const OGRFeatureDefn* poFDefn = poFeature->GetDefnRef();
     for( int i = 0; i < poFeature->GetFieldCount(); i++ )
     {
         if( poFeature->IsFieldSetAndNotNull(i) )
         {
             MVTTileLayerValue oValue;
-            OGRFieldDefn* poFieldDefn = poFDefn->GetFieldDefn(i);
+            const OGRFieldDefn* poFieldDefn = poFDefn->GetFieldDefn(i);
             OGRFieldType eFieldType = poFieldDefn->GetType();
             if( eFieldType == OFTInteger ||
                 eFieldType == OFTInteger64 )
@@ -4264,9 +4329,9 @@ class MVTWriterTask
         int nTileY;
         CPLString osTargetName;
         bool bIsMaxZoomForLayer;
-        OGRFeature* poFeature;
+        std::shared_ptr<OGRFeature> poFeature;
         GIntBig nSerial;
-        OGRGeometry* poGeom;
+        std::shared_ptr<OGRGeometry> poGeom;
         OGREnvelope sEnvelope;
 };
 
@@ -4283,9 +4348,9 @@ void OGRMVTWriterDataset::WriterTaskFunc(void* pParam)
                            poTask->nTileY,
                            poTask->osTargetName,
                            poTask->bIsMaxZoomForLayer,
-                           poTask->poFeature,
+                           poTask->poFeature.get(),
                            poTask->nSerial,
-                           poTask->poGeom,
+                           poTask->poGeom.get(),
                            poTask->sEnvelope);
     if( eErr != OGRERR_NONE )
     {
@@ -4293,8 +4358,6 @@ void OGRMVTWriterDataset::WriterTaskFunc(void* pParam)
         poTask->poDS->m_bWriteFeatureError = true;
         poTask->poDS->m_oDBMutex.unlock();
     }
-    delete poTask->poFeature;
-    delete poTask->poGeom;
     delete poTask;
 }
 
@@ -4305,9 +4368,9 @@ void OGRMVTWriterDataset::WriterTaskFunc(void* pParam)
 OGRErr OGRMVTWriterDataset::PreGenerateForTile(int nZ, int nTileX, int nTileY,
                                                const CPLString& osTargetName,
                                                bool bIsMaxZoomForLayer,
-                                               OGRFeature* poFeature,
+                                               std::shared_ptr<OGRFeature> poFeature,
                                                GIntBig nSerial,
-                                               OGRGeometry* poGeom,
+                                               std::shared_ptr<OGRGeometry> poGeom,
                                                const OGREnvelope& sEnvelope) const
 {
     if( !m_bThreadPoolOK )
@@ -4315,8 +4378,9 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTile(int nZ, int nTileX, int nTileY,
         return PreGenerateForTileReal(nZ, nTileX, nTileY,
                                       osTargetName,
                                       bIsMaxZoomForLayer,
-                                      poFeature, nSerial,
-                                      poGeom, sEnvelope);
+                                      poFeature.get(),
+                                      nSerial,
+                                      poGeom.get(), sEnvelope);
     }
     else
     {
@@ -4327,13 +4391,9 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTile(int nZ, int nTileX, int nTileY,
         poTask->nTileY = nTileY;
         poTask->osTargetName = osTargetName;
         poTask->bIsMaxZoomForLayer = bIsMaxZoomForLayer;
-        // Small optimization to avoid cloning the geometry of the feature,
-        // since we don't need it
-        OGRGeometry* poGeomBak = poFeature->StealGeometry();
-        poTask->poFeature = poFeature->Clone();
-        poFeature->SetGeometryDirectly(poGeomBak);
+        poTask->poFeature =poFeature;
         poTask->nSerial = nSerial;
-        poTask->poGeom = poGeom->clone();
+        poTask->poGeom = poGeom;
         poTask->sEnvelope = sEnvelope;
         m_oThreadPool.SubmitJob(OGRMVTWriterDataset::WriterTaskFunc, poTask);
         // Do not queue more than 1000 jobs to avoid memory exhaustion
@@ -5424,7 +5484,8 @@ bool OGRMVTWriterDataset::GenerateMetadata(
     else
     {
         OGRSpatialReference oSRS_EPSG4326;
-        oSRS_EPSG4326.SetFromUserInput(SRS_WKT_WGS84);
+        oSRS_EPSG4326.SetFromUserInput(SRS_WKT_WGS84_LAT_LONG);
+        oSRS_EPSG4326.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         OGRCoordinateTransformation* poCT = 
             OGRCreateCoordinateTransformation(m_poSRS, &oSRS_EPSG4326);
         if( poCT )
@@ -5704,8 +5765,7 @@ OGRErr OGRMVTWriterDataset::WriteFeature(OGRMVTWriterLayer* poLayer,
     OGRwkbGeometryType eGeomType = wkbFlatten(poGeom->getGeometryType());
     if( eGeomType == wkbGeometryCollection )
     {
-        OGRGeometryCollection* poGC =
-            dynamic_cast<OGRGeometryCollection*>(poGeom);
+        OGRGeometryCollection* poGC = poGeom->toGeometryCollection();
         for( int i = 0; i < poGC->getNumGeometries(); i++ )
         {
             if( WriteFeature(poLayer, poFeature, nSerial,
@@ -5729,6 +5789,13 @@ OGRErr OGRMVTWriterDataset::WriteFeature(OGRMVTWriterLayer* poLayer,
 
     if( !m_bReuseTempFile )
     {
+        // Small optimization to avoid cloning the geometry of the feature,
+        // since we don't need it
+        OGRGeometry* poGeomBak = poFeature->StealGeometry();
+        auto poSharedFeature = std::shared_ptr<OGRFeature>(poFeature->Clone());
+        poFeature->SetGeometryDirectly(poGeomBak);
+        auto poSharedGeom = std::shared_ptr<OGRGeometry>(poGeom->clone());
+
         for( int nZ = poLayer->m_nMinZoom; nZ <= poLayer->m_nMaxZoom; nZ++ )
         {
             double dfTileDim = m_dfTileDim0 / (1 << nZ);
@@ -5747,7 +5814,10 @@ OGRErr OGRMVTWriterDataset::WriteFeature(OGRMVTWriterLayer* poLayer,
                 {
                     if( PreGenerateForTile(nZ, iX, iY, poLayer->m_osTargetName,
                             (nZ == poLayer->m_nMaxZoom),
-                            poFeature, nSerial, poGeom, sExtent) != OGRERR_NONE )
+                            poSharedFeature,
+                            nSerial,
+                            poSharedGeom,
+                            sExtent) != OGRERR_NONE )
                     {
                         return OGRERR_FAILURE;
                     }
@@ -5803,8 +5873,16 @@ OGRLayer* OGRMVTWriterDataset::ICreateLayer( const char* pszLayerName,
                                              OGRwkbGeometryType,
                                              char ** papszOptions )
 {
+    OGRSpatialReference* poSRSClone = poSRS;
+    if ( poSRSClone )
+    {
+        poSRSClone = poSRS->Clone();
+        poSRSClone->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    }
     OGRMVTWriterLayer* poLayer =
-        new OGRMVTWriterLayer(this, pszLayerName, poSRS);
+        new OGRMVTWriterLayer(this, pszLayerName, poSRSClone);
+    if( poSRSClone )
+        poSRSClone->Release();
     poLayer->m_nMinZoom = m_nMinZoom;
     poLayer->m_nMaxZoom = m_nMaxZoom;
     poLayer->m_osTargetName = pszLayerName;
@@ -5855,7 +5933,7 @@ OGRLayer* OGRMVTWriterDataset::ICreateLayer( const char* pszLayerName,
         m_oMapLayerNameToDesc[poLayer->m_osTargetName] = osDescription;
 
     m_apoLayers.push_back( std::unique_ptr<OGRMVTWriterLayer>(poLayer) );
-    return poLayer;
+    return m_apoLayers.back().get();
 }
 
 /************************************************************************/
@@ -5921,18 +5999,23 @@ GDALDataset* OGRMVTWriterDataset::Create( const char * pszFilename,
     poDS->m_pMyVFS = OGRSQLiteCreateVFS(nullptr, poDS);
     sqlite3_vfs_register(poDS->m_pMyVFS, 0);
 
+    CPLString osTempDBDefault = CPLString(pszFilename) + ".temp.db";
+    if( STARTS_WITH(osTempDBDefault, "/vsizip/") )
+    {
+        osTempDBDefault = CPLString(pszFilename + strlen("/vsizip/")) + ".temp.db";
+    }
     CPLString osTempDB =
         CSLFetchNameValueDef(papszOptions, "TEMPORARY_DB",
-            (CPLString(pszFilename) + ".temp.db").c_str());
+                             osTempDBDefault.c_str());
     if( !bReuseTempFile )
         VSIUnlink(osTempDB);
 
     sqlite3* hDB = nullptr;
-    sqlite3_open_v2(osTempDB, &hDB,
+    CPL_IGNORE_RET_VAL(sqlite3_open_v2(osTempDB, &hDB,
                     SQLITE_OPEN_READWRITE |
                     (bReuseTempFile ? 0 : SQLITE_OPEN_CREATE) |
                     SQLITE_OPEN_NOMUTEX,
-                    poDS->m_pMyVFS->zName);
+                    poDS->m_pMyVFS->zName));
     if( hDB == nullptr )
     {
         CPLError(CE_Failure, CPLE_FileIO, "Cannot create %s",
@@ -5993,7 +6076,17 @@ GDALDataset* OGRMVTWriterDataset::Create( const char * pszFilename,
     const char* pszConf = CSLFetchNameValue(papszOptions, "CONF");
     if( pszConf )
     {
-        if( !poDS->m_oConf.LoadMemory(pszConf) )
+        VSIStatBufL sStat;
+        bool bSuccess;
+        if( VSIStatL(pszConf, &sStat) == 0 )
+        {
+            bSuccess = poDS->m_oConf.Load(pszConf);
+        }
+        else
+        {
+            bSuccess = poDS->m_oConf.LoadMemory(pszConf);
+        }
+        if( !bSuccess )
         {
             delete poDS;
             return nullptr;
@@ -6066,10 +6159,10 @@ GDALDataset* OGRMVTWriterDataset::Create( const char * pszFilename,
 
     if( bMBTILES )
     {
-        sqlite3_open_v2(pszFilename, &poDS->m_hDBMBTILES,
+        CPL_IGNORE_RET_VAL(sqlite3_open_v2(pszFilename, &poDS->m_hDBMBTILES,
                         SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
                         SQLITE_OPEN_NOMUTEX,
-                        poDS->m_pMyVFS->zName);
+                        poDS->m_pMyVFS->zName));
         if( poDS->m_hDBMBTILES == nullptr )
         {
             CPLError(CE_Failure, CPLE_FileIO, "Cannot create %s",

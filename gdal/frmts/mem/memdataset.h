@@ -54,6 +54,8 @@ class MEMRasterBand;
 
 class CPL_DLL MEMDataset : public GDALDataset
 {
+    CPL_DISALLOW_COPY_ASSIGN(MEMDataset)
+
     friend class MEMRasterBand;
 
     int         bGeoTransformSet;
@@ -61,12 +63,15 @@ class CPL_DLL MEMDataset : public GDALDataset
 
     char        *pszProjection;
 
-    int          nGCPCount;
-    GDAL_GCP    *pasGCPs;
+    int          m_nGCPCount;
+    GDAL_GCP    *m_pasGCPs;
     CPLString    osGCPProjection;
 
     int          m_nOverviewDSCount;
     GDALDataset  **m_papoOverviewDS;
+
+    struct Private;
+    std::unique_ptr<Private> m_poPrivate;
 
 #if 0
   protected:
@@ -78,8 +83,14 @@ class CPL_DLL MEMDataset : public GDALDataset
                  MEMDataset();
     virtual      ~MEMDataset();
 
-    virtual const char *GetProjectionRef() override;
-    virtual CPLErr SetProjection( const char * ) override;
+    const char *_GetProjectionRef(void) override;
+    CPLErr _SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 
     virtual CPLErr GetGeoTransform( double * ) override;
     virtual CPLErr SetGeoTransform( double * ) override;
@@ -87,11 +98,18 @@ class CPL_DLL MEMDataset : public GDALDataset
     virtual void *GetInternalHandle( const char * ) override;
 
     virtual int    GetGCPCount() override;
-    virtual const char *GetGCPProjection() override;
+    const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     virtual const GDAL_GCP *GetGCPs() override;
-    virtual CPLErr SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
-                            const char *pszGCPProjection ) override;
-
+    CPLErr _SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
+                    const char *pszGCPProjection ) override;
+    using GDALDataset::SetGCPs;
+    CPLErr SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
+                    const OGRSpatialReference* poSRS ) override {
+        return OldSetGCPsFromNew(nGCPCount, pasGCPList, poSRS);
+    }
     virtual CPLErr        AddBand( GDALDataType eType,
                                    char **papszOptions=nullptr ) override;
     virtual CPLErr  IRasterIO( GDALRWFlag eRWFlag,
@@ -111,10 +129,15 @@ class CPL_DLL MEMDataset : public GDALDataset
 
     virtual CPLErr          CreateMaskBand( int nFlagsIn ) override;
 
+    std::shared_ptr<GDALGroup> GetRootGroup() const override;
+
     static GDALDataset *Open( GDALOpenInfo * );
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType, char ** papszParmList );
+    static GDALDataset *CreateMultiDimensional( const char * pszFilename,
+                                                CSLConstList papszRootGroupOptions,
+                                                CSLConstList papszOptions );
 };
 
 /************************************************************************/
@@ -126,6 +149,8 @@ class CPL_DLL MEMRasterBand : public GDALPamRasterBand
   private:
                 MEMRasterBand( GByte *pabyDataIn, GDALDataType eTypeIn,
                                int nXSizeIn, int nYSizeIn );
+
+    CPL_DISALLOW_COPY_ASSIGN(MEMRasterBand)
 
   protected:
     friend      class MEMDataset;

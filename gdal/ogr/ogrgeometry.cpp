@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -87,12 +87,7 @@ static void OGRGEOSWarningHandler(const char *fmt, ...)
 /*                            OGRGeometry()                             */
 /************************************************************************/
 
-OGRGeometry::OGRGeometry()
-
-{
-    poSRS = nullptr;
-    flags = 0;
-}
+OGRGeometry::OGRGeometry() = default;
 
 /************************************************************************/
 /*                   OGRGeometry( const OGRGeometry& )                  */
@@ -2055,9 +2050,19 @@ OGRGeometry::IsValid() const
     if( IsSFCGALCompatible() )
     {
 #ifndef HAVE_SFCGAL
-        CPLError( CE_Failure, CPLE_NotSupported,
-                  "SFCGAL support not enabled." );
-        return FALSE;
+
+#ifdef HAVE_GEOS
+        if( wkbFlatten(getGeometryType()) == wkbTriangle )
+        {
+            // go on
+        }
+        else
+#endif
+        {
+            CPLError( CE_Failure, CPLE_NotSupported,
+                    "SFCGAL support not enabled." );
+            return FALSE;
+        }
 #else
         sfcgal_init();
         sfcgal_geometry_t *poThis =
@@ -2075,7 +2080,6 @@ OGRGeometry::IsValid() const
 #endif
     }
 
-    else
     {
 #ifndef HAVE_GEOS
         CPLError( CE_Failure, CPLE_NotSupported,
@@ -2922,6 +2926,27 @@ void OGRGeometry::freeGEOSContext(
 #endif
 }
 
+#ifdef HAVE_GEOS
+
+/************************************************************************/
+/*                          convertToGEOSGeom()                         */
+/************************************************************************/
+
+
+static GEOSGeom convertToGEOSGeom(GEOSContextHandle_t hGEOSCtxt,
+                                  OGRGeometry* poGeom)
+{
+    GEOSGeom hGeom = nullptr;
+    const size_t nDataSize = poGeom->WkbSize();
+    unsigned char *pabyData =
+        static_cast<unsigned char *>(CPLMalloc(nDataSize));
+    if( poGeom->exportToWkb( wkbNDR, pabyData ) == OGRERR_NONE )
+        hGeom = GEOSGeomFromWKB_buf_r( hGEOSCtxt, pabyData, nDataSize );
+    CPLFree( pabyData );
+    return hGeom;
+}
+#endif
+
 /************************************************************************/
 /*                            exportToGEOS()                            */
 /************************************************************************/
@@ -2972,22 +2997,16 @@ GEOSGeom OGRGeometry::exportToGEOS(
             poLinearGeom->setMeasured(FALSE);
         }
     }
-    const size_t nDataSize = poLinearGeom->WkbSize();
-    unsigned char *pabyData =
-        static_cast<unsigned char *>(CPLMalloc(nDataSize));
     if (eType == wkbTriangle)
     {
-        OGRPolygon poPolygon(*(poLinearGeom->toPolygon()));
-        if( poPolygon.exportToWkb( wkbNDR, pabyData ) == OGRERR_NONE )
-            hGeom = GEOSGeomFromWKB_buf_r( hGEOSCtxt, pabyData, nDataSize );
+        OGRPolygon oPolygon(*(poLinearGeom->toPolygon()));
+        hGeom = convertToGEOSGeom(hGEOSCtxt, &oPolygon);
     }
     else if ( eType == wkbPolyhedralSurface || eType == wkbTIN )
     {
         OGRGeometry *poGC = OGRGeometryFactory::forceTo(
                         poLinearGeom->clone(), wkbGeometryCollection, nullptr );
-        OGRErr eErr = poGC->exportToWkb( wkbNDR, pabyData );
-        if( eErr == OGRERR_NONE )
-            hGeom = GEOSGeomFromWKB_buf_r( hGEOSCtxt, pabyData, nDataSize );
+        hGeom = convertToGEOSGeom(hGEOSCtxt, poGC);
         delete poGC;
     }
     else if ( eType == wkbGeometryCollection )
@@ -3016,21 +3035,18 @@ GEOSGeom OGRGeometry::exportToGEOS(
                                 poLinearGeom->clone(), wkbMultiPolygon, nullptr );
             OGRGeometry* poGCDest = OGRGeometryFactory::forceTo(
                                 poMultiPolygon, wkbGeometryCollection, nullptr );
-            OGRErr eErr = poGCDest->exportToWkb( wkbNDR, pabyData );
-            if( eErr == OGRERR_NONE )
-                hGeom = GEOSGeomFromWKB_buf_r( hGEOSCtxt, pabyData, nDataSize );
+            hGeom = convertToGEOSGeom(hGEOSCtxt, poGCDest);
             delete poGCDest;
         }
         else
         {
-            if( poLinearGeom->exportToWkb( wkbNDR, pabyData ) == OGRERR_NONE )
-                hGeom = GEOSGeomFromWKB_buf_r( hGEOSCtxt, pabyData, nDataSize );
+            hGeom = convertToGEOSGeom(hGEOSCtxt, poLinearGeom);
         }
     }
-    else if( poLinearGeom->exportToWkb( wkbNDR, pabyData ) == OGRERR_NONE )
-        hGeom = GEOSGeomFromWKB_buf_r( hGEOSCtxt, pabyData, nDataSize );
-
-    CPLFree( pabyData );
+    else
+    {
+        hGeom = convertToGEOSGeom(hGEOSCtxt, poLinearGeom);
+    }
 
     if( poLinearGeom != this )
         delete poLinearGeom;
@@ -3194,7 +3210,10 @@ double OGRGeometry::Distance( const OGRGeometry *poOtherGeom ) const
         sfcgal_geometry_t *poOther =
             OGRGeometry::OGRexportToSFCGAL(poOtherGeom);
         if (poOther == nullptr)
+        {
+            sfcgal_geometry_delete(poThis);
             return -1.0;
+        }
 
         const double dfDistance = sfcgal_geometry_distance(poThis, poOther);
 
@@ -3494,6 +3513,124 @@ static OGRBoolean OGRGEOSBooleanPredicate(
 
 
 /************************************************************************/
+/*                            MakeValid()                               */
+/************************************************************************/
+
+/**
+ * \brief Attempts to make an invalid geometry valid without losing vertices.
+ *
+ * Already-valid geometries are cloned without further intervention.
+ *
+ * This method is the same as the C function OGR_G_MakeValid().
+ *
+ * This function is built on the GEOS >= 3.8 library, check it for the definition
+ * of the geometry operation.
+ * If OGR is built without the GEOS >= 3.8 library, this function will return
+ * a clone of the input geometry if it is valid, or NULL if it is invalid
+ *
+ * @return a newly allocated geometry now owned by the caller, or NULL
+ * on failure.
+ *
+ * @since GDAL 3.0
+ */
+OGRGeometry *OGRGeometry::MakeValid() const
+{
+#ifndef HAVE_GEOS
+    if( IsValid() )
+        return clone();
+
+    CPLError( CE_Failure, CPLE_NotSupported,
+              "GEOS support not enabled." );
+    return nullptr;
+#elif GEOS_VERSION_MAJOR < 3 || \
+    (GEOS_VERSION_MAJOR == 3 && GEOS_VERSION_MINOR < 8)
+    if( IsValid() )
+        return clone();
+
+    CPLError( CE_Failure, CPLE_NotSupported,
+              "GEOS 3.8 or later needed for MakeValid." );
+    return nullptr;
+#else
+    if( IsSFCGALCompatible() )
+    {
+        if( IsValid() )
+            return clone();
+    }
+    else if( wkbFlatten(getGeometryType()) == wkbCurvePolygon )
+    {
+        GEOSContextHandle_t hGEOSCtxt = initGEOS_r( nullptr, nullptr );
+        OGRBoolean bIsValid = FALSE;
+        GEOSGeom hGeosGeom = exportToGEOS(hGEOSCtxt);
+        if( hGeosGeom )
+        {
+            bIsValid = GEOSisValid_r(hGEOSCtxt, hGeosGeom);
+            GEOSGeom_destroy_r( hGEOSCtxt, hGeosGeom );
+        }
+        freeGEOSContext( hGEOSCtxt );
+        if( bIsValid )
+            return clone();
+    }
+
+    OGRGeometry *poOGRProduct = nullptr;
+
+    GEOSContextHandle_t hGEOSCtxt = createGEOSContext();
+    GEOSGeom hGeosGeom = exportToGEOS(hGEOSCtxt);
+    if( hGeosGeom != nullptr )
+    {
+        GEOSGeom hGEOSRet = GEOSMakeValid_r( hGEOSCtxt, hGeosGeom );
+        GEOSGeom_destroy_r( hGEOSCtxt, hGeosGeom );
+
+        if( hGEOSRet != nullptr )
+        {
+            poOGRProduct =
+                OGRGeometryFactory::createFromGEOS(hGEOSCtxt, hGEOSRet);
+            if( poOGRProduct != nullptr && getSpatialReference() != nullptr )
+                poOGRProduct->assignSpatialReference(getSpatialReference());
+            poOGRProduct =
+                OGRGeometryRebuildCurves(this, nullptr, poOGRProduct);
+            GEOSGeom_destroy_r( hGEOSCtxt, hGEOSRet);
+        }
+    }
+    freeGEOSContext( hGEOSCtxt );
+
+    return poOGRProduct;
+#endif
+}
+
+/************************************************************************/
+/*                         OGR_G_MakeValid()                            */
+/************************************************************************/
+
+/**
+ * \brief Attempts to make an invalid geometry valid without losing vertices.
+ *
+ * Already-valid geometries are cloned without further intervention.
+ *
+ * This function is the same as the C++ method OGRGeometry::MakeValid().
+ *
+ * This function is built on the GEOS >= 3.8 library, check it for the definition
+ * of the geometry operation.
+ * If OGR is built without the GEOS >= 3.8 library, this function will return
+ * a clone of the input geometry if it is valid, or NULL if it is invalid
+ *
+ * @param hGeom The Geometry to make valid.
+ *
+ * @return a newly allocated geometry now owned by the caller, or NULL
+ * on failure.
+ *
+ * @since GDAL 3.0
+ */
+
+OGRGeometryH OGR_G_MakeValid( OGRGeometryH hGeom )
+
+{
+    VALIDATE_POINTER1( hGeom, "OGR_G_MakeValid", nullptr );
+
+    return reinterpret_cast<OGRGeometryH>(
+        reinterpret_cast<OGRGeometry *>(hGeom)->MakeValid());
+}
+
+/************************************************************************/
 /*                             ConvexHull()                             */
 /************************************************************************/
 
@@ -3534,8 +3671,8 @@ OGRGeometry *OGRGeometry::ConvexHull() const
 
         sfcgal_geometry_t *poRes = sfcgal_geometry_convexhull_3d(poThis);
         OGRGeometry *h_prodGeom = SFCGALexportToOGR(poRes);
-
-        h_prodGeom->assignSpatialReference(getSpatialReference());
+        if( h_prodGeom )
+            h_prodGeom->assignSpatialReference(getSpatialReference());
 
         sfcgal_geometry_delete(poThis);
         sfcgal_geometry_delete(poRes);
@@ -3843,6 +3980,10 @@ OGRGeometryH OGR_G_Buffer( OGRGeometryH hTarget, double dfDist, int nQuadSegs )
  * two geometries operated on.  The Intersects() method can be used to test if
  * two geometries intersect.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This method is the same as the C function OGR_G_Intersection().
  *
  * This method is built on the GEOS library, check it for the definition
@@ -3874,12 +4015,14 @@ OGRGeometry *OGRGeometry::Intersection(
             return nullptr;
 
         sfcgal_geometry_t *poOther = OGRGeometry::OGRexportToSFCGAL(poOtherGeom);
-        if (poThis == nullptr)
+        if (poOther == nullptr)
+        {
+            sfcgal_geometry_delete(poThis);
             return nullptr;
+        }
 
         sfcgal_geometry_t *poRes = sfcgal_geometry_intersection_3d(poThis, poOther);
         OGRGeometry *h_prodGeom = SFCGALexportToOGR(poRes);
-
         if (h_prodGeom != nullptr && getSpatialReference() != nullptr
             && poOtherGeom->getSpatialReference() != nullptr
             && poOtherGeom->getSpatialReference()->IsSame(getSpatialReference()))
@@ -3919,6 +4062,10 @@ OGRGeometry *OGRGeometry::Intersection(
  * two geometries operated on.  The OGR_G_Intersects() function can be used to
  * test if two geometries intersect.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Intersection().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -3953,6 +4100,10 @@ OGRGeometryH OGR_G_Intersection( OGRGeometryH hThis, OGRGeometryH hOther )
  * Generates a new geometry which is the region of union of the
  * two geometries operated on.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This method is the same as the C function OGR_G_Union().
  *
  * This method is built on the GEOS library, check it for the definition
@@ -3984,16 +4135,13 @@ OGRGeometry *OGRGeometry::Union(
 
         sfcgal_geometry_t *poOther = OGRGeometry::OGRexportToSFCGAL(poOtherGeom);
         if (poOther == nullptr)
+        {
+            sfcgal_geometry_delete(poThis);
             return nullptr;
+        }
 
         sfcgal_geometry_t *poRes = sfcgal_geometry_union_3d(poThis, poOther);
-        if (poRes == nullptr)
-            return nullptr;
-
         OGRGeometry *h_prodGeom = OGRGeometry::SFCGALexportToOGR(poRes);
-        if (h_prodGeom == nullptr)
-            return nullptr;
-
         if (h_prodGeom != nullptr && getSpatialReference() != nullptr
             && poOtherGeom->getSpatialReference() != nullptr
             && poOtherGeom->getSpatialReference()->IsSame(getSpatialReference()))
@@ -4001,6 +4149,7 @@ OGRGeometry *OGRGeometry::Union(
 
         sfcgal_geometry_delete(poThis);
         sfcgal_geometry_delete(poOther);
+        sfcgal_geometry_delete(poRes);
 
         return h_prodGeom;
 
@@ -4031,6 +4180,10 @@ OGRGeometry *OGRGeometry::Union(
  * Generates a new geometry which is the region of union of the
  * two geometries operated on.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Union().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4060,6 +4213,10 @@ OGRGeometryH OGR_G_Union( OGRGeometryH hThis, OGRGeometryH hOther )
 
 /**
  * \brief Compute union using cascading.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_UnionCascaded().
  *
@@ -4108,6 +4265,10 @@ OGRGeometry *OGRGeometry::UnionCascaded() const
 /**
  * \brief Compute union using cascading.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::UnionCascaded().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4138,6 +4299,10 @@ OGRGeometryH OGR_G_UnionCascaded( OGRGeometryH hThis )
  *
  * Generates a new geometry which is the region of this geometry with the
  * region of the second geometry removed.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_Difference().
  *
@@ -4171,14 +4336,13 @@ OGRGeometry *OGRGeometry::Difference(
 
         sfcgal_geometry_t *poOther = OGRGeometry::OGRexportToSFCGAL(poOtherGeom);
         if (poOther == nullptr)
+        {
+            sfcgal_geometry_delete(poThis);
             return nullptr;
+        }
 
         sfcgal_geometry_t *poRes = sfcgal_geometry_difference_3d(poThis, poOther);
         OGRGeometry *h_prodGeom = OGRGeometry::SFCGALexportToOGR(poRes);
-
-        if (h_prodGeom == nullptr)
-            return nullptr;
-
         if (h_prodGeom != nullptr && getSpatialReference() != nullptr
             && poOtherGeom->getSpatialReference() != nullptr
             && poOtherGeom->getSpatialReference()->IsSame(getSpatialReference()))
@@ -4217,6 +4381,10 @@ OGRGeometry *OGRGeometry::Difference(
  * Generates a new geometry which is the region of this geometry with the
  * region of the other geometry removed.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Difference().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4250,6 +4418,10 @@ OGRGeometryH OGR_G_Difference( OGRGeometryH hThis, OGRGeometryH hOther )
  *
  * Generates a new geometry which is the symmetric difference of this
  * geometry and the second geometry passed into the method.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_SymDifference().
  *
@@ -4332,6 +4504,10 @@ OGRGeometry::SymmetricDifference( const OGRGeometry *poOtherGeom ) const
  * Generates a new geometry which is the symmetric difference of this
  * geometry and the other geometry.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method
  * OGRGeometry::SymmetricDifference().
  *
@@ -4386,6 +4562,10 @@ OGRGeometryH OGR_G_SymmetricDifference( OGRGeometryH hThis,
  *
  * Tests if this geometry and the other passed into the method are disjoint.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This method is the same as the C function OGR_G_Disjoint().
  *
  * This method is built on the GEOS library, check it for the definition
@@ -4422,6 +4602,10 @@ OGRGeometry::Disjoint( UNUSED_IF_NO_GEOS const OGRGeometry *poOtherGeom ) const
  *
  * Tests if this geometry and the other geometry are disjoint.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Disjoint().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4451,6 +4635,10 @@ int OGR_G_Disjoint( OGRGeometryH hThis, OGRGeometryH hOther )
  * \brief Test for touching.
  *
  * Tests if this geometry and the other passed into the method are touching.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_Touches().
  *
@@ -4487,6 +4675,10 @@ OGRGeometry::Touches( UNUSED_IF_NO_GEOS const OGRGeometry *poOtherGeom ) const
  *
  * Tests if this geometry and the other geometry are touching.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Touches().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4517,6 +4709,10 @@ int OGR_G_Touches( OGRGeometryH hThis, OGRGeometryH hOther )
  * \brief Test for crossing.
  *
  * Tests if this geometry and the other passed into the method are crossing.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_Crosses().
  *
@@ -4584,6 +4780,10 @@ OGRGeometry::Crosses( UNUSED_PARAMETER const OGRGeometry *poOtherGeom ) const
  *
  * Tests if this geometry and the other geometry are crossing.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Crosses().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4614,6 +4814,10 @@ int OGR_G_Crosses( OGRGeometryH hThis, OGRGeometryH hOther )
  * \brief Test for containment.
  *
  * Tests if actual geometry object is within the passed geometry.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_Within().
  *
@@ -4651,6 +4855,10 @@ OGRGeometry::Within( UNUSED_IF_NO_GEOS const OGRGeometry *poOtherGeom ) const
  *
  * Tests if this geometry is within the other geometry.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Within().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4680,6 +4888,10 @@ int OGR_G_Within( OGRGeometryH hThis, OGRGeometryH hOther )
  * \brief Test for containment.
  *
  * Tests if actual geometry object contains the passed geometry.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_Contains().
  *
@@ -4717,6 +4929,10 @@ OGRGeometry::Contains( UNUSED_IF_NO_GEOS const OGRGeometry *poOtherGeom ) const
  *
  * Tests if this geometry contains the other geometry.
  *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
+ *
  * This function is the same as the C++ method OGRGeometry::Contains().
  *
  * This function is built on the GEOS library, check it for the definition
@@ -4747,6 +4963,10 @@ int OGR_G_Contains( OGRGeometryH hThis, OGRGeometryH hOther )
  *
  * Tests if this geometry and the other passed into the method overlap, that is
  * their intersection has a non-zero area.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This method is the same as the C function OGR_G_Overlaps().
  *
@@ -4783,6 +5003,10 @@ OGRGeometry::Overlaps( UNUSED_IF_NO_GEOS const OGRGeometry *poOtherGeom ) const
  *
  * Tests if this geometry and the other geometry overlap, that is their
  * intersection has a non-zero area.
+ *
+ * Geometry validity is not checked. In case you are unsure of the validity
+ * of the input geometries, call IsValid() before, otherwise the result might
+ * be wrong.
  *
  * This function is the same as the C++ method OGRGeometry::Overlaps().
  *
@@ -6627,6 +6851,8 @@ OGRGeometry* OGRGeometry::SFCGALexportToOGR(
     UNUSED_IF_NO_SFCGAL const sfcgal_geometry_t* geometry )
 {
 #ifdef HAVE_SFCGAL
+    if( geometry == nullptr )
+        return nullptr;
 
     sfcgal_init();
     char* pabySFCGALWKT = nullptr;
@@ -6636,7 +6862,6 @@ OGRGeometry* OGRGeometry::SFCGALexportToOGR(
     memcpy(pszWKT, pabySFCGALWKT, nLength);
     pszWKT[nLength] = 0;
     free(pabySFCGALWKT);
-    const char *pszTmpWKT = pszWKT;
 
     sfcgal_geometry_type_t geom_type = sfcgal_geometry_type_id (geometry);
 
@@ -6683,10 +6908,12 @@ OGRGeometry* OGRGeometry::SFCGALexportToOGR(
     }
     else
     {
+        CPLFree(pszWKT);
         return nullptr;
     }
 
-    if( poGeom->importFromWkt(&pszTmpWKT) == OGRERR_NONE )
+    const char* pszWKTTmp = pszWKT;
+    if( poGeom->importFromWkt(&pszWKTTmp) == OGRERR_NONE )
     {
         CPLFree(pszWKT);
         return poGeom;

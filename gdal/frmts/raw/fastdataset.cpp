@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Andrey Kiselev <dron@ak4719.spb.edu>
- * Copyright (c) 2007-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -100,7 +100,7 @@ enum FASTSatellite  // Satellites:
 /* ==================================================================== */
 /************************************************************************/
 
-class FASTDataset : public GDALPamDataset
+class FASTDataset final: public GDALPamDataset
 {
     friend class FASTRasterBand;
 
@@ -117,6 +117,8 @@ class FASTDataset : public GDALPamDataset
 
     int         OpenChannel( const char *pszFilename, int iBand );
 
+    CPL_DISALLOW_COPY_ASSIGN(FASTDataset)
+
   public:
     FASTDataset();
     ~FASTDataset() override;
@@ -124,7 +126,10 @@ class FASTDataset : public GDALPamDataset
     static GDALDataset *Open( GDALOpenInfo * );
 
     CPLErr      GetGeoTransform( double * ) override;
-    const char  *GetProjectionRef() override;
+    const char  *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     VSILFILE    *FOpenChannel( const char *, int iBand, int iFASTBand );
     void        TryEuromap_IRS_1C_1D_ChannelNameConvention();
 
@@ -141,6 +146,8 @@ class FASTRasterBand : public RawRasterBand
 {
     friend class FASTDataset;
 
+    CPL_DISALLOW_COPY_ASSIGN(FASTRasterBand)
+
   public:
                 FASTRasterBand( FASTDataset *, int, VSILFILE *, vsi_l_offset,
                                 int, int, GDALDataType, int );
@@ -155,7 +162,8 @@ FASTRasterBand::FASTRasterBand( FASTDataset *poDSIn, int nBandIn, VSILFILE * fpR
                                 int nLineOffsetIn,
                                 GDALDataType eDataTypeIn, int bNativeOrderIn ) :
     RawRasterBand( poDSIn, nBandIn, fpRawIn, nImgOffsetIn, nPixelOffsetIn,
-                   nLineOffsetIn, eDataTypeIn, bNativeOrderIn, TRUE )
+                   nLineOffsetIn, eDataTypeIn, bNativeOrderIn,
+                   RawRasterBand::OwnFP::NO )
 {}
 
 /************************************************************************/
@@ -222,7 +230,7 @@ CPLErr FASTDataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *FASTDataset::GetProjectionRef()
+const char *FASTDataset::_GetProjectionRef()
 
 {
     if( pszProjection )

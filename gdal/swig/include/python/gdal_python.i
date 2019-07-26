@@ -79,8 +79,8 @@ static void update_buffer_size(void* obj, char* data, char* data_aligned, size_t
          DeprecationWarning)
 
 
-  from gdalconst import *
-  import gdalconst
+  from osgeo.gdalconst import *
+  from osgeo import gdalconst
 
 
   import sys
@@ -127,6 +127,23 @@ static void update_buffer_size(void* obj, char* data, char* data_aligned, size_t
     src_ds = None
 
     return 0
+
+  def listdir(path, recursionLevel = -1, options = []):
+    """ Iterate over a directory.
+
+        recursionLevel = -1 means unlimited level of recursion.
+    """
+    dir = OpenDir(path, recursionLevel, options)
+    if not dir:
+        raise OSError(path + ' does not exist')
+    try:
+        while True:
+            entry = GetNextDirEntry(dir)
+            if not entry:
+                break
+            yield entry
+    finally:
+        CloseDir(dir)
 %}
 
 %{
@@ -145,6 +162,7 @@ static void update_buffer_size(void* obj, char* data, char* data_aligned, size_t
 %rename (VSIFReadL) wrapper_VSIFReadL;
 
 %apply ( void **outPythonObject ) { (void **buf ) };
+%apply Pointer NONNULL {VSILFILE* fp};
 %inline %{
 unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int nMembCount, VSILFILE *fp)
 {
@@ -161,21 +179,30 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
         *buf = NULL;
         return 0;
     }
+
+    SWIG_PYTHON_THREAD_BEGIN_BLOCK;
 #if PY_VERSION_HEX >= 0x03000000
     *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size );
     if (*buf == NULL)
     {
         *buf = Py_None;
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return 0;
     }
     PyObject* o = (PyObject*) *buf;
     char *data = PyBytes_AsString(o);
+    SWIG_PYTHON_THREAD_END_BLOCK;
     size_t nRet = (size_t)VSIFReadL( data, nMembSize, nMembCount, fp );
     if (nRet * (size_t)nMembSize < buf_size)
     {
+        SWIG_PYTHON_THREAD_BEGIN_BLOCK;
         _PyBytes_Resize(&o, nRet * nMembSize);
+        SWIG_PYTHON_THREAD_END_BLOCK;
         *buf = o;
     }
     return static_cast<unsigned int>(nRet);
@@ -183,16 +210,23 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
     *buf = (void *)PyString_FromStringAndSize( NULL, buf_size );
     if (*buf == NULL)
     {
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return 0;
     }
     PyObject* o = (PyObject*) *buf;
     char *data = PyString_AsString(o);
+    SWIG_PYTHON_THREAD_END_BLOCK;
     size_t nRet = (size_t)VSIFReadL( data, nMembSize, nMembCount, fp );
     if (nRet * (size_t)nMembSize < buf_size)
     {
+        SWIG_PYTHON_THREAD_BEGIN_BLOCK;
         _PyString_Resize(&o, nRet * nMembSize);
+        SWIG_PYTHON_THREAD_END_BLOCK;
         *buf = o;
     }
     return static_cast<unsigned int>(nRet);
@@ -200,6 +234,69 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
 }
 %}
 %clear (void **buf );
+%clear VSILFILE* fp;
+
+/* -------------------------------------------------------------------- */
+/*      VSIGetMemFileBuffer_unsafe()                                    */
+/* -------------------------------------------------------------------- */
+
+%rename (VSIGetMemFileBuffer_unsafe) wrapper_VSIGetMemFileBuffer;
+
+%typemap(in, numinputs=0) (GByte **out, vsi_l_offset *length) (GByte *out = NULL, vsi_l_offset length) {
+    $1 = &out;
+    $2 = &length;
+}
+
+%typemap(argout) (GByte **out, vsi_l_offset *length) {
+    if (*$1 == NULL) {
+        if( bUseExceptions ) {
+            PyErr_SetString(PyExc_RuntimeError, "Could not find path");
+            $result = NULL;
+        } else {
+            CPLError(CE_Failure, CPLE_AppDefined, "Could not find path");
+            $result = Py_None;
+            Py_INCREF($result);
+        }
+    } else {
+      do {
+%#if PY_VERSION_HEX >= 0x03030000
+        $result = PyMemoryView_FromMemory(reinterpret_cast<char *>(*$1), *$2, PyBUF_READ);
+%#elif PY_VERSION_HEX >= 0x03000000
+        if( bUseExceptions ) {
+            PyErr_SetString(PyExc_RuntimeError, "Command works only in Python 3.3+");
+            $result = NULL;
+        } else {
+            CPLError(CE_Failure, CPLE_AppDefined, "Command works only in Python 3.3+");
+            $result = Py_None;
+            Py_INCREF($result);
+        }
+        break;
+%#else
+        $result = PyBuffer_FromMemory(*$1, *$2);
+%#endif
+        if ($result == NULL) {
+            if( bUseExceptions ) {
+                PyErr_SetString(PyExc_RuntimeError, "Could not allocate result buffer");
+                $result = NULL;
+            } else {
+                CPLError(CE_Failure, CPLE_AppDefined, "Could not allocate result buffer");
+                $result = Py_None;
+                Py_INCREF($result);
+            }
+        }
+      } while(0);
+    }
+}
+
+%inline %{
+void wrapper_VSIGetMemFileBuffer(const char *utf8_path, GByte **out, vsi_l_offset *length)
+{
+    *out = VSIGetMemFileBuffer(utf8_path, length, 0);
+}
+%}
+%clear (GByte **out, vsi_l_offset *length);
+
+
 
 /* -------------------------------------------------------------------- */
 /*      GDAL_GCP                                                        */
@@ -214,19 +311,19 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
     return str
 
   def serialize(self, with_Z=0):
-    base = [CXT_Element,'GCP']
-    base.append([CXT_Attribute,'Id',[CXT_Text,self.Id]])
+    base = [gdalconst.CXT_Element,'GCP']
+    base.append([gdalconst.CXT_Attribute,'Id',[gdalconst.CXT_Text,self.Id]])
     pixval = '%0.15E' % self.GCPPixel
     lineval = '%0.15E' % self.GCPLine
     xval = '%0.15E' % self.GCPX
     yval = '%0.15E' % self.GCPY
     zval = '%0.15E' % self.GCPZ
-    base.append([CXT_Attribute,'Pixel',[CXT_Text,pixval]])
-    base.append([CXT_Attribute,'Line',[CXT_Text,lineval]])
-    base.append([CXT_Attribute,'X',[CXT_Text,xval]])
-    base.append([CXT_Attribute,'Y',[CXT_Text,yval]])
+    base.append([gdalconst.CXT_Attribute,'Pixel',[gdalconst.CXT_Text,pixval]])
+    base.append([gdalconst.CXT_Attribute,'Line',[gdalconst.CXT_Text,lineval]])
+    base.append([gdalconst.CXT_Attribute,'X',[gdalconst.CXT_Text,xval]])
+    base.append([gdalconst.CXT_Attribute,'Y',[gdalconst.CXT_Text,yval]])
     if with_Z:
-        base.append([CXT_Attribute,'Z',[CXT_Text,zval]])
+        base.append([gdalconst.CXT_Attribute,'Z',[gdalconst.CXT_Text,zval]])
     return base
 %} /* pythoncode */
 }
@@ -262,12 +359,18 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
         *buf = NULL;
         return CE_Failure;
     }
+
+    SWIG_PYTHON_THREAD_BEGIN_BLOCK;
 %#if PY_VERSION_HEX >= 0x03000000
     *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         *buf = Py_None;
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return CE_Failure;
     }
@@ -276,12 +379,18 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
     *buf = (void *)PyString_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return CE_Failure;
     }
     char *data = PyString_AsString( (PyObject *)*buf );
 %#endif
+    SWIG_PYTHON_THREAD_END_BLOCK;
+
     char* data_aligned = get_aligned_buffer(data, ntype);
 
     /* Should we clear the buffer in case there are hole in it ? */
@@ -314,7 +423,9 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
                          pixel_space, line_space, &sExtraArg );
     if (eErr == CE_Failure)
     {
+        SWIG_PYTHON_THREAD_BEGIN_BLOCK;
         Py_DECREF((PyObject*)*buf);
+        SWIG_PYTHON_THREAD_END_BLOCK;
         *buf = NULL;
     }
     else
@@ -344,12 +455,17 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
         return CE_Failure;
     }
 
+    SWIG_PYTHON_THREAD_BEGIN_BLOCK;
 %#if PY_VERSION_HEX >= 0x03000000
     *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
         *buf = Py_None;
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return CE_Failure;
     }
@@ -358,18 +474,26 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
     *buf = (void *)PyString_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return CE_Failure;
     }
     char *data = PyString_AsString( (PyObject *)*buf );
 %#endif
+    SWIG_PYTHON_THREAD_END_BLOCK;
+
     char* data_aligned = get_aligned_buffer(data, ntype);
 
     CPLErr eErr = GDALReadBlock( self, xoff, yoff, (void *) data_aligned);
     if (eErr == CE_Failure)
     {
+        SWIG_PYTHON_THREAD_BEGIN_BLOCK;
         Py_DECREF((PyObject*)*buf);
+        SWIG_PYTHON_THREAD_END_BLOCK;
         *buf = NULL;
     }
     else
@@ -404,7 +528,7 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
   def ReadRaster(self, xoff=0, yoff=0, xsize=None, ysize=None,
                  buf_xsize=None, buf_ysize=None, buf_type=None,
                  buf_pixel_space=None, buf_line_space=None,
-                 resample_alg=GRIORA_NearestNeighbour,
+                 resample_alg=gdalconst.GRIORA_NearestNeighbour,
                  callback=None,
                  callback_data=None):
 
@@ -420,13 +544,13 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
 
   def ReadAsArray(self, xoff=0, yoff=0, win_xsize=None, win_ysize=None,
                   buf_xsize=None, buf_ysize=None, buf_type=None, buf_obj=None,
-                  resample_alg=GRIORA_NearestNeighbour,
+                  resample_alg=gdalconst.GRIORA_NearestNeighbour,
                   callback=None,
                   callback_data=None):
       """ Reading a chunk of a GDAL band into a numpy array. The optional (buf_xsize,buf_ysize,buf_type)
       parameters should generally not be specified if buf_obj is specified. The array is returned"""
 
-      import gdalnumeric
+      from osgeo import gdalnumeric
 
       return gdalnumeric.BandReadAsArray(self, xoff, yoff,
                                          win_xsize, win_ysize,
@@ -436,10 +560,10 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
                                          callback_data=callback_data)
 
   def WriteArray(self, array, xoff=0, yoff=0,
-                 resample_alg=GRIORA_NearestNeighbour,
+                 resample_alg=gdalconst.GRIORA_NearestNeighbour,
                  callback=None,
                  callback_data=None):
-      import gdalnumeric
+      from osgeo import gdalnumeric
 
       return gdalnumeric.BandWriteArray(self, array, xoff, yoff,
                                         resample_alg=resample_alg,
@@ -456,7 +580,7 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
            Any reference to the array must be dropped before the last reference to the
            related dataset is also dropped.
         """
-        import gdalnumeric
+        from osgeo import gdalnumeric
         if xsize is None:
             xsize = self.XSize
         if ysize is None:
@@ -479,7 +603,7 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
            Any reference to the array must be dropped before the last reference to the
            related dataset is also dropped.
         """
-        import gdalnumeric
+        from osgeo import gdalnumeric
         if options is None:
             virtualmem = self.GetVirtualMemAuto(eAccess)
         else:
@@ -496,7 +620,7 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
            Any reference to the array must be dropped before the last reference to the
            related dataset is also dropped.
         """
-        import gdalnumeric
+        from osgeo import gdalnumeric
         if xsize is None:
             xsize = self.XSize
         if ysize is None:
@@ -508,10 +632,6 @@ unsigned int wrapper_VSIFReadL( void **buf, unsigned int nMembSize, unsigned int
         else:
             virtualmem = self.GetTiledVirtualMem(eAccess,xoff,yoff,xsize,ysize,tilexsize,tileysize,datatype,cache_size,options)
         return gdalnumeric.VirtualMemGetArray( virtualmem )
-
-  def __get_array_interface__(self):
-      shape = [1, self.XSize, self.YSize]
-
 %}
 }
 
@@ -565,11 +685,16 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
         return CE_Failure;
     }
 
+    SWIG_PYTHON_THREAD_BEGIN_BLOCK;
 %#if PY_VERSION_HEX >= 0x03000000
     *buf = (void *)PyBytes_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return CE_Failure;
     }
@@ -578,12 +703,18 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
     *buf = (void *)PyString_FromStringAndSize( NULL, buf_size + ALIGNMENT_EXTRA );
     if (*buf == NULL)
     {
-        if( !bUseExceptions ) PyErr_Clear();
+        if( !bUseExceptions )
+        {
+            PyErr_Clear();
+        }
+        SWIG_PYTHON_THREAD_END_BLOCK;
         CPLError(CE_Failure, CPLE_OutOfMemory, "Cannot allocate result buffer");
         return CE_Failure;
     }
     char *data = PyString_AsString( (PyObject *)*buf );
 %#endif
+    SWIG_PYTHON_THREAD_END_BLOCK;
+
     char* data_aligned = get_aligned_buffer(data, ntype);
 
     /* Should we clear the buffer in case there are hole in it ? */
@@ -611,7 +742,9 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
                                &sExtraArg );
     if (eErr == CE_Failure)
     {
+        SWIG_PYTHON_THREAD_BEGIN_BLOCK;
         Py_DECREF((PyObject*)*buf);
+        SWIG_PYTHON_THREAD_END_BLOCK;
         *buf = NULL;
     }
     else
@@ -631,14 +764,14 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
 
     def ReadAsArray(self, xoff=0, yoff=0, xsize=None, ysize=None, buf_obj=None,
                     buf_xsize=None, buf_ysize=None, buf_type=None,
-                    resample_alg=GRIORA_NearestNeighbour,
+                    resample_alg=gdalconst.GRIORA_NearestNeighbour,
                     callback=None,
                     callback_data=None,
                     interleave='band'):
         """ Reading a chunk of a GDAL band into a numpy array. The optional (buf_xsize,buf_ysize,buf_type)
         parameters should generally not be specified if buf_obj is specified. The array is returned"""
 
-        import gdalnumeric
+        from osgeo import gdalnumeric
         return gdalnumeric.DatasetReadAsArray(self, xoff, yoff, xsize, ysize, buf_obj,
                                               buf_xsize, buf_ysize, buf_type,
                                               resample_alg=resample_alg,
@@ -670,7 +803,7 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
                    buf_xsize=None, buf_ysize=None, buf_type=None,
                    band_list=None,
                    buf_pixel_space=None, buf_line_space=None, buf_band_space=None,
-                   resample_alg=GRIORA_NearestNeighbour,
+                   resample_alg=gdalconst.GRIORA_NearestNeighbour,
                    callback=None,
                    callback_data=None):
 
@@ -707,7 +840,7 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
            Any reference to the array must be dropped before the last reference to the
            related dataset is also dropped.
         """
-        import gdalnumeric
+        from osgeo import gdalnumeric
         if xsize is None:
             xsize = self.RasterXSize
         if ysize is None:
@@ -742,7 +875,7 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
            Any reference to the array must be dropped before the last reference to the
            related dataset is also dropped.
         """
-        import gdalnumeric
+        from osgeo import gdalnumeric
         if xsize is None:
             xsize = self.RasterXSize
         if ysize is None:
@@ -779,7 +912,7 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
         if buf_ysize is None:
             buf_ysize = 0;
         if buf_type is None:
-            buf_type = GDT_Byte
+            buf_type = gdalconst.GDT_Byte
 
         if buf_xsize <= 0:
             buf_xsize = xsize
@@ -819,6 +952,12 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
             return _gdal.Dataset_DeleteLayer(self, value)
         else:
             raise TypeError("Input %s is not of String or Int type" % type(value))
+
+    def SetGCPs(self, gcps, wkt_or_spatial_ref):
+        if isinstance(wkt_or_spatial_ref, str):
+            return self._SetGCPs(gcps, wkt_or_spatial_ref)
+        else:
+            return self._SetGCPs2(gcps, wkt_or_spatial_ref)
 %}
 }
 
@@ -834,14 +973,190 @@ CPLErr ReadRaster1(  int xoff, int yoff, int xsize, int ysize,
 %extend GDALRasterAttributeTableShadow {
 %pythoncode %{
   def WriteArray(self, array, field, start=0):
-      import gdalnumeric
+      from osgeo import gdalnumeric
 
       return gdalnumeric.RATWriteArray(self, array, field, start)
 
   def ReadAsArray(self, field, start=0, length=None):
-      import gdalnumeric
+      from osgeo import gdalnumeric
 
       return gdalnumeric.RATReadArray(self, field, start, length)
+%}
+}
+
+%extend GDALExtendedDataTypeHS {
+%pythoncode %{
+
+  def __eq__(self, other):
+    return self.Equals(other)
+
+  def __ne__(self, other):
+    return not self.__eq__(other)
+%}
+}
+
+%extend GDALMDArrayHS {
+%pythoncode %{
+  def Read(self,
+           array_start_idx = None,
+           count = None,
+           array_step = None,
+           buffer_stride = None,
+           buffer_datatype = None):
+      if not array_start_idx:
+        array_start_idx = [0] * self.GetDimensionCount()
+      if not count:
+        count = [ dim.GetSize() for dim in self.GetDimensions() ]
+      if not array_step:
+        array_step = [1] * self.GetDimensionCount()
+      if not buffer_stride:
+        stride = 1
+        buffer_stride = []
+        # To compute strides we must proceed from the fastest varying dimension
+        # (the last one), and then reverse the result
+        for cnt in reversed(count):
+            buffer_stride.append(stride)
+            stride *= cnt
+        buffer_stride.reverse()
+      if not buffer_datatype:
+        buffer_datatype = self.GetDataType()
+      return _gdal.MDArray_Read(self, array_start_idx, count, array_step, buffer_stride, buffer_datatype)
+
+  def ReadAsArray(self,
+                  array_start_idx = None,
+                  count = None,
+                  array_step = None,
+                  buffer_datatype = None,
+                  buf_obj = None):
+
+      from osgeo import gdalnumeric
+      return gdalnumeric.MDArrayReadAsArray(self, array_start_idx, count, array_step, buffer_datatype, buf_obj)
+
+  def __getitem__(self, item):
+
+        def stringify(v):
+            if v == Ellipsis:
+                return '...'
+            if isinstance(v, slice):
+                return ':'.join([str(x) if x is not None else '' for x in (v.start, v.stop, v.step)])
+            if isinstance(v, str):
+                return v
+            if isinstance(v, (int, type(12345678901234))):
+                return str(v)
+            try:
+                import numpy as np
+                if v == np.newaxis:
+                    return 'newaxis'
+            except:
+                pass
+
+            return str(v)
+
+        if isinstance(item, str):
+            return self.GetView('["' + item.replace('\\', '\\\\').replace('"', '\\"') + '"]')
+        elif isinstance(item, slice):
+            return self.GetView('[' + stringify(item) + ']')
+        elif isinstance(item, tuple):
+            return self.GetView('[' + ','.join([stringify(x) for x in item]) + ']')
+        else:
+            return self.GetView('[' + stringify(item) + ']')
+
+  def Write(self,
+           buffer,
+           array_start_idx = None,
+           count = None,
+           array_step = None,
+           buffer_stride = None,
+           buffer_datatype = None):
+
+      if not buffer_datatype:
+        buffer_datatype = self.GetDataType()
+
+      is_1d_string = self.GetDataType().GetClass() == GEDTC_STRING and buffer_datatype.GetClass() == GEDTC_STRING and self.GetDimensionCount() == 1
+
+      if not array_start_idx:
+        array_start_idx = [0] * self.GetDimensionCount()
+
+      if not count:
+        if is_1d_string:
+            assert type(buffer) == type([])
+            count = [ len(buffer) ]
+        else:
+            count = [ dim.GetSize() for dim in self.GetDimensions() ]
+
+      if not array_step:
+        array_step = [1] * self.GetDimensionCount()
+
+      if not buffer_stride:
+        stride = 1
+        buffer_stride = []
+        # To compute strides we must proceed from the fastest varying dimension
+        # (the last one), and then reverse the result
+        for cnt in reversed(count):
+            buffer_stride.append(stride)
+            stride *= cnt
+        buffer_stride.reverse()
+
+      if is_1d_string:
+          return _gdal.MDArray_WriteStringArray(self, array_start_idx, count, array_step, buffer_datatype, buffer)
+
+      return _gdal.MDArray_Write(self, array_start_idx, count, array_step, buffer_stride, buffer_datatype, buffer)
+
+  def WriteArray(self, array,
+                  array_start_idx = None,
+                  array_step = None):
+
+      from osgeo import gdalnumeric
+      return gdalnumeric.MDArrayWriteArray(self, array, array_start_idx, array_step)
+
+%}
+}
+
+%extend GDALAttributeHS {
+%pythoncode %{
+
+  def Read(self):
+    """ Read an attribute and return it with the most appropriate type """
+    dt_class = self.GetDataType().GetClass()
+    if dt_class == GEDTC_STRING:
+        if self.GetTotalElementsCount() == 1:
+            return self.ReadAsString()
+        return self.ReadAsStringArray()
+    if dt_class == GEDTC_NUMERIC:
+        if self.GetDataType().GetNumericDataType() in (GDT_Byte, GDT_Int16, GDT_UInt16, GDT_Int32):
+            if self.GetTotalElementsCount() == 1:
+                return self.ReadAsInt()
+            else:
+                return self.ReadAsIntArray()
+        else:
+            if self.GetTotalElementsCount() == 1:
+                return self.ReadAsDouble()
+            else:
+                return self.ReadAsDoubleArray()
+    return self.ReadAsRaw()
+
+  def Write(self, val):
+    if isinstance(val, (int, type(12345678901234))):
+        if val >= -0x80000000 and val <= 0x7FFFFFFF:
+            return self.WriteInt(val)
+        else:
+            return self.WriteDouble(val)
+    if isinstance(val, float):
+      return self.WriteDouble(val)
+    if isinstance(val, (str, type(u''))) and self.GetDataType().GetClass() != GEDTC_COMPOUND:
+      return self.WriteString(val)
+    if isinstance(val, list):
+      if len(val) == 0:
+        if self.GetDataType().GetClass() == GEDTC_STRING:
+            return self.WriteStringArray(val)
+        else:
+            return self.WriteDoubleArray(val)
+      if isinstance(val[0], (int, type(12345678901234), float)):
+        return self.WriteDoubleArray(val)
+      if isinstance(val[0], (str, type(u''))):
+        return self.WriteStringArray(val)
+    return self.WriteRaw(val)
+
 %}
 }
 
@@ -858,7 +1173,7 @@ def InfoOptions(options=None, format='text', deserialize=True,
          stats=False, approxStats=False, computeChecksum=False,
          showGCPs=True, showMetadata=True, showRAT=True, showColorTable=True,
          listMDD=False, showFileList=True, allMetadata=False,
-         extraMDDomains=None):
+         extraMDDomains=None, wktFormat=None):
     """ Create a InfoOptions() object that can be passed to gdal.Info()
         options can be be an array of strings, a string or let empty and filled from other keywords."""
 
@@ -899,6 +1214,8 @@ def InfoOptions(options=None, format='text', deserialize=True,
             new_options += ['-nofl']
         if allMetadata:
             new_options += ['-mdd', 'all']
+        if wktFormat:
+            new_options += ['-wkt_format', wktFormat]
         if extraMDDomains is not None:
             for mdd in extraMDDomains:
                 new_options += ['-mdd', mdd]
@@ -925,17 +1242,59 @@ def Info(ds, **kwargs):
         ret = json.loads(ret)
     return ret
 
+
+def MultiDimInfoOptions(options=None, detailed=False, array=None, limit=None, as_text=False):
+    """ Create a MultiDimInfoOptions() object that can be passed to gdal.MultiDimInfo()
+        options can be be an array of strings, a string or let empty and filled from other keywords."""
+
+    options = [] if options is None else options
+
+    if _is_str_or_unicode(options):
+        new_options = ParseCommandLine(options)
+    else:
+        new_options = options
+        if detailed:
+            new_options += ['-detailed']
+        if array:
+            new_options += ['-array', array]
+        if limit:
+            new_options += ['-limit', str(limit)]
+
+    return GDALMultiDimInfoOptions(new_options), as_text
+
+def MultiDimInfo(ds, **kwargs):
+    """ Return information on a dataset.
+        Arguments are :
+          ds --- a Dataset object or a filename
+        Keyword arguments are :
+          options --- return of gdal.MultiDimInfoOptions(), string or array of strings
+          other keywords arguments of gdal.MultiDimInfoOptions()
+        If options is provided as a gdal.MultiDimInfoOptions() object, other keywords are ignored. """
+    if 'options' not in kwargs or isinstance(kwargs['options'], list) or _is_str_or_unicode(kwargs['options']):
+        opts, as_text = MultiDimInfoOptions(**kwargs)
+    else:
+        opts = kwargs['options']
+        as_text = True
+    if _is_str_or_unicode(ds):
+        ds = OpenEx(ds, OF_VERBOSE_ERROR | OF_MULTIDIM_RASTER)
+    ret = MultiDimInfoInternal(ds, opts)
+    if not as_text:
+        import json
+        ret = json.loads(ret)
+    return ret
+
+
 def _strHighPrec(x):
     return x if _is_str_or_unicode(x) else '%.18g' % x
 
 def TranslateOptions(options=None, format=None,
-              outputType = GDT_Unknown, bandList=None, maskBand=None,
+              outputType = gdalconst.GDT_Unknown, bandList=None, maskBand=None,
               width = 0, height = 0, widthPct = 0.0, heightPct = 0.0,
               xRes = 0.0, yRes = 0.0,
               creationOptions=None, srcWin=None, projWin=None, projWinSRS=None, strict = False,
               unscale = False, scaleParams=None, exponents=None,
               outputBounds=None, metadataOptions=None,
-              outputSRS=None, GCPs=None,
+              outputSRS=None, nogcp=False, GCPs=None,
               noData=None, rgbExpand=None,
               stats = False, rat = True, resampleAlg=None,
               callback=None, callback_data=None):
@@ -943,7 +1302,7 @@ def TranslateOptions(options=None, format=None,
         Keyword arguments are :
           options --- can be be an array of strings, a string or let empty and filled from other keywords.
           format --- output format ("GTiff", etc...)
-          outputType --- output type (gdal.GDT_Byte, etc...)
+          outputType --- output type (gdalconst.GDT_Byte, etc...)
           bandList --- array of band numbers (index start at 1)
           maskBand --- mask band to generate or not ("none", "auto", "mask", 1, ...)
           width --- width of the output raster in pixel
@@ -963,6 +1322,7 @@ def TranslateOptions(options=None, format=None,
           outputBounds --- assigned output bounds: [ulx, uly, lrx, lry]
           metadataOptions --- list of metadata options
           outputSRS --- assigned output SRS
+          nogcp --- ignore GCP in the raster
           GCPs --- list of GCPs
           noData --- nodata value (or "none" to unset it)
           rgbExpand --- Color palette expansion mode: "gray", "rgb", "rgba"
@@ -980,7 +1340,7 @@ def TranslateOptions(options=None, format=None,
         new_options = options
         if format is not None:
             new_options += ['-of', format]
-        if outputType != GDT_Unknown:
+        if outputType != gdalconst.GDT_Unknown:
             new_options += ['-ot', GetDataTypeName(outputType)]
         if maskBand != None:
             new_options += ['-mask', str(maskBand)]
@@ -1015,6 +1375,8 @@ def TranslateOptions(options=None, format=None,
                 new_options += ['-mo', opt]
         if outputSRS is not None:
             new_options += ['-a_srs', str(outputSRS)]
+        if nogcp:
+            new_options += ['-nogcp']
         if GCPs is not None:
             for gcp in GCPs:
                 new_options += ['-gcp', _strHighPrec(gcp.GCPPixel), _strHighPrec(gcp.GCPLine), _strHighPrec(gcp.GCPX), str(gcp.GCPY), _strHighPrec(gcp.GCPZ)]
@@ -1031,19 +1393,19 @@ def TranslateOptions(options=None, format=None,
         if not rat:
             new_options += ['-norat']
         if resampleAlg is not None:
-            if resampleAlg == GRA_NearestNeighbour:
+            if resampleAlg == gdalconst.GRA_NearestNeighbour:
                 new_options += ['-r', 'near']
-            elif resampleAlg == GRA_Bilinear:
+            elif resampleAlg == gdalconst.GRA_Bilinear:
                 new_options += ['-r', 'bilinear']
-            elif resampleAlg == GRA_Cubic:
+            elif resampleAlg == gdalconst.GRA_Cubic:
                 new_options += ['-r', 'cubic']
-            elif resampleAlg == GRA_CubicSpline:
+            elif resampleAlg == gdalconst.GRA_CubicSpline:
                 new_options += ['-r', 'cubicspline']
-            elif resampleAlg == GRA_Lanczos:
+            elif resampleAlg == gdalconst.GRA_Lanczos:
                 new_options += ['-r', 'lanczos']
-            elif resampleAlg == GRA_Average:
+            elif resampleAlg == gdalconst.GRA_Average:
                 new_options += ['-r', 'average']
-            elif resampleAlg == GRA_Mode:
+            elif resampleAlg == gdalconst.GRA_Mode:
                 new_options += ['-r', 'mode']
             else:
                 new_options += ['-r', str(resampleAlg)]
@@ -1077,16 +1439,18 @@ def WarpOptions(options=None, format=None,
          xRes=None, yRes=None, targetAlignedPixels = False,
          width = 0, height = 0,
          srcSRS=None, dstSRS=None,
+         coordinateOperation=None,
          srcAlpha = False, dstAlpha = False,
          warpOptions=None, errorThreshold=None,
-         warpMemoryLimit=None, creationOptions=None, outputType = GDT_Unknown,
-         workingType = GDT_Unknown, resampleAlg=None,
+         warpMemoryLimit=None, creationOptions=None, outputType = gdalconst.GDT_Unknown,
+         workingType = gdalconst.GDT_Unknown, resampleAlg=None,
          srcNodata=None, dstNodata=None, multithread = False,
          tps = False, rpc = False, geoloc = False, polynomialOrder=None,
          transformerOptions=None, cutlineDSName=None,
          cutlineLayer=None, cutlineWhere=None, cutlineSQL=None, cutlineBlend=None, cropToCutline = False,
          copyMetadata = True, metadataConflictValue=None,
          setColorInterpretation = False,
+         overviewLevel = 'AUTO',
          callback=None, callback_data=None):
     """ Create a WarpOptions() object that can be passed to gdal.Warp()
         Keyword arguments are :
@@ -1100,10 +1464,11 @@ def WarpOptions(options=None, format=None,
           height --- height of the output raster in pixel
           srcSRS --- source SRS
           dstSRS --- output SRS
+          coordinateOperation -- coordinate operation as a PROJ string or WKT string
           srcAlpha --- whether to force the last band of the input dataset to be considered as an alpha band
           dstAlpha --- whether to force the creation of an output alpha band
-          outputType --- output type (gdal.GDT_Byte, etc...)
-          workingType --- working type (gdal.GDT_Byte, etc...)
+          outputType --- output type (gdalconst.GDT_Byte, etc...)
+          workingType --- working type (gdalconst.GDT_Byte, etc...)
           warpOptions --- list of warping options
           errorThreshold --- error threshold for approximation transformer (in pixels)
           warpMemoryLimit --- size of working buffer in bytes
@@ -1126,6 +1491,7 @@ def WarpOptions(options=None, format=None,
           copyMetadata --- whether to copy source metadata
           metadataConflictValue --- metadata data conflict value
           setColorInterpretation --- whether to force color interpretation of input bands to output bands
+          overviewLevel --- To specify which overview level of source files must be used
           callback --- callback method
           callback_data --- user data for callback
     """
@@ -1137,9 +1503,9 @@ def WarpOptions(options=None, format=None,
         new_options = options
         if format is not None:
             new_options += ['-of', format]
-        if outputType != GDT_Unknown:
+        if outputType != gdalconst.GDT_Unknown:
             new_options += ['-ot', GetDataTypeName(outputType)]
-        if workingType != GDT_Unknown:
+        if workingType != gdalconst.GDT_Unknown:
             new_options += ['-wt', GetDataTypeName(workingType)]
         if outputBounds is not None:
             new_options += ['-te', _strHighPrec(outputBounds[0]), _strHighPrec(outputBounds[1]), _strHighPrec(outputBounds[2]), _strHighPrec(outputBounds[3])]
@@ -1153,6 +1519,8 @@ def WarpOptions(options=None, format=None,
             new_options += ['-s_srs', str(srcSRS)]
         if dstSRS is not None:
             new_options += ['-t_srs', str(dstSRS)]
+        if coordinateOperation is not None:
+            new_options += ['-ct', coordinateOperation]
         if targetAlignedPixels:
             new_options += ['-tap']
         if srcAlpha:
@@ -1165,21 +1533,21 @@ def WarpOptions(options=None, format=None,
         if errorThreshold is not None:
             new_options += ['-et', _strHighPrec(errorThreshold)]
         if resampleAlg is not None:
-            if resampleAlg == GRIORA_NearestNeighbour:
+            if resampleAlg == gdalconst.GRIORA_NearestNeighbour:
                 new_options += ['-r', 'near']
-            elif resampleAlg == GRIORA_Bilinear:
+            elif resampleAlg == gdalconst.GRIORA_Bilinear:
                 new_options += ['-rb']
-            elif resampleAlg == GRIORA_Cubic:
+            elif resampleAlg == gdalconst.GRIORA_Cubic:
                 new_options += ['-rc']
-            elif resampleAlg == GRIORA_CubicSpline:
+            elif resampleAlg == gdalconst.GRIORA_CubicSpline:
                 new_options += ['-rcs']
-            elif resampleAlg == GRIORA_Lanczos:
+            elif resampleAlg == gdalconst.GRIORA_Lanczos:
                 new_options += ['-r', 'lanczos']
-            elif resampleAlg == GRIORA_Average:
+            elif resampleAlg == gdalconst.GRIORA_Average:
                 new_options += ['-r', 'average']
-            elif resampleAlg == GRIORA_Mode:
+            elif resampleAlg == gdalconst.GRIORA_Mode:
                 new_options += ['-r', 'mode']
-            elif resampleAlg == GRIORA_Gauss:
+            elif resampleAlg == gdalconst.GRIORA_Gauss:
                 new_options += ['-r', 'gauss']
             else:
                 new_options += ['-r', str(resampleAlg)]
@@ -1224,6 +1592,19 @@ def WarpOptions(options=None, format=None,
         if setColorInterpretation:
             new_options += ['-setci']
 
+        if overviewLevel is None or _is_str_or_unicode(overviewLevel):
+            pass
+        elif isinstance(overviewLevel, int):
+            if overviewLevel < 0:
+                overviewLevel = 'AUTO' + str(overviewLevel)
+            else:
+                overviewLevel = str(overviewLevel)
+        else:
+            overviewLevel = None
+
+        if overviewLevel:
+            new_options += ['-ovr', overviewLevel]
+
     return (GDALWarpAppOptions(new_options), callback, callback_data)
 
 def Warp(destNameOrDestDS, srcDSOrSrcDSTab, **kwargs):
@@ -1261,6 +1642,7 @@ def Warp(destNameOrDestDS, srcDSOrSrcDSTab, **kwargs):
 def VectorTranslateOptions(options=None, format=None,
          accessMode=None,
          srcSRS=None, dstSRS=None, reproject=True,
+         coordinateOperation=None,
          SQLStatement=None, SQLDialect=None, where=None, selectFields=None,
          addFields=False,
          forceNullable=False,
@@ -1283,6 +1665,7 @@ def VectorTranslateOptions(options=None, format=None,
           accessMode --- None for creation, 'update', 'append', 'overwrite'
           srcSRS --- source SRS
           dstSRS --- output SRS (with reprojection if reproject = True)
+          coordinateOperation -- coordinate operation as a PROJ string or WKT string
           reproject --- whether to do reprojection
           SQLStatement --- SQL statement to apply to the source dataset
           SQLDialect --- SQL dialect ('OGRSQL', 'SQLITE', ...)
@@ -1320,6 +1703,8 @@ def VectorTranslateOptions(options=None, format=None,
                 new_options += ['-t_srs', str(dstSRS)]
             else:
                 new_options += ['-a_srs', str(dstSRS)]
+        if coordinateOperation is not None:
+            new_options += ['-ct', coordinateOperation]
         if SQLStatement is not None:
             new_options += ['-sql', str(SQLStatement)]
         if SQLDialect is not None:
@@ -1396,7 +1781,7 @@ def VectorTranslate(destNameOrDestDS, srcDS, **kwargs):
     else:
         (opts, callback, callback_data) = kwargs['options']
     if _is_str_or_unicode(srcDS):
-        srcDS = OpenEx(srcDS, OF_VECTOR)
+        srcDS = OpenEx(srcDS, gdalconst.OF_VECTOR)
 
     if _is_str_or_unicode(destNameOrDestDS):
         return wrapper_GDALVectorTranslateDestName(destNameOrDestDS, srcDS, opts, callback, callback_data)
@@ -1406,7 +1791,7 @@ def VectorTranslate(destNameOrDestDS, srcDS, **kwargs):
 def DEMProcessingOptions(options=None, colorFilename=None, format=None,
               creationOptions=None, computeEdges=False, alg='Horn', band=1,
               zFactor=None, scale=None, azimuth=None, altitude=None,
-              combined=False, multiDirectional=False,
+              combined=False, multiDirectional=False, igor=False,
               slopeFormat=None, trigonometric=False, zeroForFlat=False,
               addAlpha=None,
               callback=None, callback_data=None):
@@ -1423,8 +1808,9 @@ def DEMProcessingOptions(options=None, colorFilename=None, format=None,
           scale --- ratio of vertical units to horizontal.
           azimuth --- (hillshade only) azimuth of the light, in degrees. 0 if it comes from the top of the raster, 90 from the east, ... The default value, 315, should rarely be changed as it is the value generally used to generate shaded maps.
           altitude ---(hillshade only) altitude of the light, in degrees. 90 if the light comes from above the DEM, 0 if it is raking light.
-          combined --- (hillshade only) whether to compute combined shading, a combination of slope and oblique shading.
-          multiDirectional --- (hillshade only) whether to compute multi-directional shading
+          combined --- (hillshade only) whether to compute combined shading, a combination of slope and oblique shading. Only one of combined, multiDirectional and igor can be specified.
+          multiDirectional --- (hillshade only) whether to compute multi-directional shading. Only one of combined, multiDirectional and igor can be specified.
+          igor --- (hillshade only) whether to use Igor's hillshading from Maperitive.  Only one of combined, multiDirectional and igor can be specified.
           slopeformat --- (slope only) "degree" or "percent".
           trigonometric --- (aspect only) whether to return trigonometric angle instead of azimuth. Thus 0deg means East, 90deg North, 180deg West, 270deg South.
           zeroForFlat --- (aspect only) whether to return 0 for flat areas with slope=0, instead of -9999.
@@ -1460,6 +1846,8 @@ def DEMProcessingOptions(options=None, colorFilename=None, format=None,
             new_options += ['-combined']
         if multiDirectional:
             new_options += ['-multidirectional']
+        if igor:
+            new_options += ['-igor']
         if slopeFormat == 'percent':
             new_options += ['-p']
         if trigonometric:
@@ -1566,7 +1954,7 @@ def Nearblack(destNameOrDestDS, srcDS, **kwargs):
 
 
 def GridOptions(options=None, format=None,
-              outputType=GDT_Unknown,
+              outputType=gdalconst.GDT_Unknown,
               width=0, height=0,
               creationOptions=None,
               outputBounds=None,
@@ -1585,7 +1973,7 @@ def GridOptions(options=None, format=None,
         Keyword arguments are :
           options --- can be be an array of strings, a string or let empty and filled from other keywords.
           format --- output format ("GTiff", etc...)
-          outputType --- output type (gdal.GDT_Byte, etc...)
+          outputType --- output type (gdalconst.GDT_Byte, etc...)
           width --- width of the output raster in pixel
           height --- height of the output raster in pixel
           creationOptions --- list of creation options
@@ -1611,7 +1999,7 @@ def GridOptions(options=None, format=None,
         new_options = options
         if format is not None:
             new_options += ['-of', format]
-        if outputType != GDT_Unknown:
+        if outputType != gdalconst.GDT_Unknown:
             new_options += ['-ot', GetDataTypeName(outputType)]
         if width != 0 or height != 0:
             new_options += ['-outsize', str(width), str(height)]
@@ -1660,12 +2048,12 @@ def Grid(destName, srcDS, **kwargs):
     else:
         (opts, callback, callback_data) = kwargs['options']
     if _is_str_or_unicode(srcDS):
-        srcDS = OpenEx(srcDS, OF_VECTOR)
+        srcDS = OpenEx(srcDS, gdalconst.OF_VECTOR)
 
     return GridInternal(destName, srcDS, opts, callback, callback_data)
 
 def RasterizeOptions(options=None, format=None,
-         outputType=GDT_Unknown,
+         outputType=gdalconst.GDT_Unknown,
          creationOptions=None, noData=None, initValues=None,
          outputBounds=None, outputSRS=None,
          transformerOptions=None,
@@ -1679,7 +2067,7 @@ def RasterizeOptions(options=None, format=None,
         Keyword arguments are :
           options --- can be be an array of strings, a string or let empty and filled from other keywords.
           format --- output format ("GTiff", etc...)
-          outputType --- output type (gdal.GDT_Byte, etc...)
+          outputType --- output type (gdalconst.GDT_Byte, etc...)
           creationOptions --- list of creation options
           outputBounds --- assigned output bounds: [minx, miny, maxx, maxy]
           outputSRS --- assigned output SRS
@@ -1711,7 +2099,7 @@ def RasterizeOptions(options=None, format=None,
         new_options = options
         if format is not None:
             new_options += ['-of', format]
-        if outputType != GDT_Unknown:
+        if outputType != gdalconst.GDT_Unknown:
             new_options += ['-ot', GetDataTypeName(outputType)]
         if creationOptions is not None:
             for opt in creationOptions:
@@ -1788,7 +2176,7 @@ def Rasterize(destNameOrDestDS, srcDS, **kwargs):
     else:
         (opts, callback, callback_data) = kwargs['options']
     if _is_str_or_unicode(srcDS):
-        srcDS = OpenEx(srcDS, OF_VECTOR)
+        srcDS = OpenEx(srcDS, gdalconst.OF_VECTOR)
 
     if _is_str_or_unicode(destNameOrDestDS):
         return wrapper_GDALRasterizeDestName(destNameOrDestDS, srcDS, opts, callback, callback_data)
@@ -1852,21 +2240,21 @@ def BuildVRTOptions(options=None,
         if addAlpha:
             new_options += ['-addalpha']
         if resampleAlg is not None:
-            if resampleAlg == GRIORA_NearestNeighbour:
+            if resampleAlg == gdalconst.GRIORA_NearestNeighbour:
                 new_options += ['-r', 'near']
-            elif resampleAlg == GRIORA_Bilinear:
+            elif resampleAlg == gdalconst.GRIORA_Bilinear:
                 new_options += ['-rb']
-            elif resampleAlg == GRIORA_Cubic:
+            elif resampleAlg == gdalconst.GRIORA_Cubic:
                 new_options += ['-rc']
-            elif resampleAlg == GRIORA_CubicSpline:
+            elif resampleAlg == gdalconst.GRIORA_CubicSpline:
                 new_options += ['-rcs']
-            elif resampleAlg == GRIORA_Lanczos:
+            elif resampleAlg == gdalconst.GRIORA_Lanczos:
                 new_options += ['-r', 'lanczos']
-            elif resampleAlg == GRIORA_Average:
+            elif resampleAlg == gdalconst.GRIORA_Average:
                 new_options += ['-r', 'average']
-            elif resampleAlg == GRIORA_Mode:
+            elif resampleAlg == gdalconst.GRIORA_Mode:
                 new_options += ['-r', 'mode']
-            elif resampleAlg == GRIORA_Gauss:
+            elif resampleAlg == gdalconst.GRIORA_Gauss:
                 new_options += ['-r', 'gauss']
             else:
                 new_options += ['-r', str(resampleAlg)]
@@ -1917,5 +2305,111 @@ def BuildVRT(destName, srcDSOrSrcDSTab, **kwargs):
         return BuildVRTInternalObjects(destName, srcDSTab, opts, callback, callback_data)
     else:
         return BuildVRTInternalNames(destName, srcDSNamesTab, opts, callback, callback_data)
+
+
+def MultiDimTranslateOptions(options=None, format=None, creationOptions=None,
+         arraySpecs=None, groupSpecs=None, subsetSpecs=None, scaleAxesSpecs=None,
+         callback=None, callback_data=None):
+    """ Create a MultiDimTranslateOptions() object that can be passed to gdal.MultiDimTranslate()
+        Keyword arguments are :
+          options --- can be be an array of strings, a string or let empty and filled from other keywords.
+          format --- output format ("GTiff", etc...)
+          creationOptions --- list of creation options
+          arraySpecs -- list of array specifications, each of them being an array name or "name={src_array_name},dstname={dst_name},transpose=[1,0],view=[:,::-1]"
+          groupSpecs -- list of group specifications, each of them being a group name or "name={src_array_name},dstname={dst_name},recursive=no"
+          subsetSpecs -- list of subset specifications, each of them being like "{dim_name}({min_val},{max_val})" or "{dim_name}({slice_va})"
+          scaleAxesSpecs -- list of dimension scaling specifications, each of them being like "{dim_name}({scale_factor})"
+          callback --- callback method
+          callback_data --- user data for callback
+    """
+    options = [] if options is None else options
+
+    if _is_str_or_unicode(options):
+        new_options = ParseCommandLine(options)
+    else:
+        new_options = options
+        if format is not None:
+            new_options += ['-of', format]
+        if creationOptions is not None:
+            for opt in creationOptions:
+                new_options += ['-co', opt]
+        if arraySpecs is not None:
+            for s in arraySpecs:
+                new_options += ['-array', s]
+        if groupSpecs is not None:
+            for s in groupSpecs:
+                new_options += ['-group', s]
+        if subsetSpecs is not None:
+            for s in subsetSpecs:
+                new_options += ['-subset', s]
+        if scaleAxesSpecs is not None:
+            for s in scaleAxesSpecs:
+                new_options += ['-scaleaxes', s]
+
+    return (GDALMultiDimTranslateOptions(new_options), callback, callback_data)
+
+def MultiDimTranslate(destName, srcDSOrSrcDSTab, **kwargs):
+    """ MultiDimTranslate one or several datasets.
+        Arguments are :
+          destName --- Output dataset name
+          srcDSOrSrcDSTab --- an array of Dataset objects or filenames, or a Dataset object or a filename
+        Keyword arguments are :
+          options --- return of gdal.MultiDimTranslateOptions(), string or array of strings
+          other keywords arguments of gdal.MultiDimTranslateOptions()
+        If options is provided as a gdal.MultiDimTranslateOptions() object, other keywords are ignored. """
+
+    if 'options' not in kwargs or isinstance(kwargs['options'], list) or _is_str_or_unicode(kwargs['options']):
+        (opts, callback, callback_data) = MultiDimTranslateOptions(**kwargs)
+    else:
+        (opts, callback, callback_data) = kwargs['options']
+    if _is_str_or_unicode(srcDSOrSrcDSTab):
+        srcDSTab = [OpenEx(srcDSOrSrcDSTab, OF_VERBOSE_ERROR | OF_RASTER | OF_MULTIDIM_RASTER)]
+    elif isinstance(srcDSOrSrcDSTab, list):
+        srcDSTab = []
+        for elt in srcDSOrSrcDSTab:
+            if _is_str_or_unicode(elt):
+                srcDSTab.append(OpenEx(elt, OF_VERBOSE_ERROR | OF_RASTER | OF_MULTIDIM_RASTER))
+            else:
+                srcDSTab.append(elt)
+    else:
+        srcDSTab = [srcDSOrSrcDSTab]
+
+    return wrapper_GDALMultiDimTranslateDestName(destName, srcDSTab, opts, callback, callback_data)
+
+# Logging Helpers
+def _pylog_handler(err_level, err_no, err_msg):
+    if err_no != gdalconst.CPLE_None:
+        typ = _pylog_handler.errcode_map.get(err_no, str(err_no))
+        message = "%s: %s" % (typ, err_msg)
+    else:
+        message = err_msg
+
+    level = _pylog_handler.level_map.get(err_level, 20)  # default level is INFO
+    _pylog_handler.logger.log(level, message)
+
+def ConfigurePythonLogging(logger_name='gdal', enable_debug=False):
+    """ Configure GDAL to use Python's logging framework """
+    import logging
+
+    _pylog_handler.logger = logging.getLogger(logger_name)
+
+    # map CPLE_* constants to names
+    _pylog_handler.errcode_map = {_num: _name[5:] for _name, _num in gdalconst.__dict__.items() if _name.startswith('CPLE_')}
+
+    # Map GDAL log levels to Python's
+    _pylog_handler.level_map = {
+        CE_None: logging.INFO,
+        CE_Debug: logging.DEBUG,
+        CE_Warning: logging.WARN,
+        CE_Failure: logging.ERROR,
+        CE_Fatal: logging.CRITICAL,
+    }
+
+    # Set CPL_DEBUG so debug messages are passed through the logger
+    if enable_debug:
+        SetConfigOption("CPL_DEBUG", "ON")
+
+    # Install as the default GDAL log handler
+    SetErrorHandler(_pylog_handler)
 
 %}

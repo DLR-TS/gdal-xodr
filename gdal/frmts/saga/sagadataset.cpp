@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009, Volker Wichmann <wichmann@laserdata.at>
- * Copyright (c) 2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -88,8 +88,15 @@ class SAGADataset : public GDALPamDataset
                                     GDALProgressFunc pfnProgress,
                                     void *pProgressData );
 
-    virtual const char *GetProjectionRef(void) override;
-    virtual CPLErr SetProjection( const char * ) override;
+    virtual const char *_GetProjectionRef(void) override;
+    virtual CPLErr _SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
+
     virtual char **GetFileList() override;
 
     CPLErr GetGeoTransform( double *padfGeoTransform ) override;
@@ -349,20 +356,20 @@ char** SAGADataset::GetFileList()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *SAGADataset::GetProjectionRef()
+const char *SAGADataset::_GetProjectionRef()
 
 {
     if (pszProjection && strlen(pszProjection) > 0)
         return pszProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr SAGADataset::SetProjection( const char *pszSRS )
+CPLErr SAGADataset::_SetProjection( const char *pszSRS )
 
 {
 /* -------------------------------------------------------------------- */

@@ -31,9 +31,9 @@
 #include "cadtables.h"
 #include "opencad_api.h"
 
-#include <memory>
 #include <cassert>
 #include <iostream>
+#include <memory>
 #include <set>
 
 using namespace std;
@@ -183,7 +183,7 @@ int CADTables::ReadLayersTable( CADFile * const pCADFile, long dLayerControlHand
         }
     }
 
-    DebugMsg( "Readed aLayers using LayerControl object count: %d\n",
+    DebugMsg( "Read aLayers using LayerControl object count: %d\n",
               static_cast<int>(aLayers.size()) );
 
     return CADErrorCodes::SUCCESS;

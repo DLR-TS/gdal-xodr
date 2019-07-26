@@ -6,7 +6,7 @@
  *
  **********************************************************************
  * Copyright (c) 2000, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -57,9 +57,13 @@ CPL_CVSID("$Id$")
 
 class VSIWin32FilesystemHandler final : public VSIFilesystemHandler
 {
+    CPL_DISALLOW_COPY_ASSIGN(VSIWin32FilesystemHandler)
+
 public:
     // TODO(schwehr): Fix Open call to remove the need for this using call.
     using VSIFilesystemHandler::Open;
+
+    VSIWin32FilesystemHandler() = default;
 
     virtual VSIVirtualHandle *Open( const char *pszFilename,
                                     const char *pszAccess,
@@ -84,9 +88,13 @@ public:
 
 class VSIWin32Handle final : public VSIVirtualHandle
 {
+    CPL_DISALLOW_COPY_ASSIGN(VSIWin32Handle)
+
   public:
-    HANDLE       hFile;
-    int          bEOF;
+    HANDLE       hFile = nullptr;
+    bool         bEOF = false;
+
+    VSIWin32Handle() = default;
 
     virtual int       Seek( vsi_l_offset nOffset, int nWhence ) override;
     virtual vsi_l_offset Tell() override;
@@ -209,7 +217,7 @@ int VSIWin32Handle::Seek( vsi_l_offset nOffset, int nWhence )
     GUInt32       nMoveLow;
     LARGE_INTEGER li;
 
-    bEOF = FALSE;
+    bEOF = false;
 
     switch(nWhence)
     {
@@ -310,7 +318,7 @@ size_t VSIWin32Handle::Read( void * pBuffer, size_t nSize, size_t nCount )
         nResult = dwSizeRead / nSize;
 
     if( nResult != nCount )
-        bEOF = TRUE;
+        bEOF = true;
 
     return nResult;
 }
@@ -675,7 +683,6 @@ VSIVirtualHandle *VSIWin32FilesystemHandler::Open( const char *pszFilename,
     VSIWin32Handle *poHandle = new VSIWin32Handle;
 
     poHandle->hFile = hFile;
-    poHandle->bEOF = FALSE;
 
     if (strchr(pszAccess, 'a') != nullptr)
         poHandle->Seek(0, SEEK_END);

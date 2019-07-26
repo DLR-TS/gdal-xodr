@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2005, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -58,6 +58,8 @@ class CPL_DLL GDALJP2Box
     GByte       abyUUID[16];
 
     GByte      *pabyData;
+
+    CPL_DISALLOW_COPY_ASSIGN(GDALJP2Box)
 
 public:
     explicit    GDALJP2Box( VSILFILE * = nullptr );
@@ -139,6 +141,8 @@ private:
     static CPLXMLNode* CreateGDALMultiDomainMetadataXML(
                                        GDALDataset* poSrcDS,
                                        int bMainMDDomainOnly );
+
+    CPL_DISALLOW_COPY_ASSIGN(GDALJP2Metadata)
 
 public:
     char  **papszGMLMetadata;

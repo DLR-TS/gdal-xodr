@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test ACE2 driver
-# Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault, <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,10 +28,8 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 from osgeo import gdal
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -39,7 +37,7 @@ import gdaltest
 # Test a fake ACE2 dataset
 
 
-def ace2_1():
+def test_ace2_1():
 
     f = gdal.VSIFOpenL('/vsimem/45N015E_5M.ACE2', 'wb')
     gdal.VSIFSeekL(f, 180 * 180 * 4 - 1, 0)
@@ -66,13 +64,4 @@ def ace2_1():
     return ret
 
 
-gdaltest_list = [
-    ace2_1]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('ace2')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

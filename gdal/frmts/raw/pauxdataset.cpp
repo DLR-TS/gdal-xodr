@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -44,7 +44,7 @@ CPL_CVSID("$Id$")
 
 class PAuxRasterBand;
 
-class PAuxDataset : public RawDataset
+class PAuxDataset final: public RawDataset
 {
     friend class PAuxRasterBand;
 
@@ -59,6 +59,8 @@ class PAuxDataset : public RawDataset
 
     char       *pszProjection;
 
+    CPL_DISALLOW_COPY_ASSIGN(PAuxDataset)
+
   public:
     PAuxDataset();
     ~PAuxDataset() override;
@@ -68,12 +70,18 @@ class PAuxDataset : public RawDataset
     char        **papszAuxLines;
     int         bAuxUpdated;
 
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     CPLErr GetGeoTransform( double * ) override;
     CPLErr SetGeoTransform( double * ) override;
 
     int    GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     const GDAL_GCP *GetGCPs() override;
 
     char **GetFileList() override;
@@ -92,6 +100,8 @@ class PAuxDataset : public RawDataset
 
 class PAuxRasterBand : public RawRasterBand
 {
+    CPL_DISALLOW_COPY_ASSIGN(PAuxRasterBand)
+
   public:
 
     PAuxRasterBand( GDALDataset *poDS, int nBand, VSILFILE * fpRaw,
@@ -120,7 +130,7 @@ PAuxRasterBand::PAuxRasterBand( GDALDataset *poDSIn, int nBandIn,
                                 GDALDataType eDataTypeIn, int bNativeOrderIn ) :
     RawRasterBand( poDSIn, nBandIn, fpRawIn,
                    nImgOffsetIn, nPixelOffsetIn, nLineOffsetIn,
-                   eDataTypeIn, bNativeOrderIn, TRUE )
+                   eDataTypeIn, bNativeOrderIn, RawRasterBand::OwnFP::NO )
 {
     PAuxDataset *poPDS = reinterpret_cast<PAuxDataset *>( poDS );
 
@@ -486,7 +496,7 @@ int PAuxDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *PAuxDataset::GetGCPProjection()
+const char *PAuxDataset::_GetGCPProjection()
 
 {
     if( nGCPCount > 0 && pszGCPProjection != nullptr )
@@ -509,13 +519,13 @@ const GDAL_GCP *PAuxDataset::GetGCPs()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *PAuxDataset::GetProjectionRef()
+const char *PAuxDataset::_GetProjectionRef()
 
 {
     if( pszProjection )
         return pszProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/

@@ -14,7 +14,7 @@
  **********************************************************************
  * Copyright (c) 2008, Frank Warmerdam
  * Copyright 2006 by Bill Spitzak and others.
- * Copyright (c) 2009-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -236,7 +236,7 @@ char *CPLRecodeStub( const char *pszSource,
             bHaveWarned1 = true;
             CPLError( CE_Warning, CPLE_AppDefined,
                       "Recode from %s to UTF-8 not supported, "
-                      "treated as ISO8859-1 to UTF-8.",
+                      "treated as ISO-8859-1 to UTF-8.",
                       pszSrcEncoding );
         }
 
@@ -260,7 +260,7 @@ char *CPLRecodeStub( const char *pszSource,
             bHaveWarned2 = true;
             CPLError( CE_Warning, CPLE_AppDefined,
                       "Recode from UTF-8 to %s not supported, "
-                      "treated as UTF-8 to ISO8859-1.",
+                      "treated as UTF-8 to ISO-8859-1.",
                       pszDstEncoding );
         }
 

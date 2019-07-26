@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2006, Christopher Condit
- * Copyright (c) 2007-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -79,6 +79,7 @@ OGRKMLLayer::OGRKMLLayer( const char * pszName,
     if( poSRSIn != nullptr )
     {
         poSRS_->SetWellKnownGeogCS( "WGS84" );
+        poSRS_->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         if( !poSRS_->IsSame(poSRSIn) )
         {
             poCT_ = OGRCreateCoordinateTransformation( poSRSIn, poSRS_ );
@@ -94,8 +95,7 @@ OGRKMLLayer::OGRKMLLayer( const char * pszName,
                     CE_Warning, CPLE_AppDefined,
                     "Failed to create coordinate transformation between the "
                     "input coordinate system and WGS84.  This may be because "
-                    "they are not transformable, or because projection "
-                    "services (PROJ.4 DLL/.so) could not be loaded.  "
+                    "they are not transformable.  "
                     "KML geometries may not render correctly.  "
                     "This message will not be issued any more."
                     "\nSource:\n%s\n",

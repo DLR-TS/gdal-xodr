@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam
- * Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -42,9 +42,11 @@ CPL_CVSID("$Id$")
 class FujiBASDataset : public RawDataset
 {
     VSILFILE        *fpImage;  // image data file.
-    CPLString        osRawFilename;
+    CPLString        osRawFilename{};
 
     char        **papszHeader;
+
+    CPL_DISALLOW_COPY_ASSIGN(FujiBASDataset)
 
   public:
                 FujiBASDataset();
@@ -214,7 +216,8 @@ GDALDataset *FujiBASDataset::Open( GDALOpenInfo * poOpenInfo )
     poDS->SetBand(
         1,
         new RawRasterBand( poDS, 1, poDS->fpImage,
-                           0, 2, nXSize * 2, GDT_UInt16, bNativeOrder, TRUE ) );
+                           0, 2, nXSize * 2, GDT_UInt16, bNativeOrder,
+                           RawRasterBand::OwnFP::NO ) );
 
 /* -------------------------------------------------------------------- */
 /*      Initialize any PAM information.                                 */

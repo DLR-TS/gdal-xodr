@@ -3,10 +3,10 @@
  *
  * Project:  PDF driver
  * Purpose:  GDALDataset driver for PDF dataset.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -38,27 +38,29 @@
 
 #define BUFFER_SIZE 1024
 
-#ifdef POPPLER_0_23_OR_LATER
 #define getPos_ret_type Goffset
 #define getStart_ret_type Goffset
 #define makeSubStream_offset_type Goffset
 #define setPos_offset_type Goffset
 #define moveStart_delta_type Goffset
-#else
-#define getPos_ret_type int
-#define getStart_ret_type Guint
-#define makeSubStream_offset_type Guint
-#define setPos_offset_type Guint
-#define moveStart_delta_type int
-#endif
 
-#ifdef POPPLER_0_58_OR_LATER
+#if POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 58
 #define makeSubStream_object_type Object&&
 #else
 #define makeSubStream_object_type Object*
 #endif
 
-class VSIPDFFileStream: public BaseStream
+// Detect Poppler 0.71 that no longer defines GBool
+#if POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 69
+#ifndef initObj
+#if POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 71
+#define GBool bool
+#define gFalse false
+#endif
+#endif
+#endif
+
+class VSIPDFFileStream final: public BaseStream
 {
     public:
         VSIPDFFileStream(VSILFILE* f, const char* pszFilename,
@@ -69,9 +71,7 @@ class VSIPDFFileStream: public BaseStream
                          makeSubStream_object_type dictA);
         virtual ~VSIPDFFileStream();
 
-#ifdef POPPLER_0_23_OR_LATER
         virtual BaseStream* copy() override;
-#endif
 
         virtual Stream *   makeSubStream(makeSubStream_offset_type startA, GBool limitedA,
                                          makeSubStream_offset_type lengthA, makeSubStream_object_type dictA) override;
@@ -93,18 +93,8 @@ class VSIPDFFileStream: public BaseStream
         virtual void       close() override;
 
     private:
-#ifdef POPPLER_BASE_STREAM_HAS_TWO_ARGS
-        /* getChars/hasGetChars added in poppler 0.15.0
-         * POPPLER_BASE_STREAM_HAS_TWO_ARGS true from poppler 0.16,
-         * This test will be wrong for poppler 0.15 or 0.16,
-         * but will still compile correctly.
-         */
         virtual GBool hasGetChars() override;
         virtual int getChars(int nChars, Guchar *buffer) override;
-#else
-        virtual GBool hasGetChars() ;
-        virtual int getChars(int nChars, Guchar *buffer) ;
-#endif
 
         VSIPDFFileStream  *poParent;
         GooString         *poFilename;

@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2012, Roger Veciana <rveciana@gmail.com>
- * Copyright (c) 2012-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -70,9 +70,10 @@ class IRISDataset : public GDALPamDataset
     double                adfGeoTransform[6];
     bool                  bHasLoadedProjection;
     void                  LoadProjection();
-    static std::pair<double, double> GeodesicCalculation(
+    static bool GeodesicCalculation(
         float fLat, float fLon, float fAngle, float fDist,
-        float fEquatorialRadius, float fPolarRadius, float fFlattening );
+        float fEquatorialRadius, float fPolarRadius, float fFlattening,
+        std::pair<double, double>& oOutPair);
 
 public:
     IRISDataset();
@@ -82,7 +83,10 @@ public:
     static int Identify( GDALOpenInfo * );
 
     CPLErr GetGeoTransform( double * padfTransform ) override;
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 };
 
 const char* const IRISDataset::aszProductNames[] = {
@@ -476,15 +480,29 @@ void IRISDataset::LoadProjection()
 
     const float fScaleX = CPL_LSBSINT32PTR(abyHeader + 88 + 12 ) / 100.0f;
     const float fScaleY = CPL_LSBSINT32PTR(abyHeader + 92 + 12 ) / 100.0f;
-    if( fScaleX < 0.0f || fScaleY < 0.0f ||
+    if( fScaleX <= 0.0f || fScaleY <= 0.0f ||
         fScaleX >= fPolarRadius || fScaleY >= fPolarRadius )
         return;
 
     OGRSpatialReference oSRSOut;
+    oSRSOut.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
     // Mercator projection.
     if( EQUAL(aszProjections[nProjectionCode],"Mercator") )
     {
+        std::pair<double, double> oPositionX2;
+        if( !GeodesicCalculation(
+                fCenterLat, fCenterLon, 90.0f, fScaleX,
+                fEquatorialRadius, fPolarRadius, fFlattening,
+                oPositionX2) )
+            return;
+        std::pair<double, double> oPositionY2;
+        if( !GeodesicCalculation(
+                fCenterLat, fCenterLon, 0.0f, fScaleY,
+                fEquatorialRadius, fPolarRadius, fFlattening,
+                oPositionY2) )
+            return;
+
         oSRSOut.SetGeogCS(
             "unnamed ellipse",
             "unknown",
@@ -494,12 +512,14 @@ void IRISDataset::LoadProjection()
             "degree", 0.0174532925199433);
 
         oSRSOut.SetMercator(fProjRefLat, fProjRefLon, 1.0, 0.0, 0.0);
+        oSRSOut.SetLinearUnits("Metre", 1.0);
         oSRSOut.exportToWkt(&pszSRS_WKT);
 
         // The center coordinates are given in LatLon on the defined
         // ellipsoid. Necessary to calculate geotransform.
 
         OGRSpatialReference oSRSLatLon;
+        oSRSLatLon.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         oSRSLatLon.SetGeogCS(
             "unnamed ellipse",
             "unknown",
@@ -510,15 +530,6 @@ void IRISDataset::LoadProjection()
 
         OGRCoordinateTransformation *poTransform =
             OGRCreateCoordinateTransformation( &oSRSLatLon, &oSRSOut );
-
-        const std::pair<double, double> oPositionX2 =
-            GeodesicCalculation(
-                fCenterLat, fCenterLon, 90.0f, fScaleX,
-                fEquatorialRadius, fPolarRadius, fFlattening);
-        const std::pair<double, double> oPositionY2 =
-            GeodesicCalculation(
-                fCenterLat, fCenterLon, 0.0f, fScaleY,
-                fEquatorialRadius, fPolarRadius, fFlattening);
 
         const double dfLon2 = oPositionX2.first;
         const double dfLat2 = oPositionY2.second;
@@ -590,10 +601,11 @@ void IRISDataset::LoadProjection()
 /*       http://www.ngs.noaa.gov/PUBS_LIB/inverse.pdf                                             */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -  */
 
-std::pair<double, double>
+bool
 IRISDataset::GeodesicCalculation(
     float fLat, float fLon, float fAngle, float fDist, float fEquatorialRadius,
-    float fPolarRadius, float fFlattening )
+    float fPolarRadius, float fFlattening,
+    std::pair<double, double>& oOutPair )
 {
     const double dfAlpha1 = DEG2RAD * fAngle;
     const double dfSinAlpha1 = sin(dfAlpha1);
@@ -621,6 +633,7 @@ IRISDataset::GeodesicCalculation(
     double dfCosSigma = 0.0;
     double dfCos2SigmaM = 0.0;
 
+    int nIter = 0;
     while( fabs(dfSigma-dfSigmaP) > 1e-12 )
     {
         dfCos2SigmaM = cos(2*dfSigma1 + dfSigma);
@@ -633,6 +646,9 @@ IRISDataset::GeodesicCalculation(
                 (-3+4*dfCos2SigmaM*dfCos2SigmaM)));
         dfSigmaP = dfSigma;
         dfSigma = fDist / (fPolarRadius*dfA) + dfDeltaSigma;
+        nIter ++;
+        if( nIter == 100 )
+            return false;
     }
 
     const double dfTmp = dfSinU1*dfSinSigma - dfCosU1*dfCosSigma*dfCosAlpha1;
@@ -654,9 +670,9 @@ IRISDataset::GeodesicCalculation(
     if( dfLon2 < -1*M_PI )
         dfLon2 = dfLon2 + 2 * M_PI;
 
-    std::pair<double, double> oOutput(dfLon2 * RAD2DEG, dfLat2 * RAD2DEG);
+    oOutPair = std::pair<double, double>(dfLon2 * RAD2DEG, dfLat2 * RAD2DEG);
 
-    return oOutput;
+    return true;
 }
 
 /************************************************************************/
@@ -676,7 +692,7 @@ CPLErr IRISDataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *IRISDataset::GetProjectionRef()
+const char *IRISDataset::_GetProjectionRef()
 {
     if( !bHasLoadedProjection )
         LoadProjection();

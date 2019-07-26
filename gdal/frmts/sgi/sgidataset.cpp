@@ -10,7 +10,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2005, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -349,7 +349,7 @@ CPLErr SGIRasterBand::IWriteBlock(CPL_UNUSED int nBlockXOff,
 
         if( nRepeatCount > 2
             || iX + nRepeatCount == image->xsize
-            || (iX + nRepeatCount < image->xsize - 2
+            || (iX + nRepeatCount < image->xsize - 3
                 && pabyRawBuf[iX + nRepeatCount + 1]
                 == pabyRawBuf[iX + nRepeatCount + 2]
                 && pabyRawBuf[iX + nRepeatCount + 1]

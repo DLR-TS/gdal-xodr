@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -288,7 +288,7 @@ public:
 class TigerPoint : public TigerFileBase
 {
  protected:
-                      TigerPoint(int bRequireGeom,
+                      explicit TigerPoint(int bRequireGeom,
                                  const TigerRecordInfo *psRTInfoIn = nullptr,
                                  const char            *m_pszFileCodeIn = nullptr);
 
@@ -581,7 +581,7 @@ class OGRTigerDataSource : public OGRDataSource
     void                AddLayer( OGRTigerLayer * );
     int                 TestCapability( const char * ) override;
 
-    OGRSpatialReference *GetSpatialRef() { return poSpatialRef; }
+    OGRSpatialReference *DSGetSpatialRef() { return poSpatialRef; }
 
     const char          *GetDirPath() { return pszPath; }
     char                *BuildFilename( const char * pszModule,

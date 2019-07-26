@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009, Andrey Kiselev <dron@ak4719.spb.edu>
- * Copyright (c) 2009-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -359,7 +359,7 @@ OGRErr OGRSpatialReference::importFromOzi( const char * const* papszLines )
     else
     {
         CPLDebug( "OSR_Ozi", "Unsupported projection: \"%s\"", papszProj[1] );
-        SetLocalCS( CPLString().Printf("\"Ozi\" projection \"%s\"",
+        SetLocalCS( CPLString().Printf(R"("Ozi" projection "%s")",
                                        papszProj[1]) );
     }
 
@@ -481,8 +481,6 @@ OGRErr OGRSpatialReference::importFromOzi( const char * const* papszLines )
 /* -------------------------------------------------------------------- */
     if( IsLocal() || IsProjected() )
         SetLinearUnits( SRS_UL_METER, 1.0 );
-
-    FixupOrdering();
 
     CSLDestroy(papszProj);
     CSLDestroy(papszProjParms);

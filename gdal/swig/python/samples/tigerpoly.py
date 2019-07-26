@@ -8,7 +8,7 @@
 #
 ###############################################################################
 # Copyright (c) 2003, Frank Warmerdam <warmerdam@pobox.com>
-# Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -128,7 +128,7 @@ while feat is not None:
 
     try:
         module = modules_hash[tile_ref]
-    except:
+    except KeyError:
         module = Module()
         modules_hash[tile_ref] = module
 
@@ -170,12 +170,12 @@ while feat is not None:
 
     try:
         module.poly_line_links[lpoly_id].append(tlid)
-    except:
+    except KeyError:
         module.poly_line_links[lpoly_id] = [tlid]
 
     try:
         module.poly_line_links[rpoly_id].append(tlid)
-    except:
+    except KeyError:
         module.poly_line_links[rpoly_id] = [tlid]
 
     link_count = link_count + 1

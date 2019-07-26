@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2011-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2017, Alan Thomas <alant@outlook.com.au>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -177,8 +177,17 @@ void OGRDXFLayer::TranslateGenericProperty( OGRDXFFeature *poFeature,
         poFeature->oStyleProperties["Hidden"] = pszValue;
         break;
 
+      case 67:
+        if( atoi(pszValue) )
+            poFeature->SetField( "PaperSpace", 1 );
+        break;
+
       case 62:
         poFeature->oStyleProperties["Color"] = pszValue;
+        break;
+
+      case 420:
+        poFeature->oStyleProperties["TrueColor"] = pszValue;
         break;
 
       case 6:
@@ -209,10 +218,6 @@ void OGRDXFLayer::TranslateGenericProperty( OGRDXFFeature *poFeature,
 
       case 230:
         poFeature->oOCS.dfZ = CPLAtof( pszValue );
-        break;
-
-      case 330:
-        // No-one cares about this, so exclude from RawCodeValues
         break;
 
       default:
@@ -728,13 +733,11 @@ OGRDXFFeature *OGRDXFLayer::TranslateTEXT( const bool bIsAttribOrAttdef )
           case 2:
             if( bIsAttribOrAttdef )
             {
-                if( strchr( szLineBuf, ' ' ) )
-                {
-                    CPLDebug( "DXF", "Attribute tags may not contain spaces" );
-                    DXF_LAYER_READER_ERROR();
-                    delete poFeature;
-                    return nullptr;
-                }
+                // Attribute tags are not supposed to contain spaces (but
+                // sometimes they do)
+                while( char* pchSpace = strchr( szLineBuf, ' ' ) )
+                    *pchSpace = '_';
+
                 poFeature->osAttributeTag = szLineBuf;
             }
             break;

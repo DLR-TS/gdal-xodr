@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test OSR XML import/export
-# Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault, <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,21 +28,19 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
+import re
 
-sys.path.append('../pymod')
 
 import gdaltest
 from osgeo import osr
 
-import re
 
 ###############################################################################
 # Test the osr.SpatialReference.ImportFromXML() function.
 #
 
 
-def osr_xml_1():
+def test_osr_xml_1():
 
     gdaltest.srs_xml = """<gml:ProjectedCRS>
   <gml:srsName>WGS 84 / UTM zone 31N</gml:srsName>
@@ -173,7 +171,7 @@ def osr_xml_1():
 </gml:ProjectedCRS>
 """
 
-    gdaltest.srs_wkt = """PROJCS["WGS 84 / UTM zone 31N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",3],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["Meter",1],AUTHORITY["EPSG","32631"]]"""
+    gdaltest.srs_wkt = """PROJCS["WGS 84 / UTM zone 31N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",3],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32631"]]"""
 
     srs = osr.SpatialReference()
     srs.ImportFromXML(gdaltest.srs_xml)
@@ -181,18 +179,14 @@ def osr_xml_1():
     got = srs.ExportToWkt()
     expected = gdaltest.srs_wkt
 
-    if got != expected:
-        print(got)
-        return 'fail'
-
-    return 'success'
+    assert got == expected
 
 ###############################################################################
 # Test the osr.SpatialReference.ExportToXML() function.
 #
 
 
-def osr_xml_2():
+def test_osr_xml_2():
 
     srs = osr.SpatialReference()
     srs.ImportFromWkt(gdaltest.srs_wkt)
@@ -205,21 +199,7 @@ def osr_xml_2():
     got = re.sub(r' gml:id="[^"]*"', '', got, 0)
     expected = re.sub(r' gml:id="[^"]*"', '', expected, 0)
 
-    if got != expected:
-        print(got)
-        return 'fail'
-
-    return 'success'
+    assert got == expected
 
 
-gdaltest_list = [
-    osr_xml_1,
-    osr_xml_2]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('osr_xml')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -183,12 +183,12 @@ class CPL_DLL OGRGeomFieldDefn
 {
 protected:
 //! @cond Doxygen_Suppress
-        char                *pszName;
-        OGRwkbGeometryType   eGeomType; /* all values possible except wkbNone */
-        mutable OGRSpatialReference* poSRS;
+        char                *pszName = nullptr;
+        OGRwkbGeometryType   eGeomType = wkbUnknown; /* all values possible except wkbNone */
+        mutable OGRSpatialReference* poSRS = nullptr;
 
-        int                 bIgnore;
-        mutable int         bNullable;
+        int                 bIgnore = false;
+        mutable int         bNullable = true;
 
         void                Initialize( const char *, OGRwkbGeometryType );
 //! @endcond
@@ -284,6 +284,7 @@ class CPL_DLL OGRFeatureDefn
     virtual OGRFieldDefn *GetFieldDefn( int i );
     virtual const OGRFieldDefn *GetFieldDefn( int i ) const;
     virtual int         GetFieldIndex( const char * ) const;
+    int                 GetFieldIndexCaseSensitive( const char * ) const;
 
     virtual void        AddFieldDefn( OGRFieldDefn * );
     virtual OGRErr      DeleteFieldDefn( int iField );
@@ -530,7 +531,7 @@ class CPL_DLL OGRFeature
 
       public:
 //! @cond Doxygen_Suppress
-        ConstFieldIterator(ConstFieldIterator&& oOther); // declared but not defined. Needed for gcc 5.4 at least
+        ConstFieldIterator(ConstFieldIterator&& oOther) noexcept; // declared but not defined. Needed for gcc 5.4 at least
         ~ConstFieldIterator();
         const FieldValue& operator*() const;
         ConstFieldIterator& operator++();
@@ -674,7 +675,7 @@ class CPL_DLL OGRFeature
     void                SetField( int i, int nCount, const double * padfValues );
     void                SetField( int i, const char * const * papszValues );
     void                SetField( int i, OGRField * puValue );
-    void                SetField( int i, int nCount, GByte * pabyBinary );
+    void                SetField( int i, int nCount, const void * pabyBinary );
     void                SetField( int i, int nYear, int nMonth, int nDay,
                                   int nHour=0, int nMinute=0, float fSecond=0.f,
                                   int nTZFlag = 0 );
@@ -816,6 +817,9 @@ class CPL_DLL OGRFeatureQuery
     OGRErr      Compile( OGRLayer *, OGRFeatureDefn*, const char *,
                          int bCheck,
                          swq_custom_func_registrar* poCustomFuncRegistrar );
+
+    CPL_DISALLOW_COPY_ASSIGN(OGRFeatureQuery)
+
   public:
                 OGRFeatureQuery();
                ~OGRFeatureQuery();

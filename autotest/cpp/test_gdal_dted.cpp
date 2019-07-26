@@ -6,7 +6,7 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 // Copyright (c) 2006, Mateusz Loskot <mateusz@loskot.net>
-// Copyright (c) 2010, Even Rouault <even dot rouault at mines-paris dot org>
+// Copyright (c) 2010, Even Rouault <even dot rouault at spatialys.com>
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Library General Public
@@ -186,7 +186,7 @@ namespace tut
         std::string proj(GDALGetProjectionRef(ds));
         ensure_equals("Projection definition is not available", proj.empty(), false);
 
-        std::string expect("GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]");
+        std::string expect("GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4326\"]]");
         ensure_equals("Projection does not match expected", proj, expect);
 
         GDALClose(ds);
@@ -242,7 +242,7 @@ namespace tut
         std::string proj(GDALGetProjectionRef(dsDst));
         ensure_equals("Projection definition is not available", proj.empty(), false);
 
-        std::string expect("GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AUTHORITY[\"EPSG\",\"4326\"]]");
+        std::string expect("GEOGCS[\"WGS 84\",DATUM[\"WGS_1984\",SPHEROID[\"WGS 84\",6378137,298.257223563,AUTHORITY[\"EPSG\",\"7030\"]],AUTHORITY[\"EPSG\",\"6326\"]],PRIMEM[\"Greenwich\",0,AUTHORITY[\"EPSG\",\"8901\"]],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]],AXIS[\"Latitude\",NORTH],AXIS[\"Longitude\",EAST],AUTHORITY[\"EPSG\",\"4326\"]]");
         ensure_equals("Projection does not match expected", proj, expect);
 
         GDALRasterBandH band = GDALGetRasterBand(dsDst, rasters_.at(fileIdx).band_);

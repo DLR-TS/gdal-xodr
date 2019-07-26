@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2006, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2017, Ari Jolma
  * Copyright (c) 2017, Finnish Environment Institute
  *
@@ -113,6 +113,7 @@ class WCSDataset : public GDALPamDataset
     int         EstablishRasterDetails();
 
     virtual CPLErr      ParseCapabilities( CPLXMLNode *, CPLString ) = 0;
+    virtual void        ParseCoverageCapabilities(CPLXMLNode *, const CPLString&, CPLXMLNode *) = 0;
 
     GDALDataset *GDALOpenResult( CPLHTTPResult *psResult );
 
@@ -138,7 +139,10 @@ class WCSDataset : public GDALPamDataset
     static int Identify( GDALOpenInfo * );
 
     virtual CPLErr GetGeoTransform( double * ) override;
-    virtual const char *GetProjectionRef(void) override;
+    virtual const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     virtual char **GetFileList(void) override;
 
     virtual char      **GetMetadataDomainList() override;
@@ -158,6 +162,7 @@ class WCSDataset100 : public WCSDataset
     CPLXMLNode *CoverageOffering(CPLXMLNode *psDC) override;
     bool        ExtractGridInfo() override;
     CPLErr      ParseCapabilities( CPLXMLNode *, CPLString ) override;
+    void        ParseCoverageCapabilities(CPLXMLNode *, const CPLString&, CPLXMLNode *) override;
 
   public:
 
@@ -177,6 +182,7 @@ class WCSDataset110 : public WCSDataset
     CPLXMLNode *CoverageOffering(CPLXMLNode *psDC) override;
     bool        ExtractGridInfo() override;
     CPLErr      ParseCapabilities( CPLXMLNode *, CPLString ) override;
+    void        ParseCoverageCapabilities(CPLXMLNode *, const CPLString&, CPLXMLNode *) override;
 
   public:
 

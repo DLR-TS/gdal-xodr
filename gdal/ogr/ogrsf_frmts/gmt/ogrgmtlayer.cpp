@@ -122,6 +122,7 @@ OGRGmtLayer::OGRGmtLayer( const char * pszFilename, int bUpdateIn ) :
     if( osWKT.length() )
     {
         poSRS = new OGRSpatialReference();
+        poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         if( poSRS->importFromWkt(osWKT.c_str()) != OGRERR_NONE )
         {
             delete poSRS;
@@ -131,6 +132,7 @@ OGRGmtLayer::OGRGmtLayer( const char * pszFilename, int bUpdateIn ) :
     else if( osEPSG.length() )
     {
         poSRS = new OGRSpatialReference();
+        poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         if( poSRS->importFromEPSG( atoi(osEPSG) ) != OGRERR_NONE )
         {
             delete poSRS;
@@ -140,6 +142,7 @@ OGRGmtLayer::OGRGmtLayer( const char * pszFilename, int bUpdateIn ) :
     else if( osProj4.length() )
     {
         poSRS = new OGRSpatialReference();
+        poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         if( poSRS->importFromProj4( osProj4 ) != OGRERR_NONE )
         {
             delete poSRS;
@@ -199,18 +202,20 @@ OGRGmtLayer::OGRGmtLayer( const char * pszFilename, int bUpdateIn ) :
                                                    TRUE, TRUE );
         char **papszFT = CSLTokenizeStringComplex( osFieldTypes, "|",
                                                    TRUE, TRUE );
-        const int nFieldCount = std::max(CSLCount(papszFN), CSLCount(papszFT));
+        const int nFNCount = CSLCount(papszFN);
+        const int nFTCount = CSLCount(papszFT);
+        const int nFieldCount = std::max(nFNCount, nFTCount);
 
         for( int iField = 0; iField < nFieldCount; iField++ )
         {
             OGRFieldDefn oField("", OFTString );
 
-            if( iField < CSLCount(papszFN) )
+            if( iField < nFNCount )
                 oField.SetName( papszFN[iField] );
             else
                 oField.SetName( CPLString().Printf( "Field_%d", iField+1 ));
 
-            if( iField < CSLCount(papszFT) )
+            if( iField < nFTCount )
             {
                 if( EQUAL(papszFT[iField],"integer") )
                     oField.SetType( OFTInteger );

@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2003, Andrey Kiselev <dron@ak4719.spb.edu>
- * Copyright (c) 2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -50,11 +50,11 @@ CPL_CVSID("$Id$")
 // PCI uses a 16-character string for coordinate system and datum/ellipsoid.
 constexpr int knProjSize = 16;
 
-typedef struct
+struct PCIDatums
 {
     const char *pszPCIDatum;
     int        nEPSGCode;
-} PCIDatums;
+};
 
 static const PCIDatums asDatums[] =
 {
@@ -506,7 +506,7 @@ OGRErr OGRSpatialReference::importFromPCI( const char *pszProj,
 /*      We have an earthmodel string, look it up in the datum list.     */
 /* -------------------------------------------------------------------- */
     if( strlen(szEarthModel) > 0
-        && (poRoot == nullptr || IsProjected() || IsGeographic()) )
+        && (GetRoot() == nullptr || IsProjected() || IsGeographic()) )
     {
         const PCIDatums *pasDatum = asDatums;
 
@@ -711,8 +711,6 @@ OGRErr OGRSpatialReference::importFromPCI( const char *pszProj,
         else
             SetLinearUnits( SRS_UL_METER, 1.0 );
     }
-
-    FixupOrdering();
 
     if( bProjAllocated && padfPrjParams )
         CPLFree( padfPrjParams );

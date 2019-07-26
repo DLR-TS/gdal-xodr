@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Portions Copyright (c) Her majesty the Queen in right of Canada as
  * represented by the Minister of National Defence, 2006.
@@ -749,7 +749,8 @@ GDALDataset *NITFDataset::OpenInternal( GDALOpenInfo * poOpenInfo,
     {
         GUIntBig nJPEGStart = psFile->pasSegmentInfo[iSegment].nSegmentStart;
 
-        poDS->nQLevel = poDS->ScanJPEGQLevel( &nJPEGStart );
+        bool bError = false;
+        poDS->nQLevel = poDS->ScanJPEGQLevel( &nJPEGStart, &bError );
 
         CPLString osDSName;
 
@@ -1077,6 +1078,7 @@ GDALDataset *NITFDataset::OpenInternal( GDALOpenInfo * poOpenInfo,
         oSRS_AEQD.importFromProj4(pszPolarProjection);
 
         oSRS_WGS84.SetWellKnownGeogCS( "WGS84" );
+        oSRS_WGS84.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
         CPLPushErrorHandler( CPLQuietErrorHandler );
         OGRCoordinateTransformationH hCT =
@@ -1102,10 +1104,10 @@ GDALDataset *NITFDataset::OpenInternal( GDALOpenInfo * poOpenInfo,
             {
                 /* Check that the coordinates of the 4 corners in Azimuthal Equidistant projection */
                 /* are a rectangle */
-                if (fabs((dfULX_AEQD - dfLLX_AEQD) / dfLLX_AEQD) < 1e-6 &&
-                    fabs((dfURX_AEQD - dfLRX_AEQD) / dfLRX_AEQD) < 1e-6 &&
-                    fabs((dfULY_AEQD - dfURY_AEQD) / dfURY_AEQD) < 1e-6 &&
-                    fabs((dfLLY_AEQD - dfLRY_AEQD) / dfLRY_AEQD) < 1e-6)
+                if (fabs(dfULX_AEQD - dfLLX_AEQD) < 1e-6 * fabs(dfLLX_AEQD) &&
+                    fabs(dfURX_AEQD - dfLRX_AEQD) < 1e-6 * fabs(dfLRX_AEQD) &&
+                    fabs(dfULY_AEQD - dfURY_AEQD) < 1e-6 * fabs(dfURY_AEQD) &&
+                    fabs(dfLLY_AEQD - dfLRY_AEQD) < 1e-6 * fabs(dfLRY_AEQD))
                 {
                     CPLFree(poDS->pszProjection);
                     oSRS_AEQD.exportToWkt( &(poDS->pszProjection) );
@@ -1769,6 +1771,7 @@ static OGRErr LoadDODDatum( OGRSpatialReference *poSRS,
 
     CPLString osEName = CSVGetField( pszGTEllipse, "CODE", osEllipseCode,
                                      CC_ApproxString, "NAME" );
+    osEName = osEName.Trim();
     if( osEName.empty() )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
@@ -2106,7 +2109,7 @@ CPLErr NITFDataset::SetGeoTransform( double *padfGeoTransform )
 /*                               SetGCPs()                              */
 /************************************************************************/
 
-CPLErr NITFDataset::SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
+CPLErr NITFDataset::_SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
                               const char *pszGCPProjectionIn )
 {
     if( nGCPCountIn != 4 )
@@ -2196,20 +2199,20 @@ CPLErr NITFDataset::SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *NITFDataset::GetProjectionRef()
+const char *NITFDataset::_GetProjectionRef()
 
 {
     if( bGotGeoTransform )
         return pszProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/
 /*                            SetProjection()                           */
 /************************************************************************/
 
-CPLErr NITFDataset::SetProjection(const char* _pszProjection)
+CPLErr NITFDataset::_SetProjection(const char* _pszProjection)
 
 {
     int    bNorth;
@@ -3036,7 +3039,7 @@ char **NITFDataset::GetMetadataDomainList()
                                    TRUE,
                                    "NITF_METADATA", "NITF_DES", "NITF_DES_METADATA",
                                    "NITF_FILE_HEADER_TRES", "NITF_IMAGE_SEGMENT_TRES",
-                                   "CGM", "TEXT", "TRE", "xml:TRE", "OVERVIEWS", NULL);
+                                   "CGM", "TEXT", "TRE", "xml:TRE", "OVERVIEWS", nullptr);
 }
 
 /************************************************************************/
@@ -3204,7 +3207,7 @@ int NITFDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *NITFDataset::GetGCPProjection()
+const char *NITFDataset::_GetGCPProjection()
 
 {
     if( nGCPCount > 0 && pszGCPProjection != nullptr )
@@ -3383,7 +3386,7 @@ CPLErr NITFDataset::IBuildOverviews( const char *pszResampling,
 /*      they are inline).                                               */
 /************************************************************************/
 
-int NITFDataset::ScanJPEGQLevel( GUIntBig *pnDataStart )
+int NITFDataset::ScanJPEGQLevel( GUIntBig *pnDataStart, bool *pbError )
 
 {
     if( VSIFSeekL( psFile->fp, *pnDataStart,
@@ -3391,6 +3394,7 @@ int NITFDataset::ScanJPEGQLevel( GUIntBig *pnDataStart )
     {
         CPLError( CE_Failure, CPLE_FileIO,
                   "Seek error to jpeg data stream." );
+        *pbError = true;
         return 0;
     }
 
@@ -3400,6 +3404,7 @@ int NITFDataset::ScanJPEGQLevel( GUIntBig *pnDataStart )
     {
         CPLError( CE_Failure, CPLE_FileIO,
                   "Read error to jpeg data stream." );
+        *pbError = true;
         return 0;
     }
 
@@ -3415,8 +3420,12 @@ int NITFDataset::ScanJPEGQLevel( GUIntBig *pnDataStart )
         nOffset++;
 
     if( nOffset >= sizeof(abyHeader) - 23 )
+    {
+        *pbError = true;
         return 0;
+    }
 
+    *pbError = false;
     *pnDataStart += nOffset;
 
     if( nOffset > 0 )
@@ -3443,7 +3452,12 @@ CPLErr NITFDataset::ScanJPEGBlocks()
 {
     GUIntBig nJPEGStart =
         psFile->pasSegmentInfo[psImage->iSegment].nSegmentStart;
-    nQLevel = ScanJPEGQLevel( &nJPEGStart );
+    bool bError = false;
+    nQLevel = ScanJPEGQLevel( &nJPEGStart, &bError );
+    if( bError )
+    {
+        return CE_Failure;
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Allocate offset array                                           */
@@ -3581,10 +3595,11 @@ CPLErr NITFDataset::ReadJPEGBlock( int iBlockX, int iBlockY )
                 if (panJPEGBlockOffset[i] != -1 && panJPEGBlockOffset[i] != UINT_MAX)
                 {
                     GUIntBig nOffset = panJPEGBlockOffset[i];
-                    nQLevel = ScanJPEGQLevel(&nOffset);
+                    bool bError = false;
+                    nQLevel = ScanJPEGQLevel(&nOffset, &bError);
                     /* The beginning of the JPEG stream should be the offset */
                     /* from the panBlockStart table */
-                    if (nOffset != (GUIntBig)panJPEGBlockOffset[i])
+                    if (bError || nOffset != (GUIntBig)panJPEGBlockOffset[i])
                     {
                         CPLError(CE_Failure, CPLE_AppDefined,
                                  "JPEG block doesn't start at expected offset");

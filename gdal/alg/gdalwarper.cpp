@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2003, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -147,9 +147,28 @@ GDALReprojectImage( GDALDatasetH hSrcDS, const char *pszSrcWKT,
     psWOptions->hSrcDS = hSrcDS;
     psWOptions->hDstDS = hDstDS;
 
+    int nSrcBands = GDALGetRasterCount(hSrcDS);
+    {
+        GDALRasterBandH hBand = GDALGetRasterBand( hSrcDS, nSrcBands );
+        if( hBand && GDALGetRasterColorInterpretation(hBand) == GCI_AlphaBand )
+        {
+            psWOptions->nSrcAlphaBand = nSrcBands;
+            nSrcBands --;
+        }
+    }
+
+    int nDstBands = GDALGetRasterCount(hDstDS);
+    {
+        GDALRasterBandH hBand = GDALGetRasterBand( hDstDS, nDstBands );
+        if( hBand && GDALGetRasterColorInterpretation(hBand) == GCI_AlphaBand )
+        {
+            psWOptions->nDstAlphaBand = nDstBands;
+            nDstBands --;
+        }
+    }
+
     GDALWarpInitDefaultBandMapping(
-        psWOptions, std::min(GDALGetRasterCount(hSrcDS),
-                                    GDALGetRasterCount(hDstDS)));
+        psWOptions, std::min(nSrcBands, nDstBands));
 
 /* -------------------------------------------------------------------- */
 /*      Set source nodata values if the source dataset seems to have    */
@@ -158,11 +177,6 @@ GDALReprojectImage( GDALDatasetH hSrcDS, const char *pszSrcWKT,
     for( int iBand = 0; iBand < psWOptions->nBandCount; iBand++ )
     {
         GDALRasterBandH hBand = GDALGetRasterBand( hSrcDS, iBand+1 );
-
-        if (GDALGetRasterColorInterpretation(hBand) == GCI_AlphaBand)
-        {
-            psWOptions->nSrcAlphaBand = iBand + 1;
-        }
 
         int bGotNoData = FALSE;
         double dfNoDataValue = GDALGetRasterNoDataValue( hBand, &bGotNoData );
@@ -174,10 +188,6 @@ GDALReprojectImage( GDALDatasetH hSrcDS, const char *pszSrcWKT,
 
         // Deal with target band.
         hBand = GDALGetRasterBand( hDstDS, iBand+1 );
-        if (hBand && GDALGetRasterColorInterpretation(hBand) == GCI_AlphaBand)
-        {
-            psWOptions->nDstAlphaBand = iBand + 1;
-        }
 
         dfNoDataValue = GDALGetRasterNoDataValue( hBand, &bGotNoData );
         if( bGotNoData )
@@ -462,7 +472,6 @@ GDALWarpNoDataMasker( void *pMaskFuncArg, int nBandCount, GDALDataType eType,
           const int nWordSize = GDALGetDataTypeSizeBytes(eType);
 
           const bool bIsNoDataRealNan = CPL_TO_BOOL(CPLIsNan(padfNoData[0]));
-          const bool bIsNoDataImagNan = CPL_TO_BOOL(CPLIsNan(padfNoData[1]));
 
           double *padfWrk = static_cast<double *>(
               CPLMalloc(nXSize * sizeof(double) * 2));
@@ -477,11 +486,7 @@ GDALWarpNoDataMasker( void *pMaskFuncArg, int nBandCount, GDALDataType eType,
               {
                   if( ((bIsNoDataRealNan && CPLIsNan(padfWrk[iPixel*2])) ||
                        (!bIsNoDataRealNan &&
-                         ARE_REAL_EQUAL(padfWrk[iPixel*2], padfNoData[0])))
-                      && ((bIsNoDataImagNan && CPLIsNan(padfWrk[iPixel*2+1])) ||
-                          (!bIsNoDataImagNan &&
-                           ARE_REAL_EQUAL(padfWrk[iPixel*2+1],
-                                          padfNoData[1]))) )
+                         ARE_REAL_EQUAL(padfWrk[iPixel*2], padfNoData[0]))))
                   {
                       size_t iOffset =
                           iPixel + static_cast<size_t>(iLine) * nXSize;
@@ -1104,7 +1109,8 @@ GDALWarpDstAlphaMasker( void *pMaskFuncArg, int nBandCount,
  * is no corresponding input data.  This will disable initializing the
  * destination (INIT_DEST) and all other processing, and so should be used
  * carefully.  Mostly useful to short circuit a lot of extra work in mosaicing
- * situations.</li>
+ * situations. Starting with GDAL 2.4, gdalwarp will automatically enable this
+ * option when it is assumed to be safe to do so.</li>
  *
  * <li>UNIFIED_SRC_NODATA=YES/NO: By default nodata masking values considered
  * independently for each band.  However, sometimes it is desired to treat all

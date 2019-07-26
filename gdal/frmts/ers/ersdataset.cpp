@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -30,6 +30,7 @@
 #include "cpl_string.h"
 #include "ershdrnode.h"
 #include "gdal_frmts.h"
+#include "gdal_proxy.h"
 #include "ogr_spatialref.h"
 #include "rawdataset.h"
 
@@ -45,7 +46,7 @@ CPL_CVSID("$Id$")
 
 class ERSRasterBand;
 
-class ERSDataset : public RawDataset
+class ERSDataset final: public RawDataset
 {
     friend class ERSRasterBand;
 
@@ -91,15 +92,29 @@ class ERSDataset : public RawDataset
     void FlushCache(void) override;
     CPLErr GetGeoTransform( double * padfTransform ) override;
     CPLErr SetGeoTransform( double *padfTransform ) override;
-    const char *GetProjectionRef(void) override;
-    CPLErr SetProjection( const char * ) override;
+    const char *_GetProjectionRef(void) override;
+    CPLErr _SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
     char **GetFileList(void) override;
 
     int GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     const GDAL_GCP *GetGCPs() override;
-    CPLErr SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
+    CPLErr _SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
                     const char *pszGCPProjection ) override;
+    using RawDataset::SetGCPs;
+    CPLErr SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
+                    const OGRSpatialReference* poSRS ) override {
+        return OldSetGCPsFromNew(nGCPCountIn, pasGCPListIn, poSRS);
+    }
 
     char **GetMetadataDomainList() override;
     const char *GetMetadataItem( const char * pszName,
@@ -145,14 +160,14 @@ ERSDataset::ERSDataset() :
 ERSDataset::~ERSDataset()
 
 {
-    FlushCache();
+    ERSDataset::FlushCache();
 
     if( fpImage != nullptr )
     {
         VSIFCloseL( fpImage );
     }
 
-    CloseDependentDatasets();
+    ERSDataset::CloseDependentDatasets();
 
     CPLFree( pszProjection );
 
@@ -180,7 +195,10 @@ int ERSDataset::CloseDependentDatasets()
         bHasDroppedRef = TRUE;
 
         for( int iBand = 0; iBand < nBands; iBand++ )
+        {
+            delete papoBands[iBand];
             papoBands[iBand] = nullptr;
+        }
         nBands = 0;
 
         GDALClose( (GDALDatasetH) poDepFile );
@@ -226,7 +244,7 @@ char **ERSDataset::GetMetadataDomainList()
 {
     return BuildMetadataDomainList(GDALPamDataset::GetMetadataDomainList(),
                                    TRUE,
-                                   "ERS", NULL);
+                                   "ERS", nullptr);
 }
 
 /************************************************************************/
@@ -284,7 +302,7 @@ int ERSDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *ERSDataset::GetGCPProjection()
+const char *ERSDataset::_GetGCPProjection()
 
 {
     return pszGCPProjection;
@@ -304,7 +322,7 @@ const GDAL_GCP *ERSDataset::GetGCPs()
 /*                              SetGCPs()                               */
 /************************************************************************/
 
-CPLErr ERSDataset::SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
+CPLErr ERSDataset::_SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
                             const char *pszGCPProjectionIn )
 
 {
@@ -400,11 +418,11 @@ CPLErr ERSDataset::SetGCPs( int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *ERSDataset::GetProjectionRef()
+const char *ERSDataset::_GetProjectionRef()
 
 {
     // try xml first
-    const char* pszPrj = GDALPamDataset::GetProjectionRef();
+    const char* pszPrj = GDALPamDataset::_GetProjectionRef();
     if(pszPrj && strlen(pszPrj) > 0)
         return pszPrj;
 
@@ -415,7 +433,7 @@ const char *ERSDataset::GetProjectionRef()
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr ERSDataset::SetProjection( const char *pszSRS )
+CPLErr ERSDataset::_SetProjection( const char *pszSRS )
 
 {
     if( pszProjection && EQUAL(pszSRS,pszProjection) )
@@ -605,6 +623,9 @@ static double ERSDMS2Dec( const char *pszDMS )
 char **ERSDataset::GetFileList()
 
 {
+    static thread_local int nRecLevel = 0;
+    if( nRecLevel > 0 )
+        return nullptr;
 
     // Main data file, etc.
     char **papszFileList = GDALPamDataset::GetFileList();
@@ -616,7 +637,9 @@ char **ERSDataset::GetFileList()
     // If we have a dependent file, merge its list of files in.
     if( poDepFile )
     {
+        nRecLevel ++;
         char **papszDepFiles = poDepFile->GetFileList();
+        nRecLevel --;
         papszFileList =
             CSLInsertStrings( papszFileList, -1, papszDepFiles );
         CSLDestroy( papszDepFiles );
@@ -725,11 +748,10 @@ void ERSDataset::ReadGCPs()
 class ERSRasterBand : public RawRasterBand
 {
   public:
-    ERSRasterBand( GDALDataset *poDS, int nBand, void * fpRaw,
+    ERSRasterBand( GDALDataset *poDS, int nBand, VSILFILE * fpRaw,
                    vsi_l_offset nImgOffset, int nPixelOffset,
                    int nLineOffset,
-                   GDALDataType eDataType, int bNativeOrder,
-                   int bIsVSIL = FALSE, int bOwnsFP = FALSE );
+                   GDALDataType eDataType, int bNativeOrder );
 
     double GetNoDataValue( int *pbSuccess = nullptr ) override;
     CPLErr SetNoDataValue( double ) override;
@@ -739,14 +761,13 @@ class ERSRasterBand : public RawRasterBand
 /*                           ERSRasterBand()                            */
 /************************************************************************/
 
-ERSRasterBand::ERSRasterBand( GDALDataset *poDSIn, int nBandIn, void * fpRawIn,
+ERSRasterBand::ERSRasterBand( GDALDataset *poDSIn, int nBandIn, VSILFILE * fpRawIn,
                               vsi_l_offset nImgOffsetIn, int nPixelOffsetIn,
                               int nLineOffsetIn,
-                              GDALDataType eDataTypeIn, int bNativeOrderIn,
-                              int bIsVSILIn, int bOwnsFPIn ) :
+                              GDALDataType eDataTypeIn, int bNativeOrderIn ) :
     RawRasterBand(poDSIn, nBandIn, fpRawIn, nImgOffsetIn, nPixelOffsetIn,
-                  nLineOffsetIn, eDataTypeIn, bNativeOrderIn, bIsVSILIn,
-                  bOwnsFPIn)
+                  nLineOffsetIn, eDataTypeIn, bNativeOrderIn,
+                  RawRasterBand::OwnFP::NO)
 {}
 
 /************************************************************************/
@@ -755,7 +776,7 @@ ERSRasterBand::ERSRasterBand( GDALDataset *poDSIn, int nBandIn, void * fpRawIn,
 
 double ERSRasterBand::GetNoDataValue( int *pbSuccess )
 {
-    ERSDataset* poGDS = (ERSDataset*) poDS;
+    ERSDataset* poGDS = cpl::down_cast<ERSDataset*>(poDS);
     if (poGDS->bHasNoDataValue)
     {
         if (pbSuccess)
@@ -772,7 +793,7 @@ double ERSRasterBand::GetNoDataValue( int *pbSuccess )
 
 CPLErr ERSRasterBand::SetNoDataValue( double dfNoDataValue )
 {
-    ERSDataset* poGDS = (ERSDataset*) poDS;
+    ERSDataset* poGDS = cpl::down_cast<ERSDataset*>(poDS);
     if (!poGDS->bHasNoDataValue || poGDS->dfNoDataValue != dfNoDataValue)
     {
         poGDS->bHasNoDataValue = TRUE;
@@ -813,6 +834,30 @@ int ERSDataset::Identify( GDALOpenInfo * poOpenInfo )
 
     return TRUE;
 }
+
+/************************************************************************/
+/*                         ERSProxyRasterBand                           */
+/************************************************************************/
+
+namespace {
+class ERSProxyRasterBand final : public GDALProxyRasterBand
+{
+public:
+    explicit ERSProxyRasterBand(GDALRasterBand* poUnderlyingBand):
+        m_poUnderlyingBand(poUnderlyingBand)
+    {
+        poUnderlyingBand->GetBlockSize(&nBlockXSize, &nBlockYSize);
+        eDataType = poUnderlyingBand->GetRasterDataType();
+    }
+
+protected:
+    GDALRasterBand* RefUnderlyingRasterBand() override { return m_poUnderlyingBand; }
+
+private:
+    GDALRasterBand* m_poUnderlyingBand;
+};
+
+} // namespace
 
 /************************************************************************/
 /*                                Open()                                */
@@ -951,17 +996,26 @@ GDALDataset *ERSDataset::Open( GDALOpenInfo * poOpenInfo )
 /* -------------------------------------------------------------------- */
     if( EQUAL(poHeader->Find("DataSetType",""),"Translated") )
     {
-        poDS->poDepFile = (GDALDataset *)
-            GDALOpenShared( osDataFilePath, poOpenInfo->eAccess );
-
-        if( poDS->poDepFile != nullptr
-            && poDS->poDepFile->GetRasterCount() >= nBands )
+        static thread_local int nRecLevel = 0;
+        if( nRecLevel == 0 )
         {
-            for( int iBand = 0; iBand < nBands; iBand++ )
+            nRecLevel ++;
+            poDS->poDepFile = (GDALDataset *)
+                GDALOpen( osDataFilePath, poOpenInfo->eAccess );
+            nRecLevel --;
+
+            if( poDS->poDepFile != nullptr
+                && poDS->poDepFile->GetRasterXSize() == poDS->GetRasterXSize()
+                && poDS->poDepFile->GetRasterYSize() == poDS->GetRasterYSize()
+                && poDS->poDepFile->GetRasterCount() >= nBands )
             {
-                // Assume pixel interleaved.
-                poDS->SetBand( iBand+1,
-                               poDS->poDepFile->GetRasterBand( iBand+1 ) );
+                for( int iBand = 0; iBand < nBands; iBand++ )
+                {
+                    // Assume pixel interleaved.
+                    poDS->SetBand( iBand+1,
+                        new ERSProxyRasterBand(
+                                poDS->poDepFile->GetRasterBand( iBand+1 )) );
+                }
             }
         }
     }
@@ -992,6 +1046,20 @@ GDALDataset *ERSDataset::Open( GDALOpenInfo * poOpenInfo )
                 return nullptr;
             }
 
+            if( !RAWDatasetCheckMemoryUsage(poDS->nRasterXSize,
+                                            poDS->nRasterYSize,
+                                            nBands,
+                                            iWordSize,
+                                            iWordSize,
+                                            iWordSize * nBands * poDS->nRasterXSize,
+                                            nHeaderOffset,
+                                            iWordSize * poDS->nRasterXSize,
+                                            poDS->fpImage) )
+            {
+                delete poDS;
+                return nullptr;
+            }
+
             for( int iBand = 0; iBand < nBands; iBand++ )
             {
                 // Assume pixel interleaved.
@@ -1002,7 +1070,7 @@ GDALDataset *ERSDataset::Open( GDALOpenInfo * poOpenInfo )
                                        + iWordSize * iBand * poDS->nRasterXSize,
                                        iWordSize,
                                        iWordSize * nBands * poDS->nRasterXSize,
-                                       eType, bNative, TRUE ));
+                                       eType, bNative ));
                 if( EQUAL(osCellType,"Signed8BitInteger") )
                     poDS->GetRasterBand(iBand+1)->
                         SetMetadataItem( "PIXELTYPE", "SIGNEDBYTE",
@@ -1217,7 +1285,7 @@ GDALDataset *ERSDataset::Open( GDALOpenInfo * poOpenInfo )
     poDS->TryLoadXML();
 
     // if no SR in xml, try aux
-    const char* pszPrj = poDS->GDALPamDataset::GetProjectionRef();
+    const char* pszPrj = poDS->GDALPamDataset::_GetProjectionRef();
     if( !pszPrj || strlen(pszPrj) == 0 )
     {
         // try aux

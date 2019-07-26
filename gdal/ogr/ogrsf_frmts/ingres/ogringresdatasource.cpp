@@ -79,17 +79,6 @@ SetConnParam(II_PTR *connHandle,
 OGRIngresDataSource::OGRIngresDataSource()
 
 {
-    pszName = NULL;
-    papoLayers = NULL;
-    nLayers = 0;
-    hConn = 0;
-
-    nKnownSRID = 0;
-    panSRID = NULL;
-    papoSRS = NULL;
-    poActiveLayer = NULL;
-    bDSUpdate = FALSE;
-    bNewIngres = FALSE;
 }
 
 /************************************************************************/
@@ -526,6 +515,7 @@ OGRSpatialReference *OGRIngresDataSource::FetchSRS( int nId )
     }
 
      poSRS = new OGRSpatialReference();
+     poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
      if( pszWKT == NULL || poSRS->importFromWkt( pszWKT ) != OGRERR_NONE )
      {
          delete poSRS;

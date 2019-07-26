@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1998, Frank Warmerdam
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -114,9 +114,7 @@ GDALDriverManager * GetGDALDriverManager()
 /*                         GDALDriverManager()                          */
 /************************************************************************/
 
-GDALDriverManager::GDALDriverManager() :
-    nDrivers(0),
-    papoDrivers(nullptr)
+GDALDriverManager::GDALDriverManager()
 {
     CPLAssert( poDM == nullptr );
 
@@ -468,6 +466,9 @@ int GDALDriverManager::RegisterDriver( GDALDriver * poDriver )
     if( poDriver->pfnCreateCopy != nullptr )
         poDriver->SetMetadataItem( GDAL_DCAP_CREATECOPY, "YES" );
 
+    if( poDriver->pfnCreateMultiDimensional != nullptr )
+        poDriver->SetMetadataItem( GDAL_DCAP_CREATE_MULTIDIMENSIONAL, "YES" );
+
     // Backward compatibility for GDAL raster out-of-tree drivers:
     // If a driver hasn't explicitly set a vector capability, assume it is
     // a raster-only driver (legacy OGR drivers will have DCAP_VECTOR set before
@@ -658,7 +659,7 @@ void GDALDriverManager::AutoSkipDrivers()
         apapszList[1] = CSLTokenizeStringComplex(pszOGR_SKIP, ",", FALSE, FALSE);
     }
 
-    for( int j = 0; j < 2; ++j )
+    for( auto j: {0, 1} )
     {
         for( int i = 0; apapszList[j] != nullptr && apapszList[j][i] != nullptr; ++i )
         {

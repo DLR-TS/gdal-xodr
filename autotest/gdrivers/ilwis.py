@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
@@ -28,9 +28,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -38,7 +36,7 @@ import gdaltest
 # Perform simple read test.
 
 
-def ilwis_1():
+def test_ilwis_1():
 
     tst = gdaltest.GDALTest('ilwis', 'LanduseSmall.mpr', 1, 2351)
 
@@ -47,11 +45,10 @@ def ilwis_1():
         DATUM["Provisional_South_American_Datum_1956",
             SPHEROID["International 1924",6378388,297,
                 AUTHORITY["EPSG","7022"]],
-            TOWGS84[-288,175,-376,0,0,0,0],
             AUTHORITY["EPSG","6248"]],
         PRIMEM["Greenwich",0,
             AUTHORITY["EPSG","8901"]],
-        UNIT["degree",0.01745329251994328,
+        UNIT["degree",0.0174532925199433,
             AUTHORITY["EPSG","9122"]],
         AUTHORITY["EPSG","4248"]],
     PROJECTION["Transverse_Mercator"],
@@ -60,7 +57,9 @@ def ilwis_1():
     PARAMETER["scale_factor",0.9996],
     PARAMETER["false_easting",500000],
     PARAMETER["false_northing",10000000],
-    UNIT["Meter",1]]"""
+    UNIT["Meter",1],
+    AXIS["Easting",EAST],
+    AXIS["Northing",NORTH]]"""
 
     gt = (795480, 20, 0, 8090520, 0, -20)
 
@@ -70,7 +69,7 @@ def ilwis_1():
 # copy byte data and verify.
 
 
-def ilwis_2():
+def test_ilwis_2():
 
     tst = gdaltest.GDALTest('ilwis', 'byte.tif', 1, 4672)
 
@@ -81,7 +80,7 @@ def ilwis_2():
 # copy floating point data and use Create interface.
 
 
-def ilwis_3():
+def test_ilwis_3():
 
     tst = gdaltest.GDALTest('ilwis', 'float.img', 1, 23529)
 
@@ -91,7 +90,7 @@ def ilwis_3():
 # Try multi band dataset.
 
 
-def ilwis_4():
+def test_ilwis_4():
 
     tst = gdaltest.GDALTest('ilwis', 'rgbsmall.tif', 2, 21053)
 
@@ -102,7 +101,7 @@ def ilwis_4():
 # Test vsi in-memory support.
 
 
-def ilwis_5():
+def test_ilwis_5():
 
     tst = gdaltest.GDALTest('ilwis', 'byte.tif', 1, 4672)
 
@@ -118,23 +117,8 @@ def ilwis_5():
 # properly. So we do the brute force approach...
 
 
-def ilwis_cleanup():
+def test_ilwis_cleanup():
     gdaltest.clean_tmp()
-    return 'success'
 
 
-gdaltest_list = [
-    ilwis_1,
-    ilwis_2,
-    ilwis_3,
-    ilwis_4,
-    ilwis_5,
-    ilwis_cleanup]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('ilwis')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

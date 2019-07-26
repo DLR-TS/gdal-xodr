@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -278,9 +278,11 @@ CPLErr VRTRawRasterBand::SetRawLink( const char *pszFilename,
 /* -------------------------------------------------------------------- */
 /*      Create a corresponding RawRasterBand.                           */
 /* -------------------------------------------------------------------- */
-    m_poRawRaster = new RawRasterBand( fp, nImageOffset, nPixelOffset,
+    m_poRawRaster = new RawRasterBand( reinterpret_cast<VSILFILE*>(fp),
+                                       nImageOffset, nPixelOffset,
                                        nLineOffset, GetRasterDataType(),
-                                       bNative, GetXSize(), GetYSize(), TRUE );
+                                       bNative, GetXSize(), GetYSize(),
+                                       RawRasterBand::OwnFP::NO );
 
 /* -------------------------------------------------------------------- */
 /*      Reset block size to match the raw raster.                       */
@@ -319,10 +321,12 @@ void VRTRawRasterBand::ClearRawLink()
 
 CPLErr VRTRawRasterBand::XMLInit( CPLXMLNode * psTree,
                                   const char *pszVRTPath,
-                                  void* pUniqueHandle )
+                                  void* pUniqueHandle,
+                                  std::map<CPLString, GDALDataset*>& oMapSharedSources )
 
 {
-    const CPLErr eErr = VRTRasterBand::XMLInit( psTree, pszVRTPath, pUniqueHandle );
+    const CPLErr eErr = VRTRasterBand::XMLInit( psTree, pszVRTPath, pUniqueHandle,
+                                                oMapSharedSources );
     if( eErr != CE_None )
         return eErr;
 

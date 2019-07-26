@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004,  Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,8 @@
 #define OGR_CSV_H_INCLUDED
 
 #include "ogrsf_frmts.h"
+
+#include <set>
 
 #if defined(_MSC_VER) && _MSC_VER <= 1600 // MSVC <= 2010
 # define GDAL_OVERRIDE
@@ -83,6 +85,7 @@ class OGRCSVLayer : public OGRLayer
 
   private:
     OGRFeatureDefn     *poFeatureDefn;
+    std::set<CPLString> m_oSetFields;
 
     VSILFILE           *fpCSV;
 
@@ -180,6 +183,7 @@ class OGRCSVLayer : public OGRLayer
 
     static
     OGRCSVCreateFieldAction PreCreateField( OGRFeatureDefn *poFeatureDefn,
+                                            const std::set<CPLString>& oSetFields,
                                             OGRFieldDefn *poNewField,
                                             int bApproxOK );
     virtual OGRErr      CreateGeomField( OGRGeomFieldDefn *poGeomField,

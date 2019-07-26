@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -720,6 +720,9 @@ const char * OGRFieldDefn::GetFieldSubTypeName( OGRFieldSubType eSubType )
       case OFSTFloat32:
         return "Float32";
 
+      case OFSTJSON:
+        return "JSON";
+
       default:
         return "(unknown)";
     }
@@ -767,6 +770,8 @@ int OGR_AreTypeSubTypeCompatible( OGRFieldType eType, OGRFieldSubType eSubType )
         return eType == OFTInteger || eType == OFTIntegerList;
     if( eSubType == OFSTFloat32 )
         return eType == OFTReal || eType == OFTRealList;
+    if( eSubType == OFSTJSON )
+        return eType == OFTString;
     return FALSE;
 }
 

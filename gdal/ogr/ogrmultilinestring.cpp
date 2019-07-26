@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -46,7 +46,7 @@ CPL_CVSID("$Id$")
  * \brief Create an empty multi line string collection.
  */
 
-OGRMultiLineString::OGRMultiLineString() {}
+OGRMultiLineString::OGRMultiLineString() = default;
 
 /************************************************************************/
 /*           OGRMultiLineString( const OGRMultiLineString& )            */
@@ -61,15 +61,13 @@ OGRMultiLineString::OGRMultiLineString() {}
  * @since GDAL 2.1
  */
 
-OGRMultiLineString::OGRMultiLineString( const OGRMultiLineString& other ) :
-    OGRMultiCurve(other)
-{}
+OGRMultiLineString::OGRMultiLineString( const OGRMultiLineString& ) = default;
 
 /************************************************************************/
 /*                       ~OGRMultiLineString()                          */
 /************************************************************************/
 
-OGRMultiLineString::~OGRMultiLineString() {}
+OGRMultiLineString::~OGRMultiLineString() = default;
 
 /************************************************************************/
 /*                  operator=( const OGRMultiCurve&)                    */

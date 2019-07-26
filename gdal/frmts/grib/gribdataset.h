@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, ITC
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -53,11 +53,8 @@
 #include "cpl_multiproc.h"
 #include "cpl_string.h"
 #include "cpl_vsi.h"
-#include "degrib/degrib/datasource.h"
 #include "degrib/degrib/degrib2.h"
-#include "degrib/degrib/filedatasource.h"
 #include "degrib/degrib/inventory.h"
-#include "degrib/degrib/memorydatasource.h"
 #include "degrib/degrib/meta.h"
 #include "degrib/degrib/myerror.h"
 #include "degrib/degrib/type.h"
@@ -92,7 +89,10 @@ class GRIBDataset : public GDALPamDataset
                                     void * pProgressData );
 
     CPLErr      GetGeoTransform( double *padfTransform ) override;
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
   private:
     void SetGribMetaData(grib_MetaData *meta);
@@ -133,9 +133,9 @@ private:
     CPLErr       LoadData();
     void    FindNoDataGrib2(bool bSeekToStart = true);
 
-    static void ReadGribData( DataSource &, sInt4, int, double **,
+    static void ReadGribData( VSILFILE *, vsi_l_offset, int, double **,
                               grib_MetaData ** );
-    sInt4 start;
+    vsi_l_offset start;
     int subgNum;
     char *longFstLevel;
 
@@ -157,15 +157,10 @@ namespace grib {
 // Thin layer to manage allocation and deallocation.
 class InventoryWrapper {
   public:
-    explicit InventoryWrapper(const std::string &filepath)
+
+    explicit InventoryWrapper(VSILFILE * fp)
         : inv_(nullptr), inv_len_(0), num_messages_(0), result_(0) {
-      FileDataSource grib(filepath.c_str());
-      result_ = GRIB2Inventory(grib, &inv_, &inv_len_, 0 /* all messages */,
-                               &num_messages_);
-    }
-    explicit InventoryWrapper(FileDataSource file_data_source)
-        : inv_(nullptr), inv_len_(0), num_messages_(0), result_(0) {
-      result_ = GRIB2Inventory(file_data_source, &inv_, &inv_len_,
+      result_ = GRIB2Inventory(fp, &inv_, &inv_len_,
                                0 /* all messages */, &num_messages_);
     }
 

@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
- * Copyright (c) 2007-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -81,7 +81,7 @@ class CPL_DLL OGRLayer : public GDALMajorObject
             std::unique_ptr<Private> m_poPrivate;
         public:
             FeatureIterator(OGRLayer* poLayer, bool bStart);
-            FeatureIterator(FeatureIterator&& oOther); // declared but not defined. Needed for gcc 5.4 at least
+            FeatureIterator(FeatureIterator&& oOther) noexcept; // declared but not defined. Needed for gcc 5.4 at least
             ~FeatureIterator();
             OGRFeatureUniquePtr& operator*();
             FeatureIterator& operator++();
@@ -447,6 +447,7 @@ void CPL_DLL RegisterOGRGML();
 void CPL_DLL RegisterOGRLIBKML();
 void CPL_DLL RegisterOGRKML();
 void CPL_DLL RegisterOGRGeoJSON();
+void CPL_DLL RegisterOGRGeoJSONSeq();
 void CPL_DLL RegisterOGRESRIJSON();
 void CPL_DLL RegisterOGRTopoJSON();
 void CPL_DLL RegisterOGRAVCBin();
@@ -513,10 +514,12 @@ void CPL_DLL RegisterOGRSelafin();
 void CPL_DLL RegisterOGRJML();
 void CPL_DLL RegisterOGRPLSCENES();
 void CPL_DLL RegisterOGRCSW();
+void CPL_DLL RegisterOGRMongoDBv3();
 void CPL_DLL RegisterOGRMongoDB();
 void CPL_DLL RegisterOGRVDV();
 void CPL_DLL RegisterOGRGMLAS();
 void CPL_DLL RegisterOGRMVT();
+void CPL_DLL RegisterOGRNGW();
 // @endcond
 
 CPL_C_END

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1620,9 +1620,15 @@ class ECWWriteDataset : public GDALDataset
     virtual void   FlushCache( void ) override;
 
     virtual CPLErr GetGeoTransform( double * ) override;
-    virtual const char* GetProjectionRef() override;
+    virtual const char* _GetProjectionRef() override;
     virtual CPLErr SetGeoTransform( double * ) override;
-    virtual CPLErr SetProjection( const char *pszWKT ) override;
+    virtual CPLErr _SetProjection( const char *pszWKT ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 
 #ifdef OPTIMIZED_FOR_GDALWARP
     virtual CPLErr IRasterIO( GDALRWFlag eRWFlag,
@@ -1768,7 +1774,7 @@ void ECWWriteDataset::FlushCache()
 /*                         GetProjectionRef()                           */
 /************************************************************************/
 
-const char*  ECWWriteDataset::GetProjectionRef()
+const char*  ECWWriteDataset::_GetProjectionRef()
 {
     return pszProjection;
 }
@@ -1799,7 +1805,7 @@ CPLErr ECWWriteDataset::SetGeoTransform( double *padfGeoTransform )
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr ECWWriteDataset::SetProjection( const char *pszWKT )
+CPLErr ECWWriteDataset::_SetProjection( const char *pszWKT )
 
 {
     CPLFree( pszProjection );

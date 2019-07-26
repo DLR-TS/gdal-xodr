@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Adam Nowacki
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2016, Lucian Plesea
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -84,7 +84,6 @@ void WMSHTTPInitializeRequest(WMSHTTPRequest *psRequest) {
     if (!psRequest->Range.empty())
         curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_RANGE, psRequest->Range.c_str());
 
-    curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_URL, psRequest->URL.c_str());
     curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_WRITEDATA, psRequest);
     curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_WRITEFUNCTION, CPLHTTPWriteFunc);
 
@@ -92,7 +91,7 @@ void WMSHTTPInitializeRequest(WMSHTTPRequest *psRequest) {
     curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_ERRORBUFFER, &psRequest->m_curl_error[0]);
 
     psRequest->m_headers = static_cast<struct curl_slist*>(
-            CPLHTTPSetOptions(psRequest->m_curl_handle, psRequest->options));
+            CPLHTTPSetOptions(psRequest->m_curl_handle, psRequest->URL.c_str(), psRequest->options));
     if( psRequest->m_headers != nullptr )
         curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_HTTPHEADER,
                          psRequest->m_headers);

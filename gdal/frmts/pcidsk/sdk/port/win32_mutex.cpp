@@ -35,7 +35,7 @@
 /*                              Win32Mutex                              */
 /************************************************************************/
 
-class Win32Mutex : public PCIDSK::Mutex
+class Win32Mutex final : public PCIDSK::Mutex
 
 {
 private:
@@ -53,11 +53,10 @@ public:
 /*                             Win32Mutex()                             */
 /************************************************************************/
 
-Win32Mutex::Win32Mutex()
+Win32Mutex::Win32Mutex(): hMutex(CreateMutex( NULL, 1, NULL ))
 
 {
-    hMutex = CreateMutex( NULL, 1, NULL );
-    Release(); // it is created acquired, but we want it free.
+    Win32Mutex::Release(); // it is created acquired, but we want it free.
 }
 
 /************************************************************************/

@@ -2,10 +2,10 @@
  *
  * Project:  GDAL
  * Purpose:  Test multi-threaded reprojection
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -89,7 +89,9 @@ int main(int argc, char* argv[])
     }
 
     oSrcSRS.importFromEPSG(4326);
+    oSrcSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     oDstSRS.importFromEPSG(32631);
+    oDstSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     poCT = OGRCreateCoordinateTransformation(&oSrcSRS,&oDstSRS);
     if (poCT == nullptr)
         return -1;

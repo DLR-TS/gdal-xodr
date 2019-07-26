@@ -1,38 +1,17 @@
 include ../../GDALmake.opt
 
-OBJ	=	pdfdataset.o pdfio.o pdfobject.o pdfcreatecopy.o ogrpdflayer.o pdfwritabledataset.o pdfreadvectors.o
+OBJ	=	pdfdataset.o pdfio.o pdfobject.o pdfcreatecopy.o ogrpdflayer.o pdfwritabledataset.o pdfreadvectors.o pdfcreatefromcomposition.o
 
 PLUGIN_DL =	gdal_PDF.so
 
 ifeq ($(MACOSX_FRAMEWORK),yes)
 PLUGIN_DL = gdal_PDF.dylib
-LDFLAGS += -Wl,-undefined -Wl,dynamic_lookup -stdlib=libstdc++
-CPPFLAGS += -stdlib=libstdc++
+LDFLAGS += -Wl,-undefined -Wl,dynamic_lookup
 LD_SHARED = $(LD) -bundle
 endif
 
 ifeq ($(HAVE_POPPLER),yes)
-CPPFLAGS +=  -DHAVE_POPPLER
-endif
-
-ifeq ($(POPPLER_HAS_OPTCONTENT),yes)
-CPPFLAGS +=  -DPOPPLER_HAS_OPTCONTENT
-endif
-
-ifeq ($(POPPLER_BASE_STREAM_HAS_TWO_ARGS),yes)
-CPPFLAGS +=  -DPOPPLER_BASE_STREAM_HAS_TWO_ARGS
-endif
-
-ifeq ($(POPPLER_0_20_OR_LATER),yes)
-CPPFLAGS +=  -DPOPPLER_0_20_OR_LATER
-endif
-
-ifeq ($(POPPLER_0_23_OR_LATER),yes)
-CPPFLAGS +=  -DPOPPLER_0_23_OR_LATER
-endif
-
-ifeq ($(POPPLER_0_58_OR_LATER),yes)
-CPPFLAGS +=  -DPOPPLER_0_58_OR_LATER
+CPPFLAGS +=  -DHAVE_POPPLER -DPOPPLER_MAJOR_VERSION=$(POPPLER_MAJOR_VERSION) -DPOPPLER_MINOR_VERSION=$(POPPLER_MINOR_VERSION)
 endif
 
 ifeq ($(HAVE_PODOFO),yes)
@@ -49,7 +28,7 @@ CPPFLAGS +=  -DHAVE_PDFIUM
 CXX := $(subst -Wzero-as-null-pointer-constant,,${CXX})
 endif
 
-$(O_OBJ):       pdfobject.h pdfio.h pdfcreatecopy.h gdal_pdf.h ../../ogr/ogrsf_frmts/mem/ogr_mem.h
+$(O_OBJ):       pdfobject.h pdfio.h pdfcreatecopy.h pdfcreatefromcomposition.h gdal_pdf.h ../../ogr/ogrsf_frmts/mem/ogr_mem.h
 
 CPPFLAGS	:=	 -I../vrt -I../mem -I../../ogr/ogrsf_frmts/mem $(CPPFLAGS) $(POPPLER_INC) $(PODOFO_INC) $(PDFIUM_INC) -DDO_NOT_USE_DEBUG_BOOL
 

@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Adam Nowacki
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2017, Dmitry Baryshnikov, <polimax@mail.ru>
  * Copyright (c) 2017, NextGIS, <info@nextgis.com>
  *
@@ -279,8 +279,15 @@ public:
     GDALWMSDataset();
     virtual ~GDALWMSDataset();
 
-    virtual const char *GetProjectionRef() override;
-    virtual CPLErr SetProjection(const char *proj) override;
+    virtual const char *_GetProjectionRef() override;
+    virtual CPLErr _SetProjection(const char *proj) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
+
     virtual CPLErr GetGeoTransform(double *gt) override;
     virtual CPLErr SetGeoTransform(double *gt) override;
     virtual CPLErr AdviseRead(int x0, int y0, int sx, int sy, int bsx, int bsy, GDALDataType bdt, int band_count, int *band_map, char **options) override;

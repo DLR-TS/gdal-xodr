@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
@@ -8,7 +8,7 @@
 #
 ###############################################################################
 # Copyright (c) 2008, Frank Warmerdam <warmerdam@pobox.com>
-# Copyright (c) 2010, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2010, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -29,14 +29,12 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 
-sys.path.append('../pymod')
 
-import gdaltest
 import test_py_scripts
 
 from osgeo import gdal
+import pytest
 
 ###############################################################################
 # Test a fairly default case.
@@ -46,7 +44,7 @@ def test_gdal_sieve_1():
 
     script_path = test_py_scripts.get_py_script('gdal_sieve')
     if script_path is None:
-        return 'skip'
+        pytest.skip()
 
     drv = gdal.GetDriverByName('GTiff')
     dst_ds = drv.Create('tmp/sieve_1.tif', 5, 7, 1, gdal.GDT_Byte)
@@ -71,19 +69,7 @@ def test_gdal_sieve_1():
 
     if cs != cs_expected:
         print('Got: ', cs)
-        gdaltest.post_reason('got wrong checksum')
-        return 'fail'
-    return 'success'
+        pytest.fail('got wrong checksum')
+    
 
 
-gdaltest_list = [
-    test_gdal_sieve_1,
-]
-
-if __name__ == '__main__':
-
-    gdaltest.setup_run('test_gdal_sieve')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

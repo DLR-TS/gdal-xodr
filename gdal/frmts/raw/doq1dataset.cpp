@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -121,12 +121,17 @@ class DOQ1Dataset : public RawDataset
 
     char        *pszProjection;
 
+    CPL_DISALLOW_COPY_ASSIGN(DOQ1Dataset)
+
   public:
                 DOQ1Dataset();
                 ~DOQ1Dataset();
 
     CPLErr      GetGeoTransform( double * padfTransform ) override;
-    const char  *GetProjectionRef( void ) override;
+    const char  *_GetProjectionRef( void ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     static GDALDataset *Open( GDALOpenInfo * );
 };
@@ -179,7 +184,7 @@ CPLErr DOQ1Dataset::GetGeoTransform( double * padfTransform )
 /*                        GetProjectionString()                         */
 /************************************************************************/
 
-const char *DOQ1Dataset::GetProjectionRef()
+const char *DOQ1Dataset::_GetProjectionRef()
 
 {
     return pszProjection;
@@ -280,7 +285,7 @@ GDALDataset *DOQ1Dataset::Open( GDALOpenInfo * poOpenInfo )
         poDS->SetBand( i+1,
             new RawRasterBand( poDS, i+1, poDS->fpImage,
                                nSkipBytes + i, nBytesPerPixel, nBytesPerLine,
-                               GDT_Byte, TRUE, TRUE ) );
+                               GDT_Byte, TRUE, RawRasterBand::OwnFP::NO ) );
     }
 
 /* -------------------------------------------------------------------- */

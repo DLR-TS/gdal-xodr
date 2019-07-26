@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2018, Alan Thomas <alant@outlook.com.au>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -117,11 +117,11 @@ OGRDXFOCSTransformer::OGRDXFOCSTransformer( double adfNIn[3],
 }
 
 /************************************************************************/
-/*                            TransformEx()                             */
+/*                            Transform()                               */
 /************************************************************************/
 
-int OGRDXFOCSTransformer::TransformEx( int nCount,
-    double *adfX, double *adfY, double *adfZ,
+int OGRDXFOCSTransformer::Transform( int nCount,
+    double *adfX, double *adfY, double *adfZ, double * /* adfT */,
     int *pabSuccess /* = nullptr */ ) 
 {
     for( int i = 0; i < nCount; i++ )

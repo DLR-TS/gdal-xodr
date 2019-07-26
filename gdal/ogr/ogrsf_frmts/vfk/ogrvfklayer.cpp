@@ -51,6 +51,8 @@ OGRVFKLayer::OGRVFKLayer( const char *pszName,
     poDataBlock(poDSIn->GetReader()->GetDataBlock(pszName)),
     m_iNextFeature(0)
 {
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
     if( poSRSIn == nullptr ) {
         // Default is S-JTSK (EPSG: 5514).
         if( poSRS->importFromEPSG(5514) != OGRERR_NONE )
@@ -151,10 +153,20 @@ OGRFeature *OGRVFKLayer::GetNextFeature()
     /* loop till we find and translate a feature meeting all our
        requirements
     */
+    if ( m_iNextFeature < 1 &&
+        m_poFilterGeom == nullptr &&
+        m_poAttrQuery == nullptr ) {
+        /* sequential feature properties access only supported when no
+        filter enabled */
+        poDataBlock->LoadProperties();
+    }
     while( true ) {
         IVFKFeature* poVFKFeature = poDataBlock->GetNextFeature();
-        if (!poVFKFeature)
+        if (!poVFKFeature) {
+            /* clean loaded feature properties for a next run */
+            poDataBlock->CleanProperties();
             return nullptr;
+        }
 
         /* skip feature with unknown geometry type */
         if (poVFKFeature->GetGeometryType() == wkbUnknown)
@@ -179,6 +191,13 @@ OGRFeature *OGRVFKLayer::GetFeature(GIntBig nFID)
 
     if (!poVFKFeature)
         return nullptr;
+
+    /* clean loaded feature properties (sequential access not
+       finished) */
+    if ( m_iNextFeature > 0 ) {
+        ResetReading();
+        poDataBlock->CleanProperties();
+    }
 
     CPLAssert(nFID == poVFKFeature->GetFID());
     CPLDebug("OGR-VFK", "OGRVFKLayer::GetFeature(): name=%s fid=" CPL_FRMT_GIB, GetName(), nFID);
@@ -210,8 +229,6 @@ OGRFeature *OGRVFKLayer::GetFeature(IVFKFeature *poVFKFeature)
     /* convert the whole feature into an OGRFeature */
     OGRFeature *poOGRFeature = new OGRFeature(GetLayerDefn());
     poOGRFeature->SetFID(poVFKFeature->GetFID());
-    // poOGRFeature->SetFID(++m_iNextFeature);
-
     poVFKFeature->LoadProperties(poOGRFeature);
 
     /* test against the attribute query */
@@ -223,6 +240,8 @@ OGRFeature *OGRVFKLayer::GetFeature(IVFKFeature *poVFKFeature)
 
     if (poGeom)
         poOGRFeature->SetGeometryDirectly(poGeom->clone());
+
+    m_iNextFeature++;
 
     return poOGRFeature;
 }

@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  gdal_retile.py testing
-# Author:   Even Rouault <even dot rouault @ mines-paris dot org>
+# Author:   Even Rouault <even dot rouault @ spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2010, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2010, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -29,15 +29,12 @@
 ###############################################################################
 
 import shutil
-import sys
 import os
-
-sys.path.append('../pymod')
 
 from osgeo import gdal
 from osgeo import osr
-import gdaltest
 import test_py_scripts
+import pytest
 
 ###############################################################################
 # Test gdal_retile.py
@@ -47,7 +44,7 @@ def test_gdal_retile_1():
 
     script_path = test_py_scripts.get_py_script('gdal_retile')
     if script_path is None:
-        return 'skip'
+        pytest.skip()
 
     try:
         os.mkdir('tmp/outretile')
@@ -57,30 +54,22 @@ def test_gdal_retile_1():
     test_py_scripts.run_py_script(script_path, 'gdal_retile', '-v -levels 2 -r bilinear -targetDir tmp/outretile ../gcore/data/byte.tif')
 
     ds = gdal.Open('tmp/outretile/byte_1_1.tif')
-    if ds.GetRasterBand(1).Checksum() != 4672:
-        print(ds.GetRasterBand(1).Checksum())
-        return 'fail'
+    assert ds.GetRasterBand(1).Checksum() == 4672
     ds = None
 
     ds = gdal.Open('tmp/outretile/1/byte_1_1.tif')
-    if ds.RasterXSize != 10:
-        print(ds.RasterXSize)
-        return 'fail'
+    assert ds.RasterXSize == 10
     # if ds.GetRasterBand(1).Checksum() != 1152:
     #    print(ds.GetRasterBand(1).Checksum())
     #    return 'fail'
     ds = None
 
     ds = gdal.Open('tmp/outretile/2/byte_1_1.tif')
-    if ds.RasterXSize != 5:
-        print(ds.RasterXSize)
-        return 'fail'
+    assert ds.RasterXSize == 5
     # if ds.GetRasterBand(1).Checksum() != 215:
     #    print(ds.GetRasterBand(1).Checksum())
     #    return 'fail'
     ds = None
-
-    return 'success'
 
 ###############################################################################
 # Test gdal_retile.py with RGBA dataset
@@ -90,7 +79,7 @@ def test_gdal_retile_2():
 
     script_path = test_py_scripts.get_py_script('gdal_retile')
     if script_path is None:
-        return 'skip'
+        pytest.skip()
 
     try:
         os.mkdir('tmp/outretile2')
@@ -100,17 +89,9 @@ def test_gdal_retile_2():
     test_py_scripts.run_py_script(script_path, 'gdal_retile', '-v -levels 2 -r bilinear -targetDir tmp/outretile2 ../gcore/data/rgba.tif')
 
     ds = gdal.Open('tmp/outretile2/2/rgba_1_1.tif')
-    if ds.GetRasterBand(1).Checksum() != 35:
-        gdaltest.post_reason('wrong checksum for band 1')
-        print(ds.GetRasterBand(1).Checksum())
-        return 'fail'
-    if ds.GetRasterBand(4).Checksum() != 35:
-        gdaltest.post_reason('wrong checksum for band 4')
-        print(ds.GetRasterBand(4).Checksum())
-        return 'fail'
+    assert ds.GetRasterBand(1).Checksum() == 35, 'wrong checksum for band 1'
+    assert ds.GetRasterBand(4).Checksum() == 35, 'wrong checksum for band 4'
     ds = None
-
-    return 'success'
 
 ###############################################################################
 # Test gdal_retile.py with input images of different pixel sizes
@@ -120,7 +101,7 @@ def test_gdal_retile_3():
 
     script_path = test_py_scripts.get_py_script('gdal_retile')
     if script_path is None:
-        return 'skip'
+        pytest.skip()
 
     drv = gdal.GetDriverByName('GTiff')
     srs = osr.SpatialReference()
@@ -170,30 +151,21 @@ def test_gdal_retile_3():
     test_py_scripts.run_py_script(script_path, 'gdal_retile', '-v -levels 2 -r bilinear -targetDir tmp/outretile3 tmp/in1.tif tmp/in2.tif')
 
     ds = gdal.Open('tmp/outretile3/in1_1_1.tif')
-    if ds.GetProjectionRef().find('WGS 84') == -1:
-        gdaltest.post_reason('Expected WGS 84\nGot : %s' % (ds.GetProjectionRef()))
-        return 'fail'
+    assert ds.GetProjectionRef().find('WGS 84') != -1, \
+        ('Expected WGS 84\nGot : %s' % (ds.GetProjectionRef()))
 
     gt = ds.GetGeoTransform()
     expected_gt = [0, px1_x, 0, 60, 0, -px1_y]
     for i in range(6):
-        if abs(gt[i] - expected_gt[i] > 1e-5):
-            gdaltest.post_reason('Expected : %s\nGot : %s' % (expected_gt, gt))
-            return 'fail'
+        assert not abs(gt[i] - expected_gt[i] > 1e-5), \
+            ('Expected : %s\nGot : %s' % (expected_gt, gt))
 
-    if ds.RasterXSize != 100 or ds.RasterYSize != 200:
-        gdaltest.post_reason('Wrong raster dimensions : %d x %d' % (ds.RasterXSize, ds.RasterYSize))
-        return 'fail'
+    assert ds.RasterXSize == 100 and ds.RasterYSize == 200, \
+        ('Wrong raster dimensions : %d x %d' % (ds.RasterXSize, ds.RasterYSize))
 
-    if ds.RasterCount != 1:
-        gdaltest.post_reason('Wrong raster count : %d ' % (ds.RasterCount))
-        return 'fail'
+    assert ds.RasterCount == 1, ('Wrong raster count : %d ' % (ds.RasterCount))
 
-    if ds.GetRasterBand(1).Checksum() != 38999:
-        gdaltest.post_reason('Wrong checksum')
-        return 'fail'
-
-    return 'success'
+    assert ds.GetRasterBand(1).Checksum() == 38999, 'Wrong checksum'
 
 
 ###############################################################################
@@ -203,7 +175,7 @@ def test_gdal_retile_4():
 
     script_path = test_py_scripts.get_py_script('gdal_retile')
     if script_path is None:
-        return 'skip'
+        pytest.skip()
 
     try:
         os.mkdir('tmp/outretile4')
@@ -235,18 +207,8 @@ def test_gdal_retile_4():
 
     for (filename, width, height) in expected_results:
         ds = gdal.Open(filename)
-        if ds.RasterXSize != width:
-            gdaltest.post_reason('fail')
-            print(filename)
-            print(ds.RasterXSize)
-            print(width)
-            return 'fail'
-        if ds.RasterYSize != height:
-            gdaltest.post_reason('fail')
-            print(filename)
-            print(ds.RasterYSize)
-            print(height)
-            return 'fail'
+        assert ds.RasterXSize == width, filename
+        assert ds.RasterYSize == height, filename
         ds = None
 
     test_py_scripts.run_py_script(script_path, 'gdal_retile', '-v -levels 1 -ps 8 8 -overlap 4 -targetDir tmp/outretile4 ../gcore/data/byte.tif')
@@ -274,21 +236,69 @@ def test_gdal_retile_4():
 
     for (filename, width, height) in expected_results:
         ds = gdal.Open(filename)
-        if ds.RasterXSize != width:
-            gdaltest.post_reason('fail')
-            print(filename)
-            print(ds.RasterXSize)
-            print(width)
-            return 'fail'
-        if ds.RasterYSize != height:
-            gdaltest.post_reason('fail')
-            print(filename)
-            print(ds.RasterYSize)
-            print(height)
-            return 'fail'
+        assert ds.RasterXSize == width, filename
+        assert ds.RasterYSize == height, filename
         ds = None
 
-    return 'success'
+
+###############################################################################
+# Test gdal_retile.py with input having a NoData value
+
+
+def test_gdal_retile_5():
+
+    try:
+        from osgeo import gdalnumeric
+        gdalnumeric.zeros
+        import numpy as np
+    except (ImportError, AttributeError):
+        pytest.skip()
+
+    nodata_value = -3.4028234663852886e+38
+    raster_array = np.array(([0.0, 2.0], [-1.0, nodata_value]))
+
+    script_path = test_py_scripts.get_py_script('gdal_retile')
+    if script_path is None:
+        pytest.skip()
+
+    drv = gdal.GetDriverByName('GTiff')
+    srs = osr.SpatialReference()
+    srs.SetWellKnownGeogCS('WGS84')
+    wkt = srs.ExportToWkt()
+
+    ds = drv.Create('tmp/in5.tif', 2, 2, 1, gdal.GDT_Float32)
+    px1_x = 0.1 / ds.RasterXSize
+    px1_y = 0.1 / ds.RasterYSize
+    ds.SetProjection(wkt)
+    ds.SetGeoTransform([0, px1_x, 0, 30, 0, -px1_y])
+    raster_band = ds.GetRasterBand(1)
+    raster_band.SetNoDataValue(nodata_value)
+    raster_band.WriteArray(raster_array)
+    raster_band = None
+    ds = None
+
+    try:
+        os.mkdir('tmp/outretile5')
+    except OSError:
+        pass
+
+    test_py_scripts.run_py_script(script_path, 'gdal_retile', '-v -targetDir tmp/outretile5 tmp/in5.tif')
+
+    ds = gdal.Open('tmp/outretile5/in5_1_1.tif')
+    raster_band = ds.GetRasterBand(1)
+
+    assert raster_band.GetNoDataValue() == nodata_value, \
+        ('Wrong nodata value.\nExpected %f, Got: %f' % (nodata_value, raster_band.GetNoDataValue()))
+
+    min_val, max_val = raster_band.ComputeRasterMinMax()
+    assert max_val, \
+        ('Wrong maximum value.\nExpected 2.0, Got: %f' % max_val)
+
+    assert min_val == -1.0, \
+        ('Wrong minimum value.\nExpected -1.0, Got: %f' % min_val)
+
+    ds = None
+
 
 ###############################################################################
 # Cleanup
@@ -315,7 +325,8 @@ def test_gdal_retile_cleanup():
            'tmp/outretile3/1',
            'tmp/outretile3/2',
            'tmp/outretile3/in1_1_1.tif',
-           'tmp/outretile3']
+           'tmp/outretile3',
+           'tmp/in5.tif']
     for filename in lst:
         try:
             os.remove(filename)
@@ -327,22 +338,6 @@ def test_gdal_retile_cleanup():
 
     shutil.rmtree('tmp/outretile4')
 
-    return 'success'
+    if os.path.exists('tmp/outretile5'):
+        shutil.rmtree('tmp/outretile5')
 
-
-gdaltest_list = [
-    test_gdal_retile_1,
-    test_gdal_retile_2,
-    test_gdal_retile_3,
-    test_gdal_retile_4,
-    test_gdal_retile_cleanup
-]
-
-
-if __name__ == '__main__':
-
-    gdaltest.setup_run('gdal_retile')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

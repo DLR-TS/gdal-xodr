@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -42,6 +42,8 @@
 #include "pcidsk_pct.h"
 #include "pcidsk_vectorsegment.h"
 
+#include <unordered_map>
+
 using namespace PCIDSK;
 
 class OGRPCIDSKLayer;
@@ -54,7 +56,7 @@ class PCIDSK2Dataset final: public GDALPamDataset
 {
     friend class PCIDSK2Band;
 
-    CPLString   osSRS;
+    mutable OGRSpatialReference* m_poSRS = nullptr;
     CPLString   osLastMDValue;
     char      **papszLastMDListValue;
 
@@ -82,8 +84,9 @@ class PCIDSK2Dataset final: public GDALPamDataset
     char              **GetFileList() override;
     CPLErr              GetGeoTransform( double * padfTransform ) override;
     CPLErr              SetGeoTransform( double * ) override;
-    const char         *GetProjectionRef() override;
-    CPLErr              SetProjection( const char * ) override;
+
+    const OGRSpatialReference* GetSpatialRef() const override;
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override;
 
     virtual char      **GetMetadataDomainList() override;
     CPLErr              SetMetadata( char **, const char * ) override;
@@ -177,6 +180,8 @@ class OGRPCIDSKLayer final: public OGRLayer
     bool                bUpdateAccess;
 
     OGRSpatialReference *poSRS;
+
+    std::unordered_map<std::string, int> m_oMapFieldNameToIdx{};
 
   public:
     OGRPCIDSKLayer( PCIDSK::PCIDSKSegment*, PCIDSK::PCIDSKVectorSegment *, bool bUpdate );

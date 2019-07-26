@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test read functionality for ISIS2 driver.
-# Author:   Even Rouault <even dot rouault @ mines-paris dot org>
+# Author:   Even Rouault <even dot rouault @ spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2008, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2008, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,9 +28,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -39,7 +37,7 @@ import gdaltest
 # ftp://ftpflag.wr.usgs.gov/dist/pigpen/venus/venustopo_download/ovda_dtm.zip
 
 
-def isis2_1():
+def test_isis2_1():
 
     tst = gdaltest.GDALTest('ISIS2', 'arvidson_original_truncated.cub', 1, 382)
     expected_prj = """PROJCS["SIMPLE_CYLINDRICAL VENUS",
@@ -53,7 +51,8 @@ def isis2_1():
     PARAMETER["central_meridian",0],
     PARAMETER["standard_parallel_1",-6.5],
     PARAMETER["false_easting",0],
-    PARAMETER["false_northing",0]]"""
+    PARAMETER["false_northing",0],
+    UNIT["meter",1]]"""
     expected_gt = (10157400.403618813, 1200.0000476837158, 0.0, -585000.02324581146, 0.0, -1200.0000476837158)
     return tst.testOpen(check_prj=expected_prj,
                         check_gt=expected_gt)
@@ -62,7 +61,7 @@ def isis2_1():
 ###############################################################################
 # Test simple creation on disk.
 
-def isis2_2():
+def test_isis2_2():
 
     tst = gdaltest.GDALTest('ISIS2', 'byte.tif', 1, 4672)
 
@@ -72,7 +71,7 @@ def isis2_2():
 # Test a different data type with some options.
 
 
-def isis2_3():
+def test_isis2_3():
 
     tst = gdaltest.GDALTest('ISIS2', 'float32.tif', 1, 4672,
                             options=['LABELING_METHOD=DETACHED', 'IMAGE_EXTENSION=qub'])
@@ -80,15 +79,4 @@ def isis2_3():
     return tst.testCreateCopy(vsimem=1)
 
 
-gdaltest_list = [
-    isis2_1,
-    isis2_2,
-    isis2_3]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('isis2')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

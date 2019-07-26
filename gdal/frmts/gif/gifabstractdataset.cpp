@@ -2,10 +2,10 @@
  *
  * Project:  GIF Driver
  * Purpose:  GIF Abstract Dataset
- * Author:   Even Rouault <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault <even dot rouault at spatialys.com>
  *
  ****************************************************************************
- * Copyright (c) 2011-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -213,7 +213,7 @@ char **GIFAbstractDataset::GetMetadataDomainList()
 {
     return BuildMetadataDomainList(GDALPamDataset::GetMetadataDomainList(),
                                    TRUE,
-                                   "xml:XMP", NULL);
+                                   "xml:XMP", nullptr);
 }
 
 /************************************************************************/
@@ -234,13 +234,13 @@ char  **GIFAbstractDataset::GetMetadata( const char * pszDomain )
 /*                        GetProjectionRef()                            */
 /************************************************************************/
 
-const char *GIFAbstractDataset::GetProjectionRef()
+const char *GIFAbstractDataset::_GetProjectionRef()
 
 {
     if ( pszProjection && bGeoTransformValid )
         return pszProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/
@@ -276,13 +276,13 @@ int GIFAbstractDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *GIFAbstractDataset::GetGCPProjection()
+const char *GIFAbstractDataset::_GetGCPProjection()
 
 {
     if ( pszProjection && nGCPCount > 0 )
         return pszProjection;
 
-    return GDALPamDataset::GetGCPProjection();
+    return GDALPamDataset::_GetGCPProjection();
 }
 
 /************************************************************************/

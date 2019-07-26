@@ -30,6 +30,7 @@
 #include "cpl_port.h"
 #include "gdal_priv.h"
 
+#include <cassert>
 #include <climits>
 #include <cstddef>
 #include <new>
@@ -53,14 +54,18 @@ CPL_CVSID("$Id$")
 
 class GDALArrayBandBlockCache final : public GDALAbstractBandBlockCache
 {
-    bool              bSubBlockingActive;
-    int               nSubBlocksPerRow;
-    int               nSubBlocksPerColumn;
-    union
+    bool              bSubBlockingActive = false;
+    int               nSubBlocksPerRow = 0;
+    int               nSubBlocksPerColumn = 0;
+    union u
     {
         GDALRasterBlock **papoBlocks;
         GDALRasterBlock ***papapoBlocks;
-    } u;
+
+        u(): papoBlocks(nullptr) {}
+    } u{};
+
+    CPL_DISALLOW_COPY_ASSIGN(GDALArrayBandBlockCache)
 
   public:
     explicit GDALArrayBandBlockCache( GDALRasterBand* poBand );
@@ -91,12 +96,8 @@ GDALAbstractBandBlockCache* GDALArrayBandBlockCacheCreate(GDALRasterBand* poBand
 /************************************************************************/
 
 GDALArrayBandBlockCache::GDALArrayBandBlockCache(GDALRasterBand* poBandIn) :
-    GDALAbstractBandBlockCache(poBandIn),
-    bSubBlockingActive(false),
-    nSubBlocksPerRow(0),
-    nSubBlocksPerColumn(0)
+    GDALAbstractBandBlockCache(poBandIn)
 {
-    u.papoBlocks = nullptr;
 }
 
 /************************************************************************/
@@ -105,7 +106,7 @@ GDALArrayBandBlockCache::GDALArrayBandBlockCache(GDALRasterBand* poBandIn) :
 
 GDALArrayBandBlockCache::~GDALArrayBandBlockCache()
 {
-    FlushCache();
+    GDALArrayBandBlockCache::FlushCache();
 
     if( !bSubBlockingActive )
         CPLFree( u.papoBlocks );
@@ -256,6 +257,8 @@ CPLErr GDALArrayBandBlockCache::FlushCache()
 
     CPLErr eGlobalErr = poBand->eFlushBlockErr;
 
+    StartDirtyBlockFlushingLog();
+
 /* -------------------------------------------------------------------- */
 /*      Flush all blocks in memory ... this case is without subblocking.*/
 /* -------------------------------------------------------------------- */
@@ -316,6 +319,8 @@ CPLErr GDALArrayBandBlockCache::FlushCache()
             }
         }
     }
+
+    EndDirtyBlockFlushingLog();
 
     WaitKeepAliveCounter();
 
@@ -384,6 +389,7 @@ CPLErr GDALArrayBandBlockCache::FlushBlock( int nXBlockOff, int nYBlockOff,
     {
         const int nBlockIndex = nXBlockOff + nYBlockOff * poBand->nBlocksPerRow;
 
+        assert(u.papoBlocks);
         poBlock = u.papoBlocks[nBlockIndex];
         u.papoBlocks[nBlockIndex] = nullptr;
     }
@@ -422,8 +428,13 @@ CPLErr GDALArrayBandBlockCache::FlushBlock( int nXBlockOff, int nYBlockOff,
     poBlock->Detach();
 
     CPLErr eErr = CE_None;
+
     if( bWriteDirtyBlock && poBlock->GetDirty() )
+    {
+        UpdateDirtyBlockFlushingLog();
+
         eErr = poBlock->Write();
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Deallocate the block;                                           */

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -146,6 +146,15 @@ static GDALDataset *HTTPOpen( GDALOpenInfo * poOpenInfo )
                     poOpenInfo->papszAllowedDrivers,
                     poOpenInfo->papszOpenOptions, nullptr);
     CPLPopErrorHandler();
+
+    // The JP2OpenJPEG driver may need to reopen the file, hence this special
+    // behaviour
+    if( poDS != nullptr && poDS->GetDriver() != nullptr &&
+        EQUAL(poDS->GetDriver()->GetDescription(), "JP2OpenJPEG") )
+    {
+        poDS->MarkSuppressOnClose();
+        return poDS;
+    }
 
 /* -------------------------------------------------------------------- */
 /*      If opening it in memory didn't work, perhaps we need to         */

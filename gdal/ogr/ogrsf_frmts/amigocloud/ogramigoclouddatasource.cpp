@@ -160,30 +160,31 @@ bool OGRAmigoCloudDataSource::ListDatasets()
         if(type == json_type_object)
         {
             json_object *poResults = CPL_json_object_object_get(result, "results");
-            if(poResults != nullptr) {
-                array_list *res = json_object_get_array(poResults);
-                if(res != nullptr) {
-                    CPLprintf("List of available datasets for project id: %s\n", GetProjectId());
-                    CPLprintf("| id \t | name\n");
-                    CPLprintf("|--------|-------------------\n");
-                    for(decltype(res->length) i = 0; i < res->length; i++) {
-                        json_object *ds = (json_object*)array_list_get_idx(res, i);
-                        if(ds!=nullptr) {
-                            const char *name = nullptr;
-                            int64_t dataset_id = 0;
-                            json_object *poName = CPL_json_object_object_get(ds, "name");
-                            if (poName != nullptr) {
-                                name = json_object_get_string(poName);
-                            }
-                            json_object *poId = CPL_json_object_object_get(ds, "id");
-                            if (poId != nullptr) {
-                                dataset_id = json_object_get_int64(poId);
-                            }
-                            if (name != nullptr) {
-                                std::stringstream str;
-                                str << "| " << dataset_id << "\t | " << name;
-                                CPLprintf("%s\n", str.str().c_str());
-                            }                        }
+            if(poResults != nullptr &&
+                json_object_get_type(poResults) == json_type_array)
+            {
+                CPLprintf("List of available datasets for project id: %s\n", GetProjectId());
+                CPLprintf("| id \t | name\n");
+                CPLprintf("|--------|-------------------\n");
+                const auto nSize = json_object_array_length(poResults);
+                for(auto i = decltype(nSize){0}; i < nSize; ++i) {
+                    json_object *ds = json_object_array_get_idx(poResults, i);
+                    if(ds!=nullptr) {
+                        const char *name = nullptr;
+                        int64_t dataset_id = 0;
+                        json_object *poName = CPL_json_object_object_get(ds, "name");
+                        if (poName != nullptr) {
+                            name = json_object_get_string(poName);
+                        }
+                        json_object *poId = CPL_json_object_object_get(ds, "id");
+                        if (poId != nullptr) {
+                            dataset_id = json_object_get_int64(poId);
+                        }
+                        if (name != nullptr) {
+                            std::stringstream str;
+                            str << "| " << dataset_id << "\t | " << name;
+                            CPLprintf("%s\n", str.str().c_str());
+                        }
                     }
                 }
             }
@@ -288,9 +289,9 @@ const char* OGRAmigoCloudDataSource::GetAPIURL() const
         return pszAPIURL;
 
     else if( bUseHTTPS )
-        return CPLSPrintf("https://www.amigocloud.com/api/v1");
+        return CPLSPrintf("https://app.amigocloud.com/api/v1");
     else
-        return CPLSPrintf("http://www.amigocloud.com/api/v1");
+        return CPLSPrintf("http://app.amigocloud.com/api/v1");
 }
 
 /************************************************************************/
@@ -365,7 +366,15 @@ OGRLayer   *OGRAmigoCloudDataSource::ICreateLayer( const char *pszNameIn,
     OGRAmigoCloudTableLayer* poLayer = new OGRAmigoCloudTableLayer(this, osName);
     const bool bGeomNullable =
         CPLFetchBool(papszOptions, "GEOMETRY_NULLABLE", true);
-    poLayer->SetDeferredCreation(eGType, poSpatialRef, bGeomNullable);
+    OGRSpatialReference* poSRSClone = poSpatialRef;
+    if( poSRSClone )
+    {
+        poSRSClone = poSRSClone->Clone();
+        poSRSClone->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    }
+    poLayer->SetDeferredCreation(eGType, poSRSClone, bGeomNullable);
+    if( poSRSClone )
+        poSRSClone->Release();
     papoLayers = (OGRAmigoCloudTableLayer**) CPLRealloc(
                     papoLayers, (nLayers + 1) * sizeof(OGRAmigoCloudTableLayer*));
     papoLayers[nLayers ++] = poLayer;

@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Mateusz Loskot
- * Copyright (c) 2011-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -71,30 +71,20 @@ class OGRCoordinateTransformation;
 class OGRGeoJSONWriteOptions
 {
     public:
-        bool bWriteBBOX;
-        bool bBBOXRFC7946;
-        int  nCoordPrecision;
-        int  nSignificantFigures;
-        bool bPolygonRightHandRule;
-        bool bCanPatchCoordinatesWithNativeData;
-        bool bHonourReservedRFC7946Members;
-        CPLString osIDField;
-        bool bForceIDFieldType;
-        OGRFieldType eForcedIDFieldType;
-
-        OGRGeoJSONWriteOptions():
-            bWriteBBOX(false),
-            bBBOXRFC7946(false),
-            nCoordPrecision(-1),
-            nSignificantFigures(-1),
-            bPolygonRightHandRule(false),
-            bCanPatchCoordinatesWithNativeData(true),
-            bHonourReservedRFC7946Members(false),
-            bForceIDFieldType(false),
-            eForcedIDFieldType(OFTString)
-        {}
+        bool bWriteBBOX = false;
+        bool bBBOXRFC7946 = false;
+        int  nCoordPrecision = -1;
+        int  nSignificantFigures = -1;
+        bool bPolygonRightHandRule = false;
+        bool bCanPatchCoordinatesWithNativeData = true;
+        bool bHonourReservedRFC7946Members = false;
+        CPLString osIDField{};
+        bool bForceIDFieldType = false;
+        OGRFieldType eForcedIDFieldType = OFTString;
+        bool bAllowNonFiniteValues = false;
 
         void SetRFC7946Settings();
+        void SetIDOptions(CSLConstList papszOptions);
 };
 /*! @endcond */
 

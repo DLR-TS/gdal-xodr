@@ -2,10 +2,10 @@
  *
  * Project:  CTG driver
  * Purpose:  GDALDataset driver for CTG dataset.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -130,7 +130,10 @@ class CTGDataset : public GDALPamDataset
     ~CTGDataset() override;
 
     CPLErr GetGeoTransform( double * ) override;
-    const char* GetProjectionRef() override;
+    const char* _GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     static GDALDataset *Open( GDALOpenInfo * );
     static int          Identify( GDALOpenInfo * );
@@ -376,7 +379,7 @@ int CTGDataset::Identify( GDALOpenInfo * poOpenInfo )
     }
 
 /* -------------------------------------------------------------------- */
-/*      Chech that it looks roughly as a CTG dataset                    */
+/*      Check that it looks roughly as a CTG dataset                    */
 /* -------------------------------------------------------------------- */
     const char* pszData = (const char*)poOpenInfo->pabyHeader;
     for(int i=0;i<4 * 80;i++)
@@ -560,7 +563,7 @@ CPLErr CTGDataset::GetGeoTransform( double * padfTransform )
 /*                         GetProjectionRef()                           */
 /************************************************************************/
 
-const char* CTGDataset::GetProjectionRef()
+const char* CTGDataset::_GetProjectionRef()
 
 {
     return pszProjection;

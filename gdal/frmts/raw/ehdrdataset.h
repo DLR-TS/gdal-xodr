@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -69,24 +69,24 @@
 
 class EHdrRasterBand;
 
-class EHdrDataset : public RawDataset
+class EHdrDataset final: public RawDataset
 {
     friend class EHdrRasterBand;
 
     VSILFILE   *fpImage;  // image data file.
 
-    CPLString   osHeaderExt;
+    CPLString   osHeaderExt{};
 
-    bool        bGotTransform;
-    double      adfGeoTransform[6];
-    char       *pszProjection;
+    bool        bGotTransform{};
+    double      adfGeoTransform[6]{0,1,0,0,0,1};
+    char       *pszProjection{};
 
-    bool        bHDRDirty;
-    char      **papszHDR;
+    bool        bHDRDirty{};
+    char      **papszHDR{};
 
-    bool        bCLRDirty;
-    std::shared_ptr<GDALColorTable> m_poColorTable;
-    std::shared_ptr<GDALRasterAttributeTable> m_poRAT;
+    bool        bCLRDirty{};
+    std::shared_ptr<GDALColorTable> m_poColorTable{};
+    std::shared_ptr<GDALRasterAttributeTable> m_poRAT{};
 
 
     CPLErr      ReadSTX() const;
@@ -96,18 +96,27 @@ class EHdrDataset : public RawDataset
     const char *GetKeyValue( const char *pszKey, const char *pszDefault = "" );
     void        RewriteCLR(GDALRasterBand*) const;
 
+    CPL_DISALLOW_COPY_ASSIGN(EHdrDataset)
+
   public:
     EHdrDataset();
     ~EHdrDataset() override;
 
     CPLErr GetGeoTransform( double *padfTransform ) override;
     CPLErr SetGeoTransform( double *padfTransform ) override;
-    const char *GetProjectionRef() override;
-    CPLErr SetProjection( const char * ) override;
+    const char *_GetProjectionRef() override;
+    CPLErr _SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 
     char **GetFileList() override;
 
     static GDALDataset *Open( GDALOpenInfo * );
+    static GDALDataset *Open( GDALOpenInfo *, bool bFileSizeCheck );
     static GDALDataset *Create( const char *pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType, char **papszParmList );
@@ -125,32 +134,34 @@ class EHdrDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class EHdrRasterBand : public RawRasterBand
+class EHdrRasterBand final: public RawRasterBand
 {
    friend class EHdrDataset;
 
-    std::shared_ptr<GDALColorTable> m_poColorTable;
-    std::shared_ptr<GDALRasterAttributeTable> m_poRAT;
+    std::shared_ptr<GDALColorTable> m_poColorTable{};
+    std::shared_ptr<GDALRasterAttributeTable> m_poRAT{};
 
-    int            nBits;
-    vsi_l_offset   nStartBit;
-    int            nPixelOffsetBits;
-    vsi_l_offset   nLineOffsetBits;
+    int            nBits{};
+    vsi_l_offset   nStartBit{};
+    int            nPixelOffsetBits{};
+    vsi_l_offset   nLineOffsetBits{};
 
-    int            bNoDataSet;  // TODO(schwehr): Convert to bool.
-    double         dfNoData;
-    double         dfMin;
-    double         dfMax;
-    double         dfMean;
-    double         dfStdDev;
+    int            bNoDataSet{};  // TODO(schwehr): Convert to bool.
+    double         dfNoData{};
+    double         dfMin{};
+    double         dfMax{};
+    double         dfMean{};
+    double         dfStdDev{};
 
-    int            minmaxmeanstddev;
+    int            minmaxmeanstddev{};
 
     CPLErr IRasterIO( GDALRWFlag, int, int, int, int,
                       void *, int, int, GDALDataType,
                       GSpacing nPixelSpace,
                       GSpacing nLineSpace,
                       GDALRasterIOExtraArg *psExtraArg ) override;
+
+    CPL_DISALLOW_COPY_ASSIGN(EHdrRasterBand)
 
   public:
     EHdrRasterBand( GDALDataset *poDS, int nBand, VSILFILE *fpRaw,

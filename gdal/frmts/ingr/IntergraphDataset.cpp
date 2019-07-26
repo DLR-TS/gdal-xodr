@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Ivan Lucena
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files ( the "Software" ),
@@ -708,7 +708,7 @@ GDALDataset *IntergraphDataset::CreateCopy( const char *pszFilename,
 
     double adfGeoTransform[6];
 
-    poDstDS->SetProjection( poSrcDS->GetProjectionRef() );
+    poDstDS->SetSpatialRef( poSrcDS->GetSpatialRef() );
     poSrcDS->GetGeoTransform( adfGeoTransform );
     poDstDS->SetGeoTransform( adfGeoTransform );
 
@@ -860,10 +860,10 @@ CPLErr IntergraphDataset::SetGeoTransform( double *padfTransform )
 }
 
 //  ----------------------------------------------------------------------------
-//                                            IntergraphDataset::SetProjection()
+//                                            IntergraphDataset::_SetProjection()
 //  ----------------------------------------------------------------------------
 
-CPLErr IntergraphDataset::SetProjection( const char * /* pszProjString */ )
+CPLErr IntergraphDataset::_SetProjection( const char * /* pszProjString */ )
 {
     return CE_None;
 }

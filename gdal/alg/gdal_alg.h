@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam
- * Copyright (c) 2008-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -154,6 +154,14 @@ GDALCreateGenImgProjTransformer3( const char *pszSrcWKT,
                                   const double *padfSrcGeoTransform,
                                   const char *pszDstWKT,
                                   const double *padfDstGeoTransform );
+
+void CPL_DLL *
+GDALCreateGenImgProjTransformer4( OGRSpatialReferenceH hSrcSRS,
+                                  const double *padfSrcGeoTransform,
+                                  OGRSpatialReferenceH hDstSRS,
+                                  const double *padfDstGeoTransform,
+                                  const char* const *papszOptions );
+
 void CPL_DLL GDALSetGenImgProjTransformerDstGeoTransform( void *,
                                                           const double * );
 void CPL_DLL GDALDestroyGenImgProjTransformer( void * );
@@ -168,6 +176,11 @@ void GDALGetTransformerDstGeoTransform( void*, double* );
 void CPL_DLL *
 GDALCreateReprojectionTransformer( const char *pszSrcWKT,
                                    const char *pszDstWKT );
+void CPL_DLL *
+GDALCreateReprojectionTransformerEx(
+                                   OGRSpatialReferenceH hSrcSRS,
+                                   OGRSpatialReferenceH hDstSRS,
+                                   const char* const *papszOptions);
 void CPL_DLL GDALDestroyReprojectionTransformer( void * );
 int CPL_DLL GDALReprojectionTransform(
     void *pTransformArg, int bDstToSrc, int nPointCount,
@@ -306,6 +319,8 @@ typedef struct
     double adfGeoTransform[6];
 
     int    nElevField;
+    int    nElevFieldMin;
+    int    nElevFieldMax;
     int    nIDField;
     int    nNextID;
 } OGRContourWriterInfo;
@@ -316,11 +331,16 @@ OGRContourWriter( double, int, double *, double *, void *pInfo );
 
 CPLErr CPL_DLL
 GDALContourGenerate( GDALRasterBandH hBand,
-                            double dfContourInterval, double dfContourBase,
-                            int nFixedLevelCount, double *padfFixedLevels,
-                            int bUseNoData, double dfNoDataValue,
-                            void *hLayer, int iIDField, int iElevField,
-                            GDALProgressFunc pfnProgress, void *pProgressArg );
+                     double dfContourInterval, double dfContourBase,
+                     int nFixedLevelCount, double *padfFixedLevels,
+                     int bUseNoData, double dfNoDataValue,
+                     void *hLayer, int iIDField, int iElevField,
+                     GDALProgressFunc pfnProgress, void *pProgressArg );
+
+CPLErr CPL_DLL
+GDALContourGenerateEx( GDALRasterBandH hBand, void *hLayer,
+                       CSLConstList options,
+                       GDALProgressFunc pfnProgress, void *pProgressArg );
 
 /************************************************************************/
 /*      Rasterizer API - geometries burned into GDAL raster.            */

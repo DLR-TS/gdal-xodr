@@ -7,7 +7,7 @@
 *
 ******************************************************************************
 * Copyright (c) 2009, Ragi Yaser Burhum
- * Copyright (c) 2011-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2014, Even Rouault <even dot rouault at spatialys.com>
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -103,7 +103,7 @@ public:
 
 class FGdbDataSource;
 
-class FGdbLayer : public FGdbBaseLayer
+class FGdbLayer final: public FGdbBaseLayer
 {
   friend class FGdbDataSource;
 
@@ -250,7 +250,7 @@ protected:
 /*                         FGdbResultLayer                              */
 /************************************************************************/
 
-class FGdbResultLayer : public FGdbBaseLayer
+class FGdbResultLayer final: public FGdbBaseLayer
 {
 public:
 
@@ -275,7 +275,7 @@ protected:
 
 class FGdbDatabaseConnection;
 
-class FGdbDataSource : public OGRDataSource
+class FGdbDataSource final: public OGRDataSource
 {
   CPLString             m_osFSName;
   CPLString             m_osPublicName;
@@ -370,7 +370,7 @@ public:
     void         CloseGeodatabase();
 };
 
-class FGdbDriver : public OGRSFDriver, public IOGRTransactionBehaviour
+class FGdbDriver final: public OGRSFDriver, public IOGRTransactionBehaviour
 {
   std::map<CPLString, FGdbDatabaseConnection*> oMapConnections;
   CPLMutex* hMutex;

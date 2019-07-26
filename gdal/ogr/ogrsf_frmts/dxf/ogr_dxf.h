@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009,  Frank Warmerdam
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2017, Alan Thomas <alant@outlook.com.au>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -90,7 +90,7 @@ class OGRDXFFeatureQueue
 /*                          OGRDXFBlocksLayer                           */
 /************************************************************************/
 
-class OGRDXFBlocksLayer : public OGRLayer
+class OGRDXFBlocksLayer final: public OGRLayer
 {
     OGRDXFDataSource   *poDS;
 
@@ -123,7 +123,7 @@ class OGRDXFBlocksLayer : public OGRLayer
 /*      Stores the transformation needed to insert a block reference.   */
 /************************************************************************/
 
-class OGRDXFInsertTransformer : public OGRCoordinateTransformation
+class OGRDXFInsertTransformer final: public OGRCoordinateTransformation
 {
 public:
     OGRDXFInsertTransformer() :
@@ -159,13 +159,10 @@ public:
 
     OGRSpatialReference *GetSourceCS() override { return nullptr; }
     OGRSpatialReference *GetTargetCS() override { return nullptr; }
-    int Transform( int nCount,
-        double *x, double *y, double *z ) override
-    { return TransformEx( nCount, x, y, z, nullptr ); }
 
-    int TransformEx( int nCount,
-        double *x, double *y, double *z = nullptr,
-        int *pabSuccess = nullptr ) override
+    int Transform( int nCount,
+        double *x, double *y, double *z, double * /* t */,
+        int *pabSuccess ) override
     {
         for( int i = 0; i < nCount; i++ )
         {
@@ -258,7 +255,7 @@ public:
 /*                         OGRDXFOCSTransformer                         */
 /************************************************************************/
 
-class OGRDXFOCSTransformer : public OGRCoordinateTransformation
+class OGRDXFOCSTransformer final: public OGRCoordinateTransformation
 {
 private:
     double adfN[3];
@@ -269,17 +266,14 @@ private:
     double aadfInverse[4][4];
 
 public:
-    OGRDXFOCSTransformer( double adfNIn[3], bool bInverse = false );
+    explicit OGRDXFOCSTransformer( double adfNIn[3], bool bInverse = false );
 
     OGRSpatialReference *GetSourceCS() override { return nullptr; }
     OGRSpatialReference *GetTargetCS() override { return nullptr; }
-    int Transform( int nCount,
-        double *x, double *y, double *z ) override
-    { return TransformEx( nCount, x, y, z, nullptr ); }
 
-    int TransformEx( int nCount,
-        double *adfX, double *adfY, double *adfZ,
-        int *pabSuccess = nullptr ) override;
+    int Transform( int nCount,
+        double *adfX, double *adfY, double *adfZ, double* adfT,
+        int *pabSuccess ) override;
 
     int InverseTransform( int nCount,
         double *adfX, double *adfY, double *adfZ );
@@ -335,7 +329,7 @@ struct DXFTriple
 /*                                                                      */
 /*     Extends OGRFeature with some DXF-specific members.               */
 /************************************************************************/
-class OGRDXFFeature : public OGRFeature
+class OGRDXFFeature final: public OGRFeature
 {
     friend class OGRDXFLayer;
 
@@ -386,7 +380,7 @@ class OGRDXFFeature : public OGRFeature
 /************************************************************************/
 /*                             OGRDXFLayer                              */
 /************************************************************************/
-class OGRDXFLayer : public OGRLayer
+class OGRDXFLayer final: public OGRLayer
 {
     friend class OGRDXFBlocksLayer;
 
@@ -518,7 +512,7 @@ public:
                                    int nValueBufferSize = 81 );
     void                UnreadValue();
     void                LoadDiskChunk();
-    void                ResetReadPointer( int iNewOffset );
+    void                ResetReadPointer( int iNewOffset, int nNewLineNumber = 0 );
 };
 
 /************************************************************************/
@@ -539,14 +533,15 @@ enum OGRDXFFieldModes
 /*                           OGRDXFDataSource                           */
 /************************************************************************/
 
-class OGRDXFDataSource : public OGRDataSource
+class OGRDXFDataSource final: public OGRDataSource
 {
     VSILFILE           *fp;
 
     CPLString           osName;
     std::vector<OGRLayer*> apoLayers;
 
-    int                 iEntitiesSectionOffset;
+    int                 iEntitiesOffset;
+    int                 iEntitiesLineNumber;
 
     std::map<CPLString,DXFBlockDefinition> oBlockMap;
     std::map<CPLString,CPLString> oBlockRecordHandles;
@@ -649,7 +644,7 @@ class OGRDXFDataSource : public OGRDataSource
     int  ReadValue( char *pszValueBuffer, int nValueBufferSize = 81 )
         { return oReader.ReadValue( pszValueBuffer, nValueBufferSize ); }
     void RestartEntities()
-        { oReader.ResetReadPointer(iEntitiesSectionOffset); }
+        { oReader.ResetReadPointer( iEntitiesOffset, iEntitiesLineNumber ); }
     void UnreadValue()
         { oReader.UnreadValue(); }
     void ResetReadPointer( int iNewOffset )
@@ -662,7 +657,7 @@ class OGRDXFDataSource : public OGRDataSource
 
 class OGRDXFWriterDS;
 
-class OGRDXFWriterLayer : public OGRLayer
+class OGRDXFWriterLayer final: public OGRLayer
 {
     VSILFILE           *fp;
     OGRFeatureDefn     *poFeatureDefn;
@@ -716,7 +711,7 @@ class OGRDXFWriterLayer : public OGRLayer
 /*                       OGRDXFBlocksWriterLayer                        */
 /************************************************************************/
 
-class OGRDXFBlocksWriterLayer : public OGRLayer
+class OGRDXFBlocksWriterLayer final: public OGRLayer
 {
     OGRFeatureDefn     *poFeatureDefn;
 
@@ -742,7 +737,7 @@ class OGRDXFBlocksWriterLayer : public OGRLayer
 /*                           OGRDXFWriterDS                             */
 /************************************************************************/
 
-class OGRDXFWriterDS : public OGRDataSource
+class OGRDXFWriterDS final: public OGRDataSource
 {
     friend class OGRDXFWriterLayer;
 

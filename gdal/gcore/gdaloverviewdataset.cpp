@@ -60,16 +60,16 @@ class GDALOverviewDataset final: public GDALDataset
   private:
     friend class GDALOverviewBand;
 
-    GDALDataset* poMainDS;
+    GDALDataset* poMainDS = nullptr;
 
-    GDALDataset* poOvrDS;  // Will be often NULL.
-    int          nOvrLevel;
-    int          bThisLevelOnly;
+    GDALDataset* poOvrDS = nullptr;  // Will be often NULL.
+    int          nOvrLevel = 0;
+    int          bThisLevelOnly = 0;
 
-    int          nGCPCount;
-    GDAL_GCP    *pasGCPList;
-    char       **papszMD_RPC;
-    char       **papszMD_GEOLOCATION;
+    int          nGCPCount = 0;
+    GDAL_GCP    *pasGCPList = nullptr;
+    char       **papszMD_RPC = nullptr;
+    char       **papszMD_GEOLOCATION = nullptr;
 
     static void  Rescale( char**& papszMD, const char* pszItem,
                           double dfRatio, double dfDefaultVal );
@@ -87,11 +87,11 @@ class GDALOverviewDataset final: public GDALDataset
                          int bThisLevelOnly );
     ~GDALOverviewDataset() override;
 
-    const char *GetProjectionRef( void ) override;
+    const OGRSpatialReference* GetSpatialRef() const override;
     CPLErr GetGeoTransform( double * ) override;
 
     int GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const OGRSpatialReference *GetGCPSpatialRef() const override;
     const GDAL_GCP *GetGCPs() override;
 
     char  **GetMetadata( const char * pszDomain = "" ) override;
@@ -113,7 +113,7 @@ class GDALOverviewBand final: public GDALProxyRasterBand
   protected:
     friend class GDALOverviewDataset;
 
-    GDALRasterBand*         poUnderlyingBand;
+    GDALRasterBand*         poUnderlyingBand = nullptr;
     GDALRasterBand* RefUnderlyingRasterBand() override;
 
   public:
@@ -169,11 +169,7 @@ GDALOverviewDataset::GDALOverviewDataset( GDALDataset* poMainDSIn,
                                           int bThisLevelOnlyIn ) :
     poMainDS(poMainDSIn),
     nOvrLevel(nOvrLevelIn),
-    bThisLevelOnly(bThisLevelOnlyIn),
-    nGCPCount(0),
-    pasGCPList(nullptr),
-    papszMD_RPC(nullptr),
-    papszMD_GEOLOCATION(nullptr)
+    bThisLevelOnly(bThisLevelOnlyIn)
 {
     poMainDSIn->Reference();
     eAccess = poMainDS->GetAccess();
@@ -223,9 +219,9 @@ GDALOverviewDataset::GDALOverviewDataset( GDALDataset* poMainDSIn,
 
 GDALOverviewDataset::~GDALOverviewDataset()
 {
-    FlushCache();
+    GDALOverviewDataset::FlushCache();
 
-    CloseDependentDatasets();
+    GDALOverviewDataset::CloseDependentDatasets();
 
     if( nGCPCount > 0 )
     {
@@ -344,13 +340,13 @@ CPLErr GDALOverviewDataset::IRasterIO( GDALRWFlag eRWFlag,
 }
 
 /************************************************************************/
-/*                          GetProjectionRef()                          */
+/*                           GetSpatialRef()                            */
 /************************************************************************/
 
-const char *GDALOverviewDataset::GetProjectionRef()
+const OGRSpatialReference *GDALOverviewDataset::GetSpatialRef() const
 
 {
-    return poMainDS->GetProjectionRef();
+    return poMainDS->GetSpatialRef();
 }
 
 /************************************************************************/
@@ -389,13 +385,13 @@ int GDALOverviewDataset::GetGCPCount()
 }
 
 /************************************************************************/
-/*                          GetGCPProjection()                          */
+/*                          GetGCPSpatialRef()                          */
 /************************************************************************/
 
-const char *GDALOverviewDataset::GetGCPProjection()
+const OGRSpatialReference *GDALOverviewDataset::GetGCPSpatialRef() const
 
 {
-    return poMainDS->GetGCPProjection();
+    return poMainDS->GetGCPSpatialRef();
 }
 
 /************************************************************************/
@@ -551,7 +547,7 @@ GDALOverviewBand::GDALOverviewBand( GDALOverviewDataset* poDSIn, int nBandIn ) :
 
 GDALOverviewBand::~GDALOverviewBand()
 {
-    FlushCache();
+    GDALOverviewBand::FlushCache();
 }
 
 /************************************************************************/

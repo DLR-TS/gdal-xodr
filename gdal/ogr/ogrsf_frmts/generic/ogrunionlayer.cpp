@@ -2,10 +2,10 @@
  *
  * Project:  OpenGIS Simple Features Reference Implementation
  * Purpose:  Implements OGRUnionLayer class
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2012-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -41,9 +41,7 @@ CPL_CVSID("$Id$")
 OGRUnionLayerGeomFieldDefn::OGRUnionLayerGeomFieldDefn(
     const char* pszNameIn,
     OGRwkbGeometryType eType) :
-    OGRGeomFieldDefn(pszNameIn, eType),
-    bGeomTypeSet(FALSE),
-    bSRSSet(FALSE)
+    OGRGeomFieldDefn(pszNameIn, eType)
 {}
 
 /************************************************************************/
@@ -52,9 +50,7 @@ OGRUnionLayerGeomFieldDefn::OGRUnionLayerGeomFieldDefn(
 
 OGRUnionLayerGeomFieldDefn::OGRUnionLayerGeomFieldDefn(
     OGRGeomFieldDefn* poSrc) :
-    OGRGeomFieldDefn(poSrc->GetNameRef(), poSrc->GetType()),
-    bGeomTypeSet(FALSE),
-    bSRSSet(FALSE)
+    OGRGeomFieldDefn(poSrc->GetNameRef(), poSrc->GetType())
 {
     SetSpatialRef(poSrc->GetSpatialRef());
 }

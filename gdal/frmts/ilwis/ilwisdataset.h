@@ -111,7 +111,7 @@ public:
     ILWISInfo psInfo;
     int nSizePerPixel;
 
-    ILWISRasterBand( ILWISDataset *, int );
+    ILWISRasterBand( ILWISDataset *, int, const std::string& sBandNameIn );
     virtual ~ILWISRasterBand();
     CPLErr GetILWISInfo(const std::string& pszFileName);
     void ILWISOpen( const std::string& pszFilename);
@@ -165,8 +165,14 @@ public:
     virtual CPLErr  GetGeoTransform( double * padfTransform ) override;
     virtual CPLErr  SetGeoTransform( double * ) override;
 
-    virtual const char *GetProjectionRef() override;
-    virtual CPLErr SetProjection( const char * ) override;
+    virtual const char *_GetProjectionRef() override;
+    virtual CPLErr _SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 
     virtual void   FlushCache() override;
 };

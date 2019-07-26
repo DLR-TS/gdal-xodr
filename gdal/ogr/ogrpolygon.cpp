@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -52,7 +52,7 @@ CPL_CVSID("$Id$")
  * \brief Create an empty polygon.
  */
 
-OGRPolygon::OGRPolygon() {}
+OGRPolygon::OGRPolygon() = default;
 
 /************************************************************************/
 /*                     OGRPolygon( const OGRPolygon& )                  */
@@ -67,15 +67,13 @@ OGRPolygon::OGRPolygon() {}
  * @since GDAL 2.1
  */
 
-OGRPolygon::OGRPolygon( const OGRPolygon& other ) :
-    OGRCurvePolygon(other)
-{}
+OGRPolygon::OGRPolygon( const OGRPolygon& ) = default;
 
 /************************************************************************/
 /*                            ~OGRPolygon()                             */
 /************************************************************************/
 
-OGRPolygon::~OGRPolygon() {}
+OGRPolygon::~OGRPolygon() = default;
 
 /************************************************************************/
 /*                     operator=( const OGRPolygon&)                    */

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam (warmerdam@pobox.com)
- * Copyright (c) 2007-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2012, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2014, Kyle Shannon <kyle at pobox dot com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -891,7 +891,7 @@ CPLErr AAIGDataset::GetGeoTransform( double *padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *AAIGDataset::GetProjectionRef() { return pszProjection; }
+const char *AAIGDataset::_GetProjectionRef() { return pszProjection; }
 
 /************************************************************************/
 /*                          CreateCopy()                                */

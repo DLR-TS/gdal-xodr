@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -40,6 +40,7 @@
 #include "shapefil.h"
 #include "shp_vsi.h"
 #include "ogrlayerpool.h"
+#include <set>
 #include <vector>
 
 /* Was limited to 255 until OGR 1.10, but 254 seems to be a more */
@@ -71,9 +72,11 @@ OGRErr SHPWriteOGRFeature( SHPHandle hSHP, DBFHandle hDBF,
 
 class OGRShapeGeomFieldDefn final: public OGRGeomFieldDefn
 {
-    char* pszFullName;
-    mutable bool  bSRSSet;
-    mutable CPLString osPrjFile;
+    CPL_DISALLOW_COPY_ASSIGN(OGRShapeGeomFieldDefn)
+
+    char* pszFullName = nullptr;
+    mutable bool  bSRSSet = false;
+    mutable CPLString osPrjFile{};
 
     public:
         OGRShapeGeomFieldDefn( const char* pszFullNameIn,
@@ -83,10 +86,13 @@ class OGRShapeGeomFieldDefn final: public OGRGeomFieldDefn
             pszFullName(CPLStrdup(pszFullNameIn)),
             bSRSSet(CPL_TO_BOOL(bSRSSetIn))
         {
-            poSRS = poSRSIn;
+            SetSpatialRef(poSRSIn);
         }
 
-        virtual ~OGRShapeGeomFieldDefn() { CPLFree(pszFullName); }
+        virtual ~OGRShapeGeomFieldDefn()
+        {
+            CPLFree(pszFullName);
+        }
 
         virtual OGRSpatialReference* GetSpatialRef() const override;
 
@@ -101,6 +107,8 @@ class OGRShapeDataSource;
 
 class OGRShapeLayer final: public OGRAbstractProxiedLayer
 {
+    CPL_DISALLOW_COPY_ASSIGN(OGRShapeLayer)
+
     OGRShapeDataSource  *poDS;
 
     OGRFeatureDefn     *poFeatureDefn;
@@ -141,7 +149,7 @@ class OGRShapeLayer final: public OGRAbstractProxiedLayer
     bool                bSbnSbxDeleted;
 
     CPLString           ConvertCodePage( const char * );
-    CPLString           osEncoding;
+    CPLString           osEncoding{};
 
     bool                bTruncationWarningEmitted;
 
@@ -176,6 +184,11 @@ class OGRShapeLayer final: public OGRAbstractProxiedLayer
     } NormandyState; /* French joke. "Peut'et' ben que oui, peut'et' ben que non." Sorry :-) */
     NormandyState       m_eNeedRepack;
 
+    // Set of field names (in upper case). Built and invalidated when convenient
+    std::set<CPLString> m_oSetUCFieldName{};
+
+    bool                StartUpdate( const char* pszOperation );
+
   protected:
 
     virtual void        CloseUnderlyingLayer() override;
@@ -195,6 +208,7 @@ class OGRShapeLayer final: public OGRAbstractProxiedLayer
         { bResizeAtClose = bFlag; }
 
     const char         *GetFullName() { return pszFullName; }
+    void                UpdateFollowingDeOrRecompression();
 
     OGRFeature *        FetchShape( int iShapeId );
     int                 GetFeatureCountWithSpatialFilterOnly();
@@ -203,7 +217,7 @@ class OGRShapeLayer final: public OGRAbstractProxiedLayer
                         OGRShapeLayer( OGRShapeDataSource* poDSIn,
                                        const char * pszName,
                                        SHPHandle hSHP, DBFHandle hDBF,
-                                       OGRSpatialReference *poSRS, bool bSRSSet,
+                                       const OGRSpatialReference *poSRS, bool bSRSSet,
                                        bool bUpdate,
                                        OGRwkbGeometryType eReqType,
                                        char ** papszCreateOptions = nullptr);
@@ -263,12 +277,25 @@ class OGRShapeDataSource final: public OGRDataSource
     bool                bSingleFileDataSource;
     OGRLayerPool       *poPool;
 
-    void                AddLayer( OGRShapeLayer* poLayer );
-
-    std::vector<CPLString> oVectorLayerName;
+    std::vector<CPLString> oVectorLayerName{};
 
     bool                b2GBLimit;
     char              **papszOpenOptions;
+    bool                m_bIsZip = false;
+    bool                m_bSingleLayerZip = false;
+    CPLString           m_osTemporaryUnzipDir{};
+    CPLMutex           *m_poRefreshLockFileMutex = nullptr;
+    CPLCond            *m_poRefreshLockFileCond = nullptr;
+    VSILFILE           *m_psLockFile = nullptr;
+    CPLJoinableThread  *m_hRefreshLockFileThread = nullptr;
+    bool                m_bExitRefreshLockFileThread = false;
+    double              m_dfRefreshLockDelay = 0;
+
+    std::vector<CPLString> GetLayerNames() const;
+    void                AddLayer( OGRShapeLayer* poLayer );
+    static void         RefeshLockFile(void* _self);
+    void                RemoveLockFile();
+    bool                RecompressIfNeeded(const std::vector<CPLString>& layerNames);
 
     CPL_DISALLOW_COPY_ASSIGN(OGRShapeDataSource)
 
@@ -281,6 +308,9 @@ class OGRShapeDataSource final: public OGRDataSource
     bool                Open( GDALOpenInfo* poOpenInfo, bool bTestOpen,
                               bool bForceSingleFileDataSource = false );
     bool                OpenFile( const char *, bool bUpdate );
+    bool                OpenZip( GDALOpenInfo* poOpenInfo,
+                                 const char* pszOriFilename );
+    bool                CreateZip(const char* pszOriFilename );
 
     virtual const char  *GetName() override { return pszName; }
 
@@ -305,11 +335,21 @@ class OGRShapeDataSource final: public OGRDataSource
     void                 SetLastUsedLayer( OGRShapeLayer* poLayer );
     void                 UnchainLayer( OGRShapeLayer* poLayer );
 
+    bool                 UncompressIfNeeded();
+
     SHPHandle            DS_SHPOpen( const char * pszShapeFile,
                                      const char * pszAccess );
     DBFHandle            DS_DBFOpen( const char * pszDBFFile,
                                      const char * pszAccess );
     char               **GetOpenOptions() { return papszOpenOptions; }
+
+    static const char* const* GetExtensionsForDeletion();
+    bool                 IsZip() const { return m_bIsZip; }
+    CPLString            GetVSIZipPrefixeDir() const { return CPLString("/vsizip/{") + pszName + '}'; }
+    const CPLString&     GetTemporaryUnzipDir() const { return m_osTemporaryUnzipDir; }
+
+    static bool          CopyInPlace( VSILFILE* fpTarget,
+                                      const CPLString& osSourceFilename );
 };
 
 #endif /* ndef OGRSHAPE_H_INCLUDED */

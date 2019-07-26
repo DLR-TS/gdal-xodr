@@ -39,7 +39,10 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len);
 int LLVMFuzzerInitialize(int* /*argc*/, char*** argv)
 {
     const char* exe_path = (*argv)[0];
-    CPLSetConfigOption("GDAL_DATA", CPLGetPath(exe_path));
+    if( CPLGetConfigOption("GDAL_DATA", nullptr) == nullptr )
+    {
+        CPLSetConfigOption("GDAL_DATA", CPLGetPath(exe_path));
+    }
     CPLSetConfigOption("CPL_TMPDIR", "/tmp");
     CPLSetConfigOption("DISABLE_OPEN_REAL_NETCDF_FILES", "YES");
     // Disable PDF text rendering as fontconfig cannot access its config files
@@ -88,6 +91,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)
     bool bNonNearestResampling = false;
     int nBlockXSize = 0;
     int nBlockYSize = 0;
+    bool bStatsEnabled = false;
+    bool bHFA = false;
     if( papszArgv != nullptr )
     {
         int nCount = CSLCount(papszArgv);
@@ -126,6 +131,22 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)
                                 atoi(papszArgv[i+1]+strlen("BLOCKYSIZE=")));
                 }
             }
+            else if( EQUAL(papszArgv[i], "-stats") )
+            {
+                bStatsEnabled = true;
+            }
+            else if( EQUAL(papszArgv[i], "-of") && i + 1 < nCount )
+            {
+                bHFA = EQUAL( papszArgv[i+1], "HFA" );
+            }
+        }
+        if( bHFA )
+        {
+            // Disable statistics computation for HFA, as it can be time
+            // consuming.
+            // See https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=10067
+            papszArgv = CSLInsertString(papszArgv, 0, "-co");
+            papszArgv = CSLInsertString(papszArgv, 1, "STATISTICS=NO");
         }
     }
 
@@ -200,7 +221,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len)
                         }
                     }
 
-                    if( bOKForSrc && bOKForResampling )
+                    bool bOKForStats = true;
+                    if( nBands && bStatsEnabled )
+                    {
+                        // Other types might be too slow with sanitization enabled
+                        // See https://bugs.chromium.org/p/oss-fuzz/issues/detail?id=10029
+                        bOKForStats = poSrcDS->GetRasterBand(1)->GetRasterDataType() == GDT_Byte;
+                    }
+
+                    if( bOKForSrc && bOKForResampling && bOKForStats )
                     {
                         GDALDatasetH hOutDS = GDALTranslate("/vsimem/out", hSrcDS,
                                                             psOptions, nullptr);

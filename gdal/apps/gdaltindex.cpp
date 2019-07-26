@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam, DM Solutions Group Inc
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -224,6 +224,7 @@ MAIN_START(argc, argv)
                      "when -t_srs is requested.\n" );
         }
         hTargetSRS = OSRNewSpatialReference("");
+        OSRSetAxisMappingStrategy(hTargetSRS, OAMS_TRADITIONAL_GIS_ORDER);
         // coverity[tainted_data]
         if( OSRSetFromUserInput( hTargetSRS, pszTargetSRS ) != CE_None )
         {
@@ -344,6 +345,7 @@ MAIN_START(argc, argv)
                 if (pszWKT != nullptr && pszWKT[0] != '\0')
                 {
                     hSpatialRef = OSRNewSpatialReference(pszWKT);
+                    OSRSetAxisMappingStrategy(hSpatialRef, OAMS_TRADITIONAL_GIS_ORDER);
                 }
                 GDALClose(hDS);
             }
@@ -594,6 +596,7 @@ MAIN_START(argc, argv)
             projectionRef[0] != '\0' )
         {
             hSourceSRS = OSRNewSpatialReference( projectionRef );
+            OSRSetAxisMappingStrategy(hSourceSRS, OAMS_TRADITIONAL_GIS_ORDER);
         }
 
         // If set target srs, do the forward transformation of all points.

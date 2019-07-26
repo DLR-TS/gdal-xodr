@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2009, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2009-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -106,7 +106,11 @@ OGRErr OGR_SRS_ImportFromISO19115( OGRSpatialReference *poThis,
                                "");
             if( strlen(pszFalseNorthing) > 0 )
             {
-                if( EQUAL(pszFalseNorthing, "10000000"))
+                if( CPLAtof(pszFalseNorthing) == 0.0 )
+                {
+                    bNorth = TRUE;
+                }
+                else if( CPLAtof(pszFalseNorthing) == 10000000.0 )
                 {
                     bNorth = FALSE;
                 }
@@ -135,9 +139,12 @@ OGRErr OGR_SRS_ImportFromISO19115( OGRSpatialReference *poThis,
     }
     else
     {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "projection = %s not recognised by ISO 19115 parser.",
-                 pszProjection);
+        if( !EQUAL(pszProjection, "") )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                    "projection = %s not recognised by ISO 19115 parser.",
+                    pszProjection);
+        }
         CPLDestroyXMLNode(psRoot);
         return OGRERR_FAILURE;
     }

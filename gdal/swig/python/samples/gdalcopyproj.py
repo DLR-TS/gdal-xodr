@@ -12,7 +12,7 @@
 #
 # ******************************************************************************
 #  Copyright (c) 2005, Frank Warmerdam
-#  Copyright (c) 2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
+#  Copyright (c) 2009-2011, Even Rouault <even dot rouault at spatialys.com>
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
@@ -41,10 +41,10 @@ if len(sys.argv) < 3:
     print("Usage: gdalcopyproj.py source_file dest_file")
     sys.exit(1)
 
-input = sys.argv[1]
-dataset = gdal.Open(input)
+inp = sys.argv[1]
+dataset = gdal.Open(inp)
 if dataset is None:
-    print('Unable to open', input, 'for reading')
+    print('Unable to open', inp, 'for reading')
     sys.exit(1)
 
 projection = dataset.GetProjection()

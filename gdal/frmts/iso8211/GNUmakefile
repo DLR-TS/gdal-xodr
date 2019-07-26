@@ -29,11 +29,11 @@ $(ISOLIB):	$(OBJ:.o=.$(OBJ_EXT))
 8211createfromxml$(EXE):	8211createfromxml.$(OBJ_EXT)
 	$(LD) $(LDFLAGS) 8211createfromxml.$(OBJ_EXT) $(CONFIG_LIBS) -o 8211createfromxml$(EXE)
 
-8211dump$(EXE):	8211dump.$(OBJ_EXT)
-	$(LD) $(LDFLAGS) 8211dump.$(OBJ_EXT) $(CONFIG_LIBS) -o 8211dump$(EXE)
+8211dump$(EXE):	8211dump.$(OBJ_EXT) $(ISOLIB)
+	$(LD) $(LDFLAGS) 8211dump.$(OBJ_EXT) $(ISOLIB) $(CONFIG_LIBS) -o 8211dump$(EXE)
 
-8211view$(EXE):	8211view.$(OBJ_EXT)
-	$(LD) $(LDFLAGS) 8211view.$(OBJ_EXT) $(CONFIG_LIBS) -o 8211view$(EXE)
+8211view$(EXE):	8211view.$(OBJ_EXT) $(ISOLIB)
+	$(LD) $(LDFLAGS) 8211view.$(OBJ_EXT) $(ISOLIB) $(CONFIG_LIBS) -o 8211view$(EXE)
 
 timetest$(EXE):	timetest.$(OBJ_EXT)
 	$(LD) $(LDFLAGS) timetest.$(OBJ_EXT) $(CONFIG_LIBS) -o timetest$(EXE)
@@ -64,7 +64,7 @@ dist:	docs
 	cp ../../port/cpl_{vsil.cpp,vsi_mem.cpp,vsil_win32.cpp} $(DISTDIR)
 	cp ../../port/cpl_{vsil_unix_stdio_64.cpp,dir.cpp} $(DISTDIR)
 	cp ../../port/cpl_{multiproc.{cpp,h},vsi_private.h} $(DISTDIR)
-	cp ../../port/cpl_config.h.vc $(DISTDIR)
+	cp ../../port/cpl_config.h.vc.{begin,common,no_dll,end} $(DISTDIR)
 	tar czf $(DISTDIR).tar.gz $(DISTDIR)
 	zip -r $(DISTDIR).zip $(DISTDIR)
 

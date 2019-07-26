@@ -71,6 +71,8 @@ struct GDALWarpAppOptionsForBinary
     /*! output dataset open option (format specific) */
     char **papszDestOpenOptions;
 
+    char **papszCreateOptions;
+
     int bOverwrite;
     int bCreateOutput;
 };
@@ -134,6 +136,24 @@ struct GDALBuildVRTOptionsForBinary
     char* pszDstFilename;
     int bQuiet;
     int bOverwrite;
+};
+
+struct GDALMultiDimInfoOptionsForBinary
+{
+    /* Filename to open. */
+    char* pszFilename;
+
+    /* Open options. */
+    char** papszOpenOptions;
+};
+
+struct GDALMultiDimTranslateOptionsForBinary
+{
+    char* pszSource;
+    char* pszDest;
+    char* pszFormat;
+    int   bQuiet;
+    int   bUpdate;
 };
 
 CPL_C_END

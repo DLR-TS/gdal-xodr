@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -60,7 +60,7 @@
 
 class ENVIRasterBand;
 
-class ENVIDataset : public RawDataset
+class ENVIDataset final: public RawDataset
 {
     friend class ENVIRasterBand;
 
@@ -76,13 +76,16 @@ class ENVIDataset : public RawDataset
 
     char       *pszProjection;
 
-    CPLStringList m_aosHeader;
+    CPLStringList m_aosHeader{};
 
-    CPLString   osStaFilename;
+    CPLString   osStaFilename{};
+
+    std::vector<GDAL_GCP> m_asGCPs{};
 
     bool        ReadHeader( VSILFILE * );
     bool        ProcessMapinfo( const char * );
     void        ProcessRPCinfo( const char *, int, int);
+    void        ProcessGeoPoints( const char* );
     void        ProcessStatsFile();
     static int         byteSwapInt(int);
     static float       byteSwapFloat(float);
@@ -102,6 +105,8 @@ class ENVIDataset : public RawDataset
     enum Interleave { BSQ, BIL, BIP } interleave;
     static int GetEnviType(GDALDataType eType);
 
+    CPL_DISALLOW_COPY_ASSIGN(ENVIDataset)
+
   public:
     ENVIDataset();
     ~ENVIDataset() override;
@@ -109,8 +114,14 @@ class ENVIDataset : public RawDataset
     void    FlushCache() override;
     CPLErr  GetGeoTransform( double *padfTransform ) override;
     CPLErr  SetGeoTransform( double * ) override;
-    const char *GetProjectionRef() override;
-    CPLErr  SetProjection( const char * ) override;
+    const char *_GetProjectionRef() override;
+    CPLErr  _SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
     char  **GetFileList() override;
 
     void SetDescription( const char * ) override;
@@ -121,9 +132,12 @@ class ENVIDataset : public RawDataset
                             const char *pszValue,
                             const char *pszDomain = "" ) override;
     CPLErr SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
-                    const char *pszGCPProjection ) override;
+                    const OGRSpatialReference* poSRS ) override;
+    int    GetGCPCount() override;
+    const GDAL_GCP *GetGCPs() override;
 
     static GDALDataset *Open( GDALOpenInfo * );
+    static GDALDataset *Open( GDALOpenInfo *, bool bFileSizeCheck );
     static GDALDataset *Create( const char *pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType, char ** papszOptions );
@@ -135,14 +149,15 @@ class ENVIDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ENVIRasterBand : public RawRasterBand
+class ENVIRasterBand final: public RawRasterBand
 {
+    CPL_DISALLOW_COPY_ASSIGN(ENVIRasterBand)
+
   public:
-    ENVIRasterBand( GDALDataset *poDSIn, int nBandIn, void *fpRawIn,
+    ENVIRasterBand( GDALDataset *poDSIn, int nBandIn, VSILFILE *fpRawIn,
                     vsi_l_offset nImgOffsetIn, int nPixelOffsetIn,
                     int nLineOffsetIn, GDALDataType eDataTypeIn,
-                    int bNativeOrderIn, int bIsVSILIn = FALSE,
-                    int bOwnsFPIn = FALSE );
+                    int bNativeOrderIn );
     ~ENVIRasterBand() override {}
 
     void SetDescription( const char * ) override;

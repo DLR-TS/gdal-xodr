@@ -1,7 +1,14 @@
 
 include ../../GDALmake.opt
 
-OBJ	=	netcdfdataset.o netcdflayer.o netcdfwriterconfig.o gmtdataset.o
+OBJ	=	netcdfdataset.o \
+		netcdflayer.o \
+		netcdfwriterconfig.o \
+		gmtdataset.o \
+		netcdfsg.o \
+		netcdflayersg.o \
+		netcdfsgwriterutil.o \
+		netcdfmultidim.o
 
 XTRA_OPT =
 ifeq ($(NETCDF_HAS_NC4),yes)
@@ -18,6 +25,14 @@ XTRA_OPT := -DHAVE_HDF5 $(XTRA_OPT)
 endif
 
 CPPFLAGS	:=	 $(CPPFLAGS) $(XTRA_OPT)
+
+ifeq ($(ENABLE_UFFD),yes)
+ifeq ($(NETCDF_MEM),yes)
+CPPFLAGS	:=	$(CPPFLAGS) -DENABLE_UFFD
+endif
+endif
+
+$(O_OBJ):	netcdfdataset.h
 
 default:	$(OBJ:.o=.$(OBJ_EXT))
 

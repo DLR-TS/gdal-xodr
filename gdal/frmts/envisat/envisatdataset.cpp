@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Atlantis Scientific, Inc.
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -179,7 +179,10 @@ class EnvisatDataset : public RawDataset
     virtual ~EnvisatDataset();
 
     virtual int    GetGCPCount() override;
-    virtual const char *GetGCPProjection() override;
+    virtual const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     virtual const GDAL_GCP *GetGCPs() override;
     virtual char      **GetMetadataDomainList() override;
     virtual char **GetMetadata( const char * pszDomain ) override;
@@ -243,11 +246,11 @@ int EnvisatDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *EnvisatDataset::GetGCPProjection()
+const char *EnvisatDataset::_GetGCPProjection()
 
 {
     if( nGCPCount > 0 )
-        return SRS_WKT_WGS84;
+        return SRS_WKT_WGS84_LAT_LONG;
 
     return "";
 }
@@ -1019,7 +1022,8 @@ GDALDataset *EnvisatDataset::Open( GDALOpenInfo * poOpenInfo )
                                           ds_offset + nPrefixBytes,
                                           GDALGetDataTypeSize(eDataType) / 8,
                                           dsr_size,
-                                          eDataType, bNative, TRUE ) );
+                                          eDataType, bNative,
+                                          RawRasterBand::OwnFP::NO ) );
             iBand++;
 
             poDS->GetRasterBand(iBand)->SetDescription( pszDSName );
@@ -1037,7 +1041,8 @@ GDALDataset *EnvisatDataset::Open( GDALOpenInfo * poOpenInfo )
                 poDS->SetBand( iBand+1,
                            new RawRasterBand( poDS, iBand+1, poDS->fpImage,
                                               ds_offset + nPrefixBytes, 3,
-                                              dsr_size, GDT_Byte, bNative, TRUE ) );
+                                              dsr_size, GDT_Byte, bNative,
+                                              RawRasterBand::OwnFP::NO ) );
                 iBand++;
 
                 poDS->GetRasterBand(iBand)->SetDescription( pszDSName );
@@ -1047,7 +1052,8 @@ GDALDataset *EnvisatDataset::Open( GDALOpenInfo * poOpenInfo )
                            new RawRasterBand( poDS, iBand+1, poDS->fpImage,
                                               ds_offset + nPrefixBytes + 1,
                                               3, dsr_size, GDT_Int16,
-                                              bNative, TRUE ) );
+                                              bNative,
+                                              RawRasterBand::OwnFP::NO ) );
                 iBand++;
 
                 const char *pszSuffix = strstr( pszDSName, "MDS" );
@@ -1092,7 +1098,8 @@ GDALDataset *EnvisatDataset::Open( GDALOpenInfo * poOpenInfo )
                         new RawRasterBand( poDS, iBand+1, poDS->fpImage,
                                            nSubBandOffset,
                                            nPixelSize * nSubBands,
-                                           dsr_size2, eDataType2, bNative, TRUE ) );
+                                           dsr_size2, eDataType2, bNative,
+                                           RawRasterBand::OwnFP::NO ) );
                 iBand++;
 
                 if (nSubBands > 1)

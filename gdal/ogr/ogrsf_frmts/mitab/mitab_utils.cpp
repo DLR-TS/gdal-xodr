@@ -43,10 +43,6 @@
 #include "cpl_string.h"
 #include "cpl_vsi.h"
 
-#if defined(_WIN32) && !defined(unix)
-#  include <mbctype.h>  // Multibyte chars stuff.
-#endif
-
 CPL_CVSID("$Id$")
 
 /**********************************************************************
@@ -171,7 +167,7 @@ static bool TABAdjustCaseSensitiveFilename(char *pszFname)
     // by scanning all the sub-directories.
     // If we get to a point where a path component does not exist then
     // we simply return the rest of the path as is.
-    while(bValidPath && (int)strlen(pszTmpPath) < nTotalLen)
+    while(bValidPath && static_cast<int>(strlen(pszTmpPath)) < nTotalLen)
     {
         int iLastPartStart = iTmpPtr;
         char **papszDir = VSIReadDir(pszTmpPath);
@@ -319,7 +315,7 @@ char *TABGetBasename(const char *pszFname)
  **********************************************************************/
 char **TAB_CSLLoad(const char *pszFname)
 {
-    char **papszStrList = nullptr;
+    CPLStringList oList;
 
     VSILFILE *fp = VSIFOpenL(pszFname, "rt");
 
@@ -330,14 +326,14 @@ char **TAB_CSLLoad(const char *pszFname)
             const char *pszLine = nullptr;
             if ( (pszLine = CPLReadLineL(fp)) != nullptr )
             {
-                papszStrList = CSLAddString(papszStrList, pszLine);
+                oList.AddString(pszLine);
             }
         }
 
         VSIFCloseL(fp);
     }
 
-    return papszStrList;
+    return oList.StealList();
 }
 
 /**********************************************************************
@@ -346,7 +342,7 @@ char **TAB_CSLLoad(const char *pszFname)
  * Convert a string that can possibly contain escaped "\n" chars in
  * into into a new one with binary newlines in it.
  *
- * Tries to work on hte original buffer unless bSrcIsConst=TRUE, in
+ * Tries to work on the original buffer unless bSrcIsConst=TRUE, in
  * which case the original is always untouched and a copy is allocated
  * ONLY IF NECESSARY.  This means that the caller should compare the
  * return value and the source (pszString) to see if a copy was returned,
@@ -480,13 +476,6 @@ char *TABCleanFieldName(const char *pszSrcName)
             "Field name '%s' is longer than the max of 31 characters. "
             "'%s' will be used instead.", pszSrcName, pszNewName);
     }
-
-#if defined(_WIN32) && !defined(unix)
-    // On Windows, check if we're using a double-byte codepage, and
-    // if so then just keep the field name as is.
-    if (_getmbcp() != 0)
-        return pszNewName;
-#endif
 
     // According to the MapInfo User's Guide (p. 240, v5.5).
     // New Table Command:

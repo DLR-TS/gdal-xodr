@@ -47,21 +47,21 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class RRASTERDataset : public RawDataset
+class RRASTERDataset final: public RawDataset
 {
     bool        m_bHeaderDirty = false;
-    CPLString   m_osGriFilename;
+    CPLString   m_osGriFilename{};
     bool        m_bGeoTransformValid = false;
     double      m_adfGeoTransform[6]{0,1,0,0,0,-1};
     VSILFILE   *m_fpImage = nullptr;
-    CPLString   m_osProjection;
-    std::shared_ptr<GDALRasterAttributeTable> m_poRAT;
-    std::shared_ptr<GDALColorTable> m_poCT;
+    CPLString   m_osProjection{};
+    std::shared_ptr<GDALRasterAttributeTable> m_poRAT{};
+    std::shared_ptr<GDALColorTable> m_poCT{};
     bool        m_bNativeOrder = true;
-    CPLString   m_osCreator;
-    CPLString   m_osCreated;
-    CPLString   m_osBandOrder;
-    CPLString   m_osLegend;
+    CPLString   m_osCreator{};
+    CPLString   m_osCreated{};
+    CPLString   m_osBandOrder{};
+    CPLString   m_osLegend{};
     bool        m_bInitRaster = false;
 
     static bool ComputeSpacings(const CPLString& osBandOrder,
@@ -73,6 +73,8 @@ class RRASTERDataset : public RawDataset
                                 int& nLineOffset,
                                 vsi_l_offset& nBandOffset);
     void        RewriteHeader();
+
+    CPL_DISALLOW_COPY_ASSIGN(RRASTERDataset)
 
   public:
     RRASTERDataset();
@@ -93,8 +95,14 @@ class RRASTERDataset : public RawDataset
 
     CPLErr GetGeoTransform( double * ) override;
     CPLErr SetGeoTransform( double *padfGeoTransform ) override;
-    const char *GetProjectionRef() override;
-    CPLErr SetProjection( const char *pszSRS ) override;
+    const char *_GetProjectionRef() override;
+    CPLErr _SetProjection( const char *pszSRS ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 
     CPLErr      SetMetadata( char ** papszMetadata,
                                      const char * pszDomain = "" ) override;
@@ -112,7 +120,7 @@ class RRASTERDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class RRASTERRasterBand: public RawRasterBand
+class RRASTERRasterBand final: public RawRasterBand
 {
       friend class RRASTERDataset;
 
@@ -120,11 +128,13 @@ class RRASTERRasterBand: public RawRasterBand
       double    m_dfNoDataValue = 0.0;
       double    m_dfMin = std::numeric_limits<double>::infinity();
       double    m_dfMax = -std::numeric_limits<double>::infinity();
-      std::shared_ptr<GDALRasterAttributeTable> m_poRAT;
-      std::shared_ptr<GDALColorTable> m_poCT;
+      std::shared_ptr<GDALRasterAttributeTable> m_poRAT{};
+      std::shared_ptr<GDALColorTable> m_poCT{};
+
+      CPL_DISALLOW_COPY_ASSIGN(RRASTERRasterBand)
 
   public:
-      RRASTERRasterBand( GDALDataset *poDS, int nBand, void * fpRaw,
+      RRASTERRasterBand( GDALDataset *poDS, int nBand, VSILFILE * fpRaw,
                     vsi_l_offset nImgOffset, int nPixelOffset,
                     int nLineOffset,
                     GDALDataType eDataType, int bNativeOrder );
@@ -157,14 +167,15 @@ class RRASTERRasterBand: public RawRasterBand
 /************************************************************************/
 
 RRASTERRasterBand::RRASTERRasterBand( GDALDataset *poDSIn, int nBandIn,
-                                      void * fpRawIn,
+                                      VSILFILE * fpRawIn,
                                       vsi_l_offset nImgOffsetIn,
                                       int nPixelOffsetIn,
                                       int nLineOffsetIn,
                                       GDALDataType eDataTypeIn,
                                       int bNativeOrderIn ) :
     RawRasterBand(poDSIn, nBandIn, fpRawIn, nImgOffsetIn, nPixelOffsetIn,
-                  nLineOffsetIn, eDataTypeIn, bNativeOrderIn, TRUE)
+                  nLineOffsetIn, eDataTypeIn, bNativeOrderIn,
+                  RawRasterBand::OwnFP::NO)
 {
 }
 
@@ -442,7 +453,7 @@ CPLErr RRASTERRasterBand::IRasterIO( GDALRWFlag eRWFlag,
             GetMetadataItem("PIXELTYPE", "IMAGE_STRUCTURE");
         bool bByteSigned = (eDataType == GDT_Byte && pszPixelType &&
                             EQUAL(pszPixelType, "SIGNEDBYTE"));
-        const int nDTSize = GDALGetDataTypeSizeBytes(eDataType);
+        const int nDTSize = std::max(1, GDALGetDataTypeSizeBytes(eDataType));
         int bGotNoDataValue = false;
         double dfNoDataValue = GetNoDataValue(&bGotNoDataValue);
         if( !bGotNoDataValue )
@@ -860,7 +871,7 @@ CPLErr RRASTERDataset::SetGeoTransform( double *padfGeoTransform )
 /*                           GetProjectionRef()                         */
 /************************************************************************/
 
-const char * RRASTERDataset::GetProjectionRef()
+const char * RRASTERDataset::_GetProjectionRef()
 {
     return m_osProjection.c_str();
 }
@@ -869,7 +880,7 @@ const char * RRASTERDataset::GetProjectionRef()
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr RRASTERDataset::SetProjection( const char *pszSRS )
+CPLErr RRASTERDataset::_SetProjection( const char *pszSRS )
 
 {
     if( GetAccess() != GA_Update )
@@ -935,13 +946,13 @@ int RRASTERDataset::Identify( GDALOpenInfo * poOpenInfo )
     if( poOpenInfo->nHeaderBytes < 40
         || poOpenInfo->fpL == nullptr
         || !EQUAL( CPLGetExtension(poOpenInfo->pszFilename), "grd" )
-        || strstr((const char *) poOpenInfo->pabyHeader, "ncols") == nullptr
-        || strstr((const char *) poOpenInfo->pabyHeader, "nrows") == nullptr
-        || strstr((const char *) poOpenInfo->pabyHeader, "xmin") == nullptr
-        || strstr((const char *) poOpenInfo->pabyHeader, "ymin") == nullptr
-        || strstr((const char *) poOpenInfo->pabyHeader, "xmax") == nullptr
-        || strstr((const char *) poOpenInfo->pabyHeader, "ymax") == nullptr
-        || strstr((const char *) poOpenInfo->pabyHeader, "datatype") == nullptr )
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "ncols") == nullptr
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "nrows") == nullptr
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "xmin") == nullptr
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "ymin") == nullptr
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "xmax") == nullptr
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "ymax") == nullptr
+        || strstr(reinterpret_cast<const char *>(poOpenInfo->pabyHeader), "datatype") == nullptr )
     {
         return FALSE;
     }
@@ -976,7 +987,7 @@ bool RRASTERDataset::ComputeSpacings(const CPLString& osBandOrder,
             return false;
         }
         nLineOffset = nPixelSize * nCols * l_nBands;
-        nBandOffset = nPixelSize * nCols;
+        nBandOffset = static_cast<vsi_l_offset>(nPixelSize) * nCols;
     }
     else if( EQUAL( osBandOrder, "BIP" ) )
     {
@@ -1263,7 +1274,7 @@ GDALDataset *RRASTERDataset::Open( GDALOpenInfo * poOpenInfo )
         CPLStringList aosRatNames(CSLTokenizeString2(osRatNames, ":", 0));
         CPLStringList aosRatTypes(CSLTokenizeString2(osRatTypes, ":", 0));
         CPLStringList aosRatValues(CSLTokenizeString2(osRatValues, ":", 0));
-        if( !aosRatNames.empty() &&
+        if( aosRatNames.size() >= 1 &&
             aosRatNames.size() == aosRatTypes.size() &&
             (aosRatValues.size() % aosRatNames.size()) == 0 )
         {

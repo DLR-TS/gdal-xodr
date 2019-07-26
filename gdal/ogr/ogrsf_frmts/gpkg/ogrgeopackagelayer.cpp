@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2013, Paul Ramsey <pramsey@boundlessgeo.com>
- * Copyright (c) 2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -305,7 +305,7 @@ int OGRGeoPackageLayer::TestCapability ( const char * pszCap )
     if( EQUAL(pszCap,OLCIgnoreFields) )
         return TRUE;
     else if ( EQUAL(pszCap, OLCStringsAsUTF8) )
-        return m_poDS->GetUTF8();
+        return TRUE;
     else
         return FALSE;
 }

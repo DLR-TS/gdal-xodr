@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2008, Andrey Kiselev <dron@ak4719.spb.edu>
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -35,6 +35,7 @@
 #ifndef DOXYGEN_SKIP
 
 #include "gdal_alg.h"
+#include "ogr_spatialref.h"
 
 CPL_C_START
 
@@ -56,6 +57,9 @@ typedef struct {
     int nYSize;
     int nBands;
     GDALDataType eType;
+    int nPixelSpace;
+    GSpacing nLineSpace;
+    GSpacing nBandSpace;
     double *padfBurnValue;
     GDALBurnValueSrc eBurnValueSource;
     GDALRasterMergeAlg eMergeAlg;
@@ -89,7 +93,8 @@ void GDALdllImageLineAllTouched( int nRasterXSize, int nRasterYSize,
                                  int nPartCount, int *panPartSize,
                                  double *padfX, double *padfY,
                                  double *padfVariant,
-                                 llPointFunc pfnPointFunc, void *pCBData );
+                                 llPointFunc pfnPointFunc, void *pCBData,
+                                 int bAvoidBurningSamePoints );
 
 void GDALdllImageFilledPolygon( int nRasterXSize, int nRasterYSize,
                                 int nPartCount, int *panPartSize,
@@ -112,15 +117,17 @@ private:
     void     MergePolygon( int nSrcId, int nDstId );
     int      NewPolygon( DataType nValue );
 
+    CPL_DISALLOW_COPY_ASSIGN(GDALRasterPolygonEnumeratorT)
+
 public:  // these are intended to be readonly.
 
-    GInt32   *panPolyIdMap;
-    DataType   *panPolyValue;
+    GInt32   *panPolyIdMap = nullptr;
+    DataType   *panPolyValue = nullptr;
 
-    int      nNextPolygonId;
-    int      nPolyAlloc;
+    int      nNextPolygonId = 0;
+    int      nPolyAlloc = 0;
 
-    int      nConnectedness;
+    int      nConnectedness = 0;
 
 public:
     explicit GDALRasterPolygonEnumeratorT( int nConnectedness=4 );
@@ -214,6 +221,26 @@ struct FloatEqualityTest
 {
     bool operator()(float a, float b) { return GDALFloatEquals(a,b) == TRUE; }
 };
+
+bool GDALComputeAreaOfInterest(OGRSpatialReference* poSRS,
+                               double adfGT[6],
+                               int nXSize,
+                               int nYSize,
+                               double& dfWestLongitudeDeg,
+                               double& dfSouthLatitudeDeg,
+                               double& dfEastLongitudeDeg,
+                               double& dfNorthLatitudeDeg );
+
+bool GDALComputeAreaOfInterest(OGRSpatialReference* poSRS,
+                               double dfX1,
+                               double dfY1,
+                               double dfX2,
+                               double dfY2,
+                               double& dfWestLongitudeDeg,
+                               double& dfSouthLatitudeDeg,
+                               double& dfEastLongitudeDeg,
+                               double& dfNorthLatitudeDeg );
+
 
 #endif /* #ifndef DOXYGEN_SKIP */
 

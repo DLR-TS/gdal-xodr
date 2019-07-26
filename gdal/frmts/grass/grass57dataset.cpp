@@ -9,7 +9,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2000 Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -135,7 +135,10 @@ class GRASSDataset : public GDALDataset
     GRASSDataset();
     ~GRASSDataset() override;
 
-    const char *GetProjectionRef(void) override;
+    const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     CPLErr GetGeoTransform( double * ) override;
 
     static GDALDataset *Open( GDALOpenInfo * );
@@ -761,7 +764,7 @@ GRASSDataset::~GRASSDataset()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *GRASSDataset::GetProjectionRef()
+const char *GRASSDataset::_GetProjectionRef()
 {
     if( pszProjection == NULL )
         return "";

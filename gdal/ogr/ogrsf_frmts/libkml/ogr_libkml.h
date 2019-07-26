@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2010, Brian Case
- * Copyright (c) 2010-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -44,10 +44,10 @@ CPLString OGRLIBKMLGetSanitizedNCName(const char* pszName);
   layer class
 ******************************************************************************/
 
-class OGRLIBKMLLayer:public OGRLayer
+class OGRLIBKMLLayer final: public OGRLayer
 {
     int                       bUpdate;
-    bool                      bUpdated;
+
     int                       nFeatures;
     int                       iFeature;
     long                      nFID;
@@ -178,7 +178,7 @@ class OGRLIBKMLLayer:public OGRLayer
   datasource class
 ******************************************************************************/
 
-class OGRLIBKMLDataSource:public OGRDataSource
+class OGRLIBKMLDataSource final: public OGRDataSource
 {
     char                     *m_pszName;
 

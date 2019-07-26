@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2005, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2018, Even Rouault <even.rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -31,20 +31,9 @@
 
 #include "cpl_port.h"
 
-#define H5_USE_16_API
-
-#ifdef _MSC_VER
-#pragma warning(push)
-// Warning C4005: '_HDF5USEDLL_' : macro redefinition.
-#pragma warning(disable : 4005)
-#endif
-
-#include "hdf5.h"
+#include "hdf5_api.h"
 #include "hdf5dataset.h"
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+#include "hdf5vfl.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -56,11 +45,37 @@
 #include "gdal.h"
 #include "gdal_frmts.h"
 #include "gdal_priv.h"
-#
 
 CPL_CVSID("$Id$")
 
 constexpr size_t MAX_METADATA_LEN = 32768;
+
+/************************************************************************/
+/*                          HDF5GetFileDriver()                         */
+/************************************************************************/
+
+hid_t HDF5GetFileDriver()
+{
+    return HDF5VFLGetFileDriver();
+}
+
+/************************************************************************/
+/*                        HDF5UnloadFileDriver()                        */
+/************************************************************************/
+
+void HDF5UnloadFileDriver()
+{
+    HDF5VFLUnloadFileDriver();
+}
+
+/************************************************************************/
+/*                     HDF5DatasetDriverUnload()                        */
+/************************************************************************/
+
+static void HDF5DatasetDriverUnload(GDALDriver*)
+{
+    HDF5UnloadFileDriver();
+}
 
 /************************************************************************/
 /* ==================================================================== */
@@ -86,9 +101,13 @@ void GDALRegister_HDF5()
     poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "frmt_hdf5.html");
     poDriver->SetMetadataItem(GDAL_DMD_EXTENSIONS, "h5 hdf5");
     poDriver->SetMetadataItem(GDAL_DMD_SUBDATASETS, "YES");
+    poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
+
+    poDriver->SetMetadataItem( GDAL_DCAP_MULTIDIM_RASTER, "YES" );
 
     poDriver->pfnOpen = HDF5Dataset::Open;
     poDriver->pfnIdentify = HDF5Dataset::Identify;
+    poDriver->pfnUnloadDriver = HDF5DatasetDriverUnload;
     GetGDALDriverManager()->RegisterDriver(poDriver);
 
 #ifdef HDF5_PLUGIN
@@ -122,6 +141,7 @@ HDF5Dataset::~HDF5Dataset()
         H5Gclose(hGroupID);
     if( hHDF5 > 0 )
         H5Fclose(hHDF5);
+
     CSLDestroy(papszSubDatasets);
     if( poH5RootGroup != nullptr )
     {
@@ -183,8 +203,6 @@ GDALDataType HDF5Dataset::GetDataType(hid_t TypeID)
             return GDT_Unknown;
         else if( H5Tequal(H5T_NATIVE_ULLONG, TypeID) )
             return GDT_Unknown;
-        else if( H5Tequal(H5T_NATIVE_DOUBLE, TypeID) )
-            return GDT_Unknown;
     }
     else  //Parse compound type to determine if data is complex
     {
@@ -193,11 +211,31 @@ GDALDataType HDF5Dataset::GetDataType(hid_t TypeID)
             return GDT_Unknown;
 
         //For complex the native types of both elements should be the same
-        if ( H5Tequal( H5Tget_member_type(TypeID,0), H5Tget_member_type(TypeID,1)) <= 0 )
+        hid_t ElemTypeID = H5Tget_member_type(TypeID, 0);
+        hid_t Elem2TypeID = H5Tget_member_type(TypeID, 1);
+        const bool bTypeEqual = H5Tequal( ElemTypeID, Elem2TypeID) > 0;
+        H5Tclose(Elem2TypeID);
+        if ( !bTypeEqual )
+        {
+            H5Tclose(ElemTypeID);
             return GDT_Unknown;
+        }
+
+        char* pszName1 = H5Tget_member_name(TypeID, 0);
+        const bool bIsReal = pszName1 && (pszName1[0] == 'r' ||pszName1[0] == 'R');
+        H5free_memory(pszName1);
+
+        char* pszName2 = H5Tget_member_name(TypeID, 1);
+        const bool bIsImaginary = pszName2 && (pszName2[0] == 'i' ||pszName2[0] == 'I');
+        H5free_memory(pszName2);
+
+        if( !bIsReal || !bIsImaginary)
+        {
+            H5Tclose(ElemTypeID);
+            return GDT_Unknown;
+        }
 
         //Check the native types to determine CInt16, CFloat32 or CFloat64
-        hid_t ElemTypeID = H5Tget_member_type(TypeID, 0);
         GDALDataType eDataType = GDT_Unknown;
 
         if ( H5Tequal(H5T_NATIVE_SHORT, ElemTypeID) )
@@ -272,12 +310,17 @@ const char *HDF5Dataset::GetDataTypeName(hid_t TypeID)
             return "Unknown";
 
         //For complex the native types of both elements should be the same
-        if ( H5Tequal( H5Tget_member_type(TypeID,0), H5Tget_member_type(TypeID,1)) <= 0 )
+        hid_t ElemTypeID = H5Tget_member_type(TypeID, 0);
+        hid_t Elem2TypeID = H5Tget_member_type(TypeID, 1);
+        const bool bTypeEqual = H5Tequal( ElemTypeID, Elem2TypeID) > 0;
+        H5Tclose(Elem2TypeID);
+        if ( !bTypeEqual )
+        {
+            H5Tclose(ElemTypeID);
             return "Unknown";
+        }
 
         //Check the native types to determine CInt16, CFloat32 or CFloat64
-        hid_t ElemTypeID = H5Tget_member_type(TypeID, 0);
-        
         if ( H5Tequal(H5T_NATIVE_SHORT, ElemTypeID) )
         {
             H5Tclose(ElemTypeID);
@@ -316,6 +359,12 @@ const char *HDF5Dataset::GetDataTypeName(hid_t TypeID)
 int HDF5Dataset::Identify( GDALOpenInfo * poOpenInfo )
 
 {
+    if( (poOpenInfo->nOpenFlags & GDAL_OF_MULTIDIM_RASTER) &&
+        STARTS_WITH(poOpenInfo->pszFilename, "HDF5:") )
+    {
+        return TRUE;
+    }
+
     // Is it an HDF5 file?
     constexpr char achSignature[] = "\211HDF\r\n\032\n";
 
@@ -383,13 +432,22 @@ GDALDataset *HDF5Dataset::Open( GDALOpenInfo *poOpenInfo )
     if( !Identify(poOpenInfo) )
         return nullptr;
 
+    if( poOpenInfo->nOpenFlags & GDAL_OF_MULTIDIM_RASTER )
+    {
+        return OpenMultiDim(poOpenInfo);
+    }
+
     // Create datasource.
     HDF5Dataset *const poDS = new HDF5Dataset();
 
     poDS->SetDescription(poOpenInfo->pszFilename);
 
     // Try opening the dataset.
-    poDS->hHDF5 = H5Fopen(poOpenInfo->pszFilename, H5F_ACC_RDONLY, H5P_DEFAULT);
+    hid_t fapl = H5Pcreate(H5P_FILE_ACCESS);
+    H5Pset_driver(fapl, HDF5GetFileDriver(), nullptr);
+    poDS->hHDF5 = H5Fopen(poOpenInfo->pszFilename, H5F_ACC_RDONLY, fapl);
+    H5Pclose(fapl);
+
     if( poDS->hHDF5 < 0 )
     {
         delete poDS;
@@ -504,26 +562,23 @@ static void CreatePath( HDF5GroupObjects *poH5Object )
     CPLString osUnderscoreSpaceInName;
     if( poH5Object->pszPath == nullptr )
     {
+        // This is completely useless but needed if we want to keep
+        // subdataset names as they have "always" been formatted,
+        // with double slash at the beginning
+        if( osPath.empty() )
+            osPath = "/";
 
-        if( strlen(poH5Object->pszName) == 1 )
-        {
-            osPath.append(poH5Object->pszName);
-            osUnderscoreSpaceInName = poH5Object->pszName;
-        }
-        else
-        {
-            // Change space for underscore.
-            char **papszPath =
-                CSLTokenizeString2(osPath.c_str(), " ", CSLT_HONOURSTRINGS);
+        // Change space for underscore.
+        char **papszPath =
+            CSLTokenizeString2(osPath.c_str(), " ", CSLT_HONOURSTRINGS);
 
-            for( int i = 0; papszPath[i] != nullptr ; i++ )
-            {
-                if( i > 0 )
-                    osUnderscoreSpaceInName.append("_");
-                osUnderscoreSpaceInName.append(papszPath[i]);
-            }
-            CSLDestroy(papszPath);
+        for( int i = 0; papszPath[i] != nullptr ; i++ )
+        {
+            if( i > 0 )
+                osUnderscoreSpaceInName.append("_");
+            osUnderscoreSpaceInName.append(papszPath[i]);
         }
+        CSLDestroy(papszPath);
 
         // -1 to give room for NUL in C strings.
         constexpr size_t MAX_PATH = 8192 - 1;
@@ -779,7 +834,13 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
     const hid_t hAttrSpace = H5Aget_space(hAttrID);
 
     if( H5Tget_class(hAttrNativeType) == H5T_VLEN )
+    {
+        H5Sclose(hAttrSpace);
+        H5Tclose(hAttrNativeType);
+        H5Tclose(hAttrTypeID);
+        H5Aclose(hAttrID);
         return 0;
+    }
 
     hsize_t nSize[64] = {};
     const unsigned int nAttrDims =
@@ -806,11 +867,11 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
             H5Aread(hAttrID, hAttrNativeType, papszStrings);
 
             // Concatenate all values as one string separated by a space.
-            CPLString osVal = papszStrings[0];
+            CPLString osVal = papszStrings[0] ? papszStrings[0] : "{NULL}";
             for( hsize_t i = 1; i < nAttrElmts; i++ )
             {
                 osVal += " ";
-                osVal += papszStrings[i];
+                osVal += papszStrings[i] ? papszStrings[i] : "{NULL}";
             }
 
             szValue = static_cast<char *>(CPLMalloc(osVal.length() + 1));
@@ -842,30 +903,48 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
             szValue[0] = '\0';
             H5Aread(hAttrID, hAttrNativeType, buf);
         }
-        if( H5Tequal(H5T_NATIVE_CHAR, hAttrNativeType ) ||
-            H5Tequal(H5T_NATIVE_SCHAR, hAttrNativeType) )
+        const bool bIsSCHAR = H5Tequal(H5T_NATIVE_SCHAR, hAttrNativeType) > 0;
+        const bool bIsUCHAR = H5Tequal(H5T_NATIVE_UCHAR, hAttrNativeType) > 0;
+        if( (bIsSCHAR || bIsUCHAR) &&
+            CPLTestBool(CPLGetConfigOption("GDAL_HDF5_CHAR_AS_STRING", "NO")) )
         {
+            // Compatibility mode with ancient GDAL versions where we consider
+            // array of SCHAR/UCHAR as strings. Likely inappropriate mode...
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
-                snprintf(szData, nDataLen, "%c ", static_cast<char *>(buf)[i]);
+                snprintf(szData, nDataLen, "%c",
+                         static_cast<char *>(buf)[i]);
                 if( CPLStrlcat(szValue, szData, MAX_METADATA_LEN) >=
                     MAX_METADATA_LEN )
                     CPLError(CE_Warning, CPLE_OutOfMemory,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_UCHAR, hAttrNativeType) )
+        else if( bIsSCHAR )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
-                snprintf(szData, nDataLen, "%c", static_cast<char *>(buf)[i]);
+                snprintf(szData, nDataLen, "%d ",
+                         static_cast<signed char *>(buf)[i]);
                 if( CPLStrlcat(szValue, szData, MAX_METADATA_LEN) >=
                     MAX_METADATA_LEN )
                     CPLError(CE_Warning, CPLE_OutOfMemory,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_SHORT, hAttrNativeType) )
+        else if( bIsUCHAR )
+        {
+            for( hsize_t i = 0; i < nAttrElmts; i++ )
+            {
+                snprintf(szData, nDataLen, "%u ",
+                         static_cast<unsigned char *>(buf)[i]);
+                if( CPLStrlcat(szValue, szData, MAX_METADATA_LEN) >=
+                    MAX_METADATA_LEN )
+                    CPLError(CE_Warning, CPLE_OutOfMemory,
+                             "Header data too long. Truncated");
+            }
+        }
+        else if( H5Tequal(H5T_NATIVE_SHORT, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
@@ -876,11 +955,11 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_USHORT, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_USHORT, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
-              snprintf(szData, nDataLen, "%ud ",
+              snprintf(szData, nDataLen, "%u ",
                        static_cast<unsigned short *>(buf)[i]);
                 if( CPLStrlcat(szValue, szData, MAX_METADATA_LEN) >=
                     MAX_METADATA_LEN )
@@ -888,7 +967,7 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_INT, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_INT, hAttrNativeType) > 0 )
         {
             for( hsize_t i=0; i < nAttrElmts; i++ )
             {
@@ -899,11 +978,11 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_UINT, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_UINT, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
-                snprintf(szData, nDataLen, "%ud ",
+                snprintf(szData, nDataLen, "%u ",
                          static_cast<unsigned int *>(buf)[i]);
                 if( CPLStrlcat(szValue, szData, MAX_METADATA_LEN) >=
                     MAX_METADATA_LEN )
@@ -911,7 +990,7 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_LONG, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_LONG, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
@@ -922,7 +1001,7 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_ULONG, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_ULONG, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ ) {
                 snprintf(szData, nDataLen, "%lu ",
@@ -933,7 +1012,7 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_FLOAT, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_FLOAT, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {
@@ -945,7 +1024,7 @@ static herr_t HDF5AttrIterate( hid_t hH5ObjID,
                              "Header data too long. Truncated");
             }
         }
-        else if( H5Tequal(H5T_NATIVE_DOUBLE, hAttrNativeType) )
+        else if( H5Tequal(H5T_NATIVE_DOUBLE, hAttrNativeType) > 0 )
         {
             for( hsize_t i = 0; i < nAttrElmts; i++ )
             {

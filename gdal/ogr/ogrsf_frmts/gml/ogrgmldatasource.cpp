@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1490,6 +1490,8 @@ OGRGMLLayer *OGRGMLDataSource::TranslateGMLSchema( GMLFeatureClass *poClass )
     if (pszSRSName)
     {
         poSRS = new OGRSpatialReference();
+        poSRS->SetAxisMappingStrategy(
+            m_bInvertAxisOrderIfLatLong ? OAMS_TRADITIONAL_GIS_ORDER : OAMS_AUTHORITY_COMPLIANT);
         if (poSRS->SetFromUserInput(pszSRSName) != OGRERR_NONE)
         {
             delete poSRS;
@@ -1499,9 +1501,12 @@ OGRGMLLayer *OGRGMLDataSource::TranslateGMLSchema( GMLFeatureClass *poClass )
     else
     {
         pszSRSName = GetGlobalSRSName();
-        if (pszSRSName)
+
+        if (pszSRSName && GML_IsLegitSRSName(pszSRSName) )
         {
             poSRS = new OGRSpatialReference();
+            poSRS->SetAxisMappingStrategy(
+                m_bInvertAxisOrderIfLatLong ? OAMS_TRADITIONAL_GIS_ORDER : OAMS_AUTHORITY_COMPLIANT);
             if (poSRS->SetFromUserInput(pszSRSName) != OGRERR_NONE)
             {
                 delete poSRS;
@@ -1511,14 +1516,6 @@ OGRGMLLayer *OGRGMLDataSource::TranslateGMLSchema( GMLFeatureClass *poClass )
             if (poSRS != nullptr && m_bInvertAxisOrderIfLatLong &&
                 GML_IsSRSLatLongOrder(pszSRSName))
             {
-                OGR_SRSNode *poGEOGCS = poSRS->GetAttrNode("GEOGCS");
-                if( poGEOGCS != nullptr )
-                    poGEOGCS->StripNodes("AXIS");
-
-                OGR_SRSNode *poPROJCS = poSRS->GetAttrNode("PROJCS");
-                if (poPROJCS != nullptr && poSRS->EPSGTreatsAsNorthingEasting())
-                    poPROJCS->StripNodes("AXIS");
-
                 if (!poClass->HasExtents() && sBoundingRect.IsInit())
                 {
                     poClass->SetExtents(sBoundingRect.MinY, sBoundingRect.MaxY,
@@ -1908,14 +1905,20 @@ OGRGMLDataSource::ICreateLayer(const char *pszLayerName,
     {
         WriteTopElements();
         if (poSRS)
+        {
             poWriteGlobalSRS = poSRS->Clone();
+            poWriteGlobalSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        }
         bWriteGlobalSRS = true;
     }
     else if( bWriteGlobalSRS )
     {
         if( poWriteGlobalSRS != nullptr )
         {
-            if (poSRS == nullptr || !poSRS->IsSame(poWriteGlobalSRS))
+            const char* const apszOptions[] = {
+                "IGNORE_DATA_AXIS_TO_SRS_AXIS_MAPPING=YES", nullptr };
+            if (poSRS == nullptr ||
+                !poSRS->IsSame(poWriteGlobalSRS, apszOptions))
             {
                 delete poWriteGlobalSRS;
                 poWriteGlobalSRS = nullptr;
@@ -1941,6 +1944,7 @@ OGRGMLDataSource::ICreateLayer(const char *pszLayerName,
             // Clone it since mapogroutput assumes that it can destroys
             // the SRS it has passed to use, instead of dereferencing it.
             poSRS = poSRS->Clone();
+            poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
             poLayer->GetLayerDefn()->GetGeomFieldDefn(0)->SetSpatialRef(poSRS);
             poSRS->Dereference();
         }
@@ -2064,7 +2068,8 @@ void OGRGMLDataSource::InsertHeader()
     // Detect if there are fields of List types.
     bool bHasListFields = false;
 
-    for( int iLayer = 0; !bHasListFields && iLayer < GetLayerCount(); iLayer++ )
+    const int nLayerCount = OGRGMLDataSource::GetLayerCount();
+    for( int iLayer = 0; !bHasListFields && iLayer < nLayerCount; iLayer++ )
     {
         OGRFeatureDefn *poFDefn = papoLayers[iLayer]->GetLayerDefn();
         for( int iField = 0;
@@ -2260,7 +2265,7 @@ void OGRGMLDataSource::InsertHeader()
     }
 
     // Define the schema for each layer.
-    for( int iLayer = 0; iLayer < GetLayerCount(); iLayer++ )
+    for( int iLayer = 0; iLayer < nLayerCount; iLayer++ )
     {
         OGRFeatureDefn *poFDefn = papoLayers[iLayer]->GetLayerDefn();
 

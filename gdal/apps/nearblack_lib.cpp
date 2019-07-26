@@ -6,7 +6,7 @@
  *
  * ****************************************************************************
  * Copyright (c) 2006, MapShots Inc (www.mapshots.com)
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,7 @@
 #include "gdal_utils_priv.h"
 #include "commonutils.h"
 
+#include <cassert>
 #include <cstdlib>
 #include <cstring>
 
@@ -280,6 +281,7 @@ GDALDatasetH CPL_DLL GDALNearblack( const char *pszDest, GDALDatasetH hDstDS,
 
         /***** add the color to the colors *****/
         oColors.push_back(oColor);
+        assert( !oColors.empty() );
     }
 
     /***** does the number of bands match the number of color values? *****/

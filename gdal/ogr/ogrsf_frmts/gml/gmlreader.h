@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -85,7 +85,7 @@ class CPL_DLL GMLPropertyDefn
 
 public:
 
-        GMLPropertyDefn( const char *pszName, const char *pszSrcElement=nullptr );
+        explicit GMLPropertyDefn( const char *pszName, const char *pszSrcElement=nullptr );
        ~GMLPropertyDefn();
 
     const char *GetName() const { return m_pszName; }
@@ -154,6 +154,7 @@ class CPL_DLL GMLFeatureClass
     int         m_nPropertyCount;
     GMLPropertyDefn **m_papoProperty;
     std::map<CPLString, int> m_oMapPropertyNameToIndex;
+    std::map<CPLString, int> m_oMapPropertySrcElementToIndex;
 
     int         m_nGeometryPropertyCount;
     GMLGeometryPropertyDefn **m_papoGeometryProperty;

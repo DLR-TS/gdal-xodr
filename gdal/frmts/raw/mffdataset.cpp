@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2000, Frank Warmerdam
- * Copyright (c) 2008-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -54,7 +54,7 @@ static int GetMFFProjectionType(const char * pszNewProjection);
 /* ==================================================================== */
 /************************************************************************/
 
-class MFFDataset : public RawDataset
+class MFFDataset final : public RawDataset
 {
     int         nGCPCount;
     GDAL_GCP    *pasGCPList;
@@ -67,6 +67,8 @@ class MFFDataset : public RawDataset
     void        ScanForGCPs();
     void        ScanForProjectionInfo();
 
+    CPL_DISALLOW_COPY_ASSIGN(MFFDataset)
+
   public:
     MFFDataset();
     ~MFFDataset() override;
@@ -78,10 +80,16 @@ class MFFDataset : public RawDataset
     char** GetFileList() override;
 
     int GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     const GDAL_GCP *GetGCPs() override;
 
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     CPLErr GetGeoTransform( double * ) override;
 
     static GDALDataset *Open( GDALOpenInfo * );
@@ -101,12 +109,14 @@ class MFFDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class MFFTiledBand : public GDALRasterBand
+class MFFTiledBand final: public GDALRasterBand
 {
     friend class MFFDataset;
 
     VSILFILE      *fpRaw;
     bool           bNative;
+
+    CPL_DISALLOW_COPY_ASSIGN(MFFTiledBand)
 
   public:
     MFFTiledBand( MFFDataset *, int, VSILFILE *, int, int,
@@ -313,7 +323,7 @@ int MFFDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *MFFDataset::GetGCPProjection()
+const char *MFFDataset::_GetGCPProjection()
 
 {
     if( nGCPCount > 0 )
@@ -326,7 +336,7 @@ const char *MFFDataset::GetGCPProjection()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *MFFDataset::GetProjectionRef()
+const char *MFFDataset::_GetProjectionRef()
 
 {
    return pszProjection;
@@ -403,7 +413,7 @@ void MFFDataset::ScanForGCPs()
             dfRasterY = GetRasterYSize()-0.5;
             pszBase = "BOTTOM_LEFT_CORNER";
         }
-        else if( nCorner == 4 )
+        else /* if( nCorner == 4 ) */
         {
             dfRasterX = GetRasterXSize()/2.0;
             dfRasterY = GetRasterYSize()/2.0;
@@ -534,6 +544,7 @@ void MFFDataset::ScanForProjectionInfo()
     }
 
     OGRSpatialReference oLL;
+    oLL.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     if (pszOriginLong != nullptr)
         oLL.SetProjParm(SRS_PP_LONGITUDE_OF_ORIGIN,CPLAtof(pszOriginLong));
 
@@ -971,7 +982,7 @@ GDALDataset *MFFDataset::Open( GDALOpenInfo * poOpenInfo )
             poBand =
                 new RawRasterBand( poDS, nBand, fpRaw, 0, nPixelOffset,
                                    nPixelOffset * poDS->GetRasterXSize(),
-                                   eDataType, bNative, TRUE, TRUE );
+                                   eDataType, bNative, RawRasterBand::OwnFP::YES );
         }
 
         poDS->SetBand( nBand, poBand );
@@ -1439,16 +1450,12 @@ MFFDataset::CreateCopy( const char * pszFilename,
               tempGeoTransform[5]*(poSrcDS->GetRasterYSize())/2.0;
 
           OGRSpatialReference oUTMorLL(poSrcDS->GetProjectionRef());
-          char *newGCPProjection = nullptr;
-          (oUTMorLL.GetAttrNode("GEOGCS"))->exportToWkt(&newGCPProjection);
-          OGRSpatialReference oLL(newGCPProjection);
-          CPLFree(newGCPProjection);
-          newGCPProjection = nullptr;
-
-          if( STARTS_WITH_CI(poSrcDS->GetProjectionRef(), "PROJCS") )
+          auto poLLSRS = oUTMorLL.CloneGeogCS();
+          if( poLLSRS && oUTMorLL.IsProjected() )
           {
+            poLLSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
             OGRCoordinateTransformation *poTransform
-                = OGRCreateCoordinateTransformation( &oUTMorLL, &oLL );
+                = OGRCreateCoordinateTransformation( &oUTMorLL, poLLSRS );
 
             // projected coordinate system- need to translate gcps */
             bool bSuccess = poTransform != nullptr;
@@ -1470,6 +1477,7 @@ MFFDataset::CreateCopy( const char * pszFilename,
           {
             georef_created = true;
           }
+          delete poLLSRS;
       }
       CPLFree(tempGeoTransform);
     }

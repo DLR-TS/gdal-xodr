@@ -10,7 +10,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2005-2007 Daylon Graphics Ltd.
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -302,10 +302,17 @@ public:
                                 GDALDataType eType, char** papszOptions );
 
     virtual CPLErr      GetGeoTransform( double* ) override;
-    virtual const char* GetProjectionRef(void) override;
+    virtual const char* _GetProjectionRef(void) override;
 
     virtual CPLErr      SetGeoTransform( double* ) override;
-    virtual CPLErr      SetProjection(const char*) override;
+    virtual CPLErr      _SetProjection(const char*) override;
+
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 };
 
 class digital_axis
@@ -841,7 +848,7 @@ CPLErr LevellerDataset::SetGeoTransform( double *padfGeoTransform )
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr LevellerDataset::SetProjection( const char * pszNewProjection )
+CPLErr LevellerDataset::_SetProjection( const char * pszNewProjection )
 {
     CPLFree(m_pszProjection);
 
@@ -1443,7 +1450,7 @@ bool LevellerDataset::load_from_file(VSILFILE* file, const char* pszFilename)
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char* LevellerDataset::GetProjectionRef(void)
+const char* LevellerDataset::_GetProjectionRef(void)
 {
     return m_pszProjection == nullptr ? "" : m_pszProjection;
 }

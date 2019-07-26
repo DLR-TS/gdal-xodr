@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2000, Atlantis Scientific Inc.
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -147,7 +147,10 @@ class SAR_CEOSDataset : public GDALPamDataset
     ~SAR_CEOSDataset() override;
 
     int GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     const GDAL_GCP *GetGCPs() override;
 
     char **GetMetadataDomainList() override;
@@ -716,11 +719,11 @@ int SAR_CEOSDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *SAR_CEOSDataset::GetGCPProjection()
+const char *SAR_CEOSDataset::_GetGCPProjection()
 
 {
     if( nGCPCount > 0 )
-        return SRS_WKT_WGS84;
+        return SRS_WKT_WGS84_LAT_LONG;
 
     return "";
 }
@@ -2004,7 +2007,7 @@ GDALDataset *SAR_CEOSDataset::Open( GDALOpenInfo * poOpenInfo )
                     new RawRasterBand(
                         poDS, poDS->nBands+1, fp,
                         nStartData, nPixelOffset, nLineOffset,
-                        eType, bNative, TRUE ) );
+                        eType, bNative, RawRasterBand::OwnFP::NO ) );
         }
     }
 

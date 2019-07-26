@@ -44,9 +44,7 @@ CPL_CVSID("$Id$")
  * \brief Create an empty PolyhedralSurface
  */
 
-OGRPolyhedralSurface::OGRPolyhedralSurface()
-
-{ }
+OGRPolyhedralSurface::OGRPolyhedralSurface() = default;
 
 /************************************************************************/
 /*         OGRPolyhedralSurface( const OGRPolyhedralSurface& )          */
@@ -57,10 +55,7 @@ OGRPolyhedralSurface::OGRPolyhedralSurface()
  *
  */
 
-OGRPolyhedralSurface::OGRPolyhedralSurface( const OGRPolyhedralSurface& other ) :
-    OGRSurface(other),
-    oMP(other.oMP)
-{ }
+OGRPolyhedralSurface::OGRPolyhedralSurface( const OGRPolyhedralSurface& ) = default;
 
 /************************************************************************/
 /*                        ~OGRPolyhedralSurface()                       */
@@ -71,9 +66,7 @@ OGRPolyhedralSurface::OGRPolyhedralSurface( const OGRPolyhedralSurface& other ) 
  *
  */
 
-OGRPolyhedralSurface::~OGRPolyhedralSurface()
-
-{ }
+OGRPolyhedralSurface::~OGRPolyhedralSurface() = default;
 
 /************************************************************************/
 /*                 operator=( const OGRPolyhedralSurface&)              */
@@ -373,7 +366,6 @@ OGRErr OGRPolyhedralSurface::importFromWkt( const char ** ppszInput )
 
     char        szToken[OGR_WKT_TOKEN_MAX];
     const char  *pszInput = *ppszInput;
-    eErr = OGRERR_NONE;
 
     /* Skip first '(' */
     pszInput = OGRWktReadToken( pszInput, szToken );
@@ -443,6 +435,9 @@ OGRErr OGRPolyhedralSurface::importFromWkt( const char ** ppszInput )
 
     if( szToken[0] != ')' )
         return OGRERR_CORRUPT_DATA;
+
+    set3D(oMP.Is3D());
+    setMeasured(oMP.IsMeasured());
 
     *ppszInput = pszInput;
     return OGRERR_NONE;

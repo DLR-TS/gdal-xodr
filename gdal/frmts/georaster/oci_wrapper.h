@@ -34,6 +34,7 @@
 
 #include "gdal.h"
 #include "gdal_priv.h"
+#include "cpl_string.h"
 
 // Oracle Class Interface
 
@@ -63,7 +64,7 @@ const char*         OWSetDataType( const GDALDataType eType );
 int                 OWParseServerVersion( const char* pszText );
 int                 OWParseEPSG( const char* pszText );
 bool                OWIsNumeric( const char *pszText );
-const char*         OWParseSDO_GEOR_INIT( const char* pszInsert, int nField );
+CPLString           OWParseSDO_GEOR_INIT( const char* pszInsert, int nField );
 char*               OWRemoveQuotes( const char* pszText );
 void                OWUpperIfNoQuotes( char* pszText );
 
@@ -274,33 +275,33 @@ public:
 
 private:
 
-    OCIEnv*             hEnv;
-    OCIError*           hError;
-    OCISvcCtx*          hSvcCtx;
-    OCIServer*          hServer;
-    OCISession*         hSession;
-    OCIDescribe*        hDescribe;
+    OCIEnv*             hEnv = nullptr;
+    OCIError*           hError = nullptr;
+    OCISvcCtx*          hSvcCtx = nullptr;
+    OCIServer*          hServer = nullptr;
+    OCISession*         hSession = nullptr;
+    OCIDescribe*        hDescribe = nullptr;
 
-    int                 nVersion;
-    sb4                 nCharSize;
+    int                 nVersion = 0;
+    sb4                 nCharSize = 1;
 
-    bool                bSuceeeded;
+    bool                bSuceeeded = false;
 
-    bool                bExtProc;
+    bool                bExtProc = false;
 
-    char*               pszUser;
-    char*               pszPassword;
-    char*               pszServer;
+    char*               pszUser = nullptr;
+    char*               pszPassword = nullptr;
+    char*               pszServer = nullptr;
 
-    char*               pszExtProcUser;
-    char*               pszExtProcSchema;
+    char*               pszExtProcUser = nullptr;
+    char*               pszExtProcSchema = nullptr;
 
-    OCIType*            hNumArrayTDO;
-    OCIType*            hGeometryTDO;
-    OCIType*            hGeoRasterTDO;
-    OCIType*            hPCTDO;
-    OCIType*            hElemArrayTDO;
-    OCIType*            hOrdnArrayTDO;
+    OCIType*            hNumArrayTDO = nullptr;
+    OCIType*            hGeometryTDO = nullptr;
+    OCIType*            hGeoRasterTDO = nullptr;
+    OCIType*            hPCTDO = nullptr;
+    OCIType*            hElemArrayTDO = nullptr;
+    OCIType*            hOrdnArrayTDO = nullptr;
 
     void                QueryVersion();
 
@@ -362,20 +363,20 @@ public:
 
 private:
 
-    OWConnection*       poConnection;
-    OCIStmt*            hStmt;
-    OCIError*           hError;
+    OWConnection*       poConnection = nullptr;
+    OCIStmt*            hStmt = nullptr;
+    OCIError*           hError = nullptr;
 
-    int                 nNextCol;
-    int                 nNextBnd;
+    int                 nNextCol = 0;
+    int                 nNextBnd = 0;
 
-    ub4                 nStmtMode;
+    ub4                 nStmtMode = OCI_DEFAULT;
 
 public:
 
     bool                Execute( int nRows = 1 );
     bool                Fetch( int nRows = 1 );
-    unsigned int        nFetchCount;
+    unsigned int        nFetchCount = 0;
 
     int                 GetInteger( OCINumber* ppoData );
     double              GetDouble( OCINumber* ppoData );
@@ -417,6 +418,7 @@ public:
     unsigned long       ReadBlob( OCILobLocator* phLocator,
                             void* pBuffer, unsigned long nOffset, 
                                            unsigned long nSize );
+    void                FreeLob(OCILobLocator* phLocator);
     char*               ReadCLob( OCILobLocator* phLocator );
     void                WriteCLob( OCILobLocator** pphLocator, char* pszData );
     bool                WriteBlob( OCILobLocator* phLocator,

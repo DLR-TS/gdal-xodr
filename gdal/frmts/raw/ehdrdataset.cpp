@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -77,7 +77,7 @@ EHdrRasterBand::EHdrRasterBand( GDALDataset *poDSIn,
                                 GDALDataType eDataTypeIn, int bNativeOrderIn,
                                 int nBitsIn) :
   RawRasterBand(poDSIn, nBandIn, fpRawIn, nImgOffsetIn, nPixelOffsetIn,
-                nLineOffsetIn, eDataTypeIn, bNativeOrderIn, TRUE),
+                nLineOffsetIn, eDataTypeIn, bNativeOrderIn, RawRasterBand::OwnFP::NO),
   nBits(nBitsIn),
   nStartBit(0),
   nPixelOffsetBits(0),
@@ -446,10 +446,10 @@ const char *EHdrDataset::GetKeyValue( const char *pszKey,
     for( int i = 0; papszHDR[i] != nullptr; i++ )
     {
         if( EQUALN(pszKey,papszHDR[i],strlen(pszKey)) &&
-            isspace((unsigned char)papszHDR[i][strlen(pszKey)]) )
+            isspace(static_cast<unsigned char>(papszHDR[i][strlen(pszKey)])) )
         {
             const char *pszValue = papszHDR[i] + strlen(pszKey);
-            while( isspace((unsigned char)*pszValue) )
+            while( isspace(static_cast<unsigned char>(*pszValue)) )
                 pszValue++;
 
             return pszValue;
@@ -584,20 +584,20 @@ void EHdrDataset::RewriteCLR( GDALRasterBand* poBand ) const
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *EHdrDataset::GetProjectionRef()
+const char *EHdrDataset::_GetProjectionRef()
 
 {
     if (pszProjection && strlen(pszProjection) > 0)
         return pszProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/
 /*                           SetProjection()                            */
 /************************************************************************/
 
-CPLErr EHdrDataset::SetProjection( const char *pszSRS )
+CPLErr EHdrDataset::_SetProjection( const char *pszSRS )
 
 {
     // Reset coordinate system on the dataset.
@@ -965,6 +965,12 @@ char **EHdrDataset::GetFileList()
 GDALDataset *EHdrDataset::Open( GDALOpenInfo * poOpenInfo )
 
 {
+    return Open(poOpenInfo, true);
+}
+
+GDALDataset *EHdrDataset::Open( GDALOpenInfo * poOpenInfo, bool bFileSizeCheck )
+
+{
     // Assume the caller is pointing to the binary (i.e. .bil) file.
     if( poOpenInfo->nHeaderBytes < 2 || poOpenInfo->fpL == nullptr )
         return nullptr;
@@ -1314,7 +1320,8 @@ GDALDataset *EHdrDataset::Open( GDALOpenInfo * poOpenInfo )
         nBandOffset = static_cast<vsi_l_offset>(nItemSize) * nCols;
     }
 
-    if( nBits >= 8 && !RAWDatasetCheckMemoryUsage(
+    if( nBits >= 8 && bFileSizeCheck &&
+        !RAWDatasetCheckMemoryUsage(
                         poDS->nRasterXSize, poDS->nRasterYSize, nBands,
                         nItemSize,
                         nPixelOffset, nLineOffset, nSkipBytes, nBandOffset,
@@ -1793,8 +1800,8 @@ GDALDataset *EHdrDataset::Create( const char * pszFilename,
     if( !bOK )
         return nullptr;
 
-    return
-        reinterpret_cast<GDALDataset *>(GDALOpen(pszFilename, GA_Update));
+    GDALOpenInfo oOpenInfo( pszFilename, GA_Update );
+    return Open(&oOpenInfo, false);
 }
 
 /************************************************************************/

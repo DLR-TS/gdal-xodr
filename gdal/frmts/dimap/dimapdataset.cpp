@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -46,7 +46,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class DIMAPDataset : public GDALPamDataset
+class DIMAPDataset final: public GDALPamDataset
 {
     CPLXMLNode *psProduct;
 
@@ -85,10 +85,16 @@ class DIMAPDataset : public GDALPamDataset
     DIMAPDataset();
     ~DIMAPDataset() override;
 
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     CPLErr GetGeoTransform( double * ) override;
     int GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     const GDAL_GCP *GetGCPs() override;
     char **GetMetadataDomainList() override;
     char **GetMetadata( const char *pszDomain ) override;
@@ -137,7 +143,7 @@ DIMAPDataset::DIMAPDataset() :
 DIMAPDataset::~DIMAPDataset()
 
 {
-    FlushCache();
+    DIMAPDataset::FlushCache();
 
     CPLDestroyXMLNode( psProduct );
 
@@ -154,7 +160,7 @@ DIMAPDataset::~DIMAPDataset()
 
     CSLDestroy(papszXMLDimapMetadata);
 
-    CloseDependentDatasets();
+    DIMAPDataset::CloseDependentDatasets();
 }
 
 /************************************************************************/
@@ -183,7 +189,7 @@ char **DIMAPDataset::GetMetadataDomainList()
 {
     return BuildMetadataDomainList(GDALPamDataset::GetMetadataDomainList(),
                                    TRUE,
-                                   "xml:dimap", NULL);
+                                   "xml:dimap", nullptr);
 }
 
 /************************************************************************/
@@ -214,13 +220,13 @@ char **DIMAPDataset::GetMetadata( const char *pszDomain )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *DIMAPDataset::GetProjectionRef()
+const char *DIMAPDataset::_GetProjectionRef()
 
 {
     if( !osProjection.empty() && bHaveGeoTransform )
         return osProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/
@@ -1565,7 +1571,7 @@ int DIMAPDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *DIMAPDataset::GetGCPProjection()
+const char *DIMAPDataset::_GetGCPProjection()
 
 {
     return pszGCPProjection;

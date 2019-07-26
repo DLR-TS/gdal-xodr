@@ -2,10 +2,10 @@
  *
  * Project:  RPF TOC read Translator
  * Purpose:  Implementation of RPFTOCDataset and RPFTOCSubDataset.
- * Author:   Even Rouault, even.rouault at mines-paris.org
+ * Author:   Even Rouault, even.rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2007-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -126,16 +126,22 @@ class RPFTOCDataset : public GDALPamDataset
         return CE_None;
     }
 
-    virtual CPLErr SetProjection( const char * projectionRef ) override
+    virtual CPLErr _SetProjection( const char * projectionRef ) override
     {
         CPLFree(pszProjection);
         pszProjection = CPLStrdup(projectionRef);
         return CE_None;
     }
 
-    virtual const char *GetProjectionRef(void) override
+    virtual const char *_GetProjectionRef(void) override
     {
         return (pszProjection) ? pszProjection : "";
+    }
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
     }
 
     static int IsNITFFileTOC(NITFFile *psFile);
@@ -262,12 +268,12 @@ class RPFTOCProxyRasterDataSet : public GDALProxyPoolDataset
             return noDataValue;
         }
 
-        GDALDataset* RefUnderlyingDataset() override
+        GDALDataset* RefUnderlyingDataset() const override
         {
             return GDALProxyPoolDataset::RefUnderlyingDataset();
         }
 
-        void UnrefUnderlyingDataset(GDALDataset* poUnderlyingDataset) override
+        void UnrefUnderlyingDataset(GDALDataset* poUnderlyingDataset) const override
         {
             GDALProxyPoolDataset::UnrefUnderlyingDataset(poUnderlyingDataset);
         }

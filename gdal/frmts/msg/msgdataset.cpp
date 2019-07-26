@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, ITC
- * Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -92,7 +92,7 @@ MSGDataset::~MSGDataset()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *MSGDataset::GetProjectionRef()
+const char *MSGDataset::_GetProjectionRef()
 
 {
   return pszProjection;
@@ -102,7 +102,7 @@ const char *MSGDataset::GetProjectionRef()
 /*                          SetProjection()                             */
 /************************************************************************/
 
-CPLErr MSGDataset::SetProjection( const char * pszNewProjection )
+CPLErr MSGDataset::_SetProjection( const char * pszNewProjection )
 {
     CPLFree( pszProjection );
     pszProjection = CPLStrdup( pszNewProjection );
@@ -281,14 +281,13 @@ GDALDataset *MSGDataset::Open( GDALOpenInfo * poOpenInfo )
 /*   Create a transformer to LatLon (only for Reflectance calculation)  */
 /* -------------------------------------------------------------------- */
 
-    char *pszLLTemp = nullptr;
-
-    (poDS->oSRS.GetAttrNode("GEOGCS"))->exportToWkt(&pszLLTemp);
-    poDS->oLL.importFromWkt(pszLLTemp);
-    CPLFree( pszLLTemp );
-
-    poDS->poTransform = OGRCreateCoordinateTransformation( &(poDS->oSRS), &(poDS->oLL) );
-
+    OGRSpatialReference* poSRSLongLat = poDS->oSRS.CloneGeogCS();
+    if( poSRSLongLat )
+    {
+        poSRSLongLat->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        poDS->poTransform = OGRCreateCoordinateTransformation( &(poDS->oSRS),poSRSLongLat );
+        delete poSRSLongLat;
+    }
 /* -------------------------------------------------------------------- */
 /*      Set the radiometric calibration parameters.                     */
 /* -------------------------------------------------------------------- */

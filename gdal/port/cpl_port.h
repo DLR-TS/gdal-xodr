@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1998, 2005, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -123,7 +123,7 @@
 #endif
 
 /* Needed for std=c11 on Solaris to have strcasecmp() */
-#if defined(GDAL_COMPILATION) && defined(__sun__) && __STDC_VERSION__ >= 201112L && _XOPEN_SOURCE < 600
+#if defined(GDAL_COMPILATION) && defined(__sun__) && (__STDC_VERSION__ + 0) >= 201112L && (_XOPEN_SOURCE + 0) < 600
 #ifdef _XOPEN_SOURCE
 #undef _XOPEN_SOURCE
 #endif
@@ -186,10 +186,12 @@
 #  if !(__cplusplus >= 201103L || (defined(_MSC_VER) && _MSC_VER >= 1900))
 #    error Must have C++11 or newer.
 #  endif
-#  if __cplusplus >= 201402L
+#  if __cplusplus >= 201402L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201402L)
 #    define HAVE_CXX14 1
 #  endif
-/* TODO(schwehr): What is the correct test for C++ 17? */
+#  if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+#    define HAVE_CXX17 1
+#  endif
 #endif  /* __cplusplus */
 
 /*---------------------------------------------------------------------
@@ -343,13 +345,21 @@ typedef unsigned int  GUIntptr_t;
 #ifndef CPL_DLL
 #if defined(_MSC_VER) && !defined(CPL_DISABLE_DLL)
 #  define CPL_DLL     __declspec(dllexport)
+#  define CPL_INTERNAL
 #else
 #  if defined(USE_GCC_VISIBILITY_FLAG)
 #    define CPL_DLL     __attribute__ ((visibility("default")))
+#    if !defined(__MINGW32__)
+#        define CPL_INTERNAL __attribute__((visibility("hidden")))
+#    else
+#        define CPL_INTERNAL
+#    endif
 #  else
 #    define CPL_DLL
+#    define CPL_INTERNAL
 #  endif
 #endif
+
 #endif
 
 /*! @cond Doxygen_Suppress */

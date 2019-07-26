@@ -8,7 +8,7 @@
 #
 ###############################################################################
 # Copyright (c) 2005, Frank Warmerdam, warmerdam@pobox.com
-# Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     approxok = 0
     ioor = 0
 
-    file = None
+    filename = None
 
     # Parse command line arguments.
     i = 1
@@ -74,19 +74,19 @@ if __name__ == '__main__':
         elif arg == '-force':
             force = 1
 
-        elif file is None:
-            file = arg
+        elif filename is None:
+            filename = arg
 
         else:
             Usage()
 
         i = i + 1
 
-    if file is None:
+    if filename is None:
         Usage()
 
     # -----------------------------------------------------------------------
-    ds = gdal.Open(file)
+    ds = gdal.Open(filename)
 
     if req is None:
         hist = ds.GetRasterBand(1).GetDefaultHistogram(force=force)

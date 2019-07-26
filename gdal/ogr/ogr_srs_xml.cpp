@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam (warmerdam@pobox.com)
- * Copyright (c) 2008-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1149,8 +1149,6 @@ static OGRErr importGeogCSFromXML( OGRSpatialReference *poSRS,
                         "usesPrimeMeridian.PrimeMeridian.meridianID",
                         "GEOGCS|PRIMEM" );
 
-    poSRS->Fixup();
-
     return OGRERR_NONE;
 }
 
@@ -1239,10 +1237,8 @@ static OGRErr importProjCSFromXML( OGRSpatialReference *poSRS,
         return OGRERR_CORRUPT_DATA;
     }
 
-/* -------------------------------------------------------------------- */
-/*      Cleanup and return.                                             */
-/* -------------------------------------------------------------------- */
-    poSRS->Fixup();
+    // Re-set authority as all editions above will have removed it
+    importXMLAuthority( psCRS, poSRS, "srsID", "PROJCS" );
 
     // Need to get linear units here!
 

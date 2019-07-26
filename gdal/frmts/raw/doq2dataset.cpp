@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2000, Derrick J Brashear
- * Copyright (c) 2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -60,7 +60,7 @@ static const char NAD83_DATUM[] =
 /* ==================================================================== */
 /************************************************************************/
 
-class DOQ2Dataset : public RawDataset
+class DOQ2Dataset final: public RawDataset
 {
     VSILFILE    *fpImage;  // Image data file.
 
@@ -71,12 +71,17 @@ class DOQ2Dataset : public RawDataset
 
     char        *pszProjection;
 
+    CPL_DISALLOW_COPY_ASSIGN(DOQ2Dataset)
+
   public:
                 DOQ2Dataset();
                 ~DOQ2Dataset();
 
     CPLErr      GetGeoTransform( double * padfTransform ) override;
-    const char  *GetProjectionRef( void ) override;
+    const char  *_GetProjectionRef( void ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     static GDALDataset *Open( GDALOpenInfo * );
 };
@@ -129,7 +134,7 @@ CPLErr DOQ2Dataset::GetGeoTransform( double * padfTransform )
 /*                        GetProjectionString()                         */
 /************************************************************************/
 
-const char *DOQ2Dataset::GetProjectionRef()
+const char *DOQ2Dataset::_GetProjectionRef()
 
 {
     return pszProjection;
@@ -416,7 +421,7 @@ GDALDataset *DOQ2Dataset::Open( GDALOpenInfo * poOpenInfo )
         poDS->SetBand( i+1,
             new RawRasterBand( poDS, i+1, poDS->fpImage,
                                nSkipBytes + i, nBytesPerPixel, nBytesPerLine,
-                               GDT_Byte, TRUE, TRUE ) );
+                               GDT_Byte, TRUE, RawRasterBand::OwnFP::NO ) );
         if( CPLGetLastErrorType() != CE_None )
         {
             delete poDS;

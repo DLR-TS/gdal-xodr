@@ -2,10 +2,10 @@
  *
  * Project:  OpenGIS Simple Features Reference Implementation
  * Purpose:  Implements OGRMDBLayer class
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2011-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -432,19 +432,13 @@ void OGRMDBLayer::LookupSRID( int nSRID )
 /*      Turn it into an OGRSpatialReference.                            */
 /* -------------------------------------------------------------------- */
     poSRS = new OGRSpatialReference();
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
     if( poSRS->importFromWkt( pszSRText ) != OGRERR_NONE )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
                   "importFromWKT() failed on SRS '%s'.",
                   pszSRText);
-        delete poSRS;
-        poSRS = nullptr;
-    }
-    else if( poSRS->morphFromESRI() != OGRERR_NONE )
-    {
-        CPLError( CE_Failure, CPLE_AppDefined,
-                  "morphFromESRI() failed on SRS." );
         delete poSRS;
         poSRS = nullptr;
     }

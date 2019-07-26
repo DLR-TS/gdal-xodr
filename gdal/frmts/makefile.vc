@@ -15,7 +15,8 @@ EXTRAFLAGS =	-DFRMT_ceos -DFRMT_aigrid -DFRMT_elas -DFRMT_hfa -DFRMT_gtiff\
 		-DFRMT_r -DFRMT_northwood -DFRMT_saga -DFRMT_xyz -DFRMT_hf2 \
 		-DFRMT_kmlsuperoverlay -DFRMT_ozi -DFRMT_ctg -DFRMT_e00grid \
 		-DFRMT_zmap -DFRMT_ngsgeoid -DFRMT_iris -DFRMT_map -DFRMT_cals \
-		-DFRMT_safe -DFRMT_sentinel2 -DFRMT_derived -DFRMT_prf
+		-DFRMT_safe -DFRMT_sentinel2 -DFRMT_derived -DFRMT_prf \
+		-DFRMT_sigdem -DFRMT_ignfheightasciigrid
 
 MOREEXTRA 	=	
 
@@ -81,6 +82,8 @@ PLUGINFLAGS	=	$(PLUGINFLAGS) -DFRMT_jp2lura
 !IFDEF HDF4_DIR
 !IF "$(HDF4_PLUGIN)" != "YES"
 EXTRAFLAGS	=	$(EXTRAFLAGS) -DFRMT_hdf4
+!ELSE
+PLUGINFLAGS	=	$(PLUGINFLAGS) -DFRMT_hdf4
 !ENDIF
 !ENDIF
 
@@ -143,7 +146,7 @@ EXTRAFLAGS	=	$(EXTRAFLAGS) -DFRMT_grib
 !ENDIF
 
 !IFDEF CURL_LIB
-EXTRAFLAGS	=	$(EXTRAFLAGS) -DFRMT_wcs -DFRMT_wms -DFRMT_plmosaic -DFRMT_wmts -DFRMT_rda
+EXTRAFLAGS	=	$(EXTRAFLAGS) -DFRMT_wcs -DFRMT_wms -DFRMT_plmosaic -DFRMT_wmts -DFRMT_rda -DFRMT_eeda -DFRMT_daas
 !ENDIF
 
 !IFDEF SDE_ENABLED
@@ -196,6 +199,18 @@ PLUGINFLAGS	=	$(PLUGINFLAGS) -DFRMT_kea
 EXTRAFLAGS	=	$(EXTRAFLAGS) -DFRMT_mrf
 !ENDIF
 
+!IFDEF CHARLS_LIB
+EXTRAFLAGS	=	$(EXTRAFLAGS) -DFRMT_jpegls
+!ENDIF
+
+!IFDEF TILEDB_ENABLED
+EXTRAFLAGS  =   $(EXTRAFLAGS) -DFRMT_tiledb
+!ENDIF
+
+!IFDEF RDB_ENABLED
+EXTRAFLAGS  =   $(EXTRAFLAGS) -DFRMT_rdb
+!ENDIF
+
 default:	o\gdalallregister.obj subdirs
 
 list:
@@ -241,8 +256,3 @@ plugins-install:
 		&& $(MAKE) /f makefile.vc plugin-install \
 		&& cd .. \
 		|| exit 1
-
-html-install:
-	copy *.html $(HTMLDIR)
-	-for %d in ( $(DIRLIST) ) do \
-		copy %d\frmt_*.html $(HTMLDIR)

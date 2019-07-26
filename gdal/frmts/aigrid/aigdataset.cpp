@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -74,7 +74,10 @@ class AIGDataset : public GDALPamDataset
     static GDALDataset *Open( GDALOpenInfo * );
 
     CPLErr GetGeoTransform( double * ) override;
-    const char *GetProjectionRef(void) override;
+    const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     char **GetFileList(void) override;
 };
 
@@ -790,7 +793,7 @@ CPLErr AIGDataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *AIGDataset::GetProjectionRef()
+const char *AIGDataset::_GetProjectionRef()
 
 {
     return pszProjection;

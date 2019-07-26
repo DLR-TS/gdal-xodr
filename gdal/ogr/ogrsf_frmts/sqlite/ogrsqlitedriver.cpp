@@ -13,7 +13,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -222,12 +222,20 @@ static GDALDataset *OGRSQLiteDriverOpen( GDALOpenInfo* poOpenInfo )
 /************************************************************************/
 
 static GDALDataset *OGRSQLiteDriverCreate( const char * pszName,
-                                           CPL_UNUSED int nBands,
+                                           int nBands,
                                            CPL_UNUSED int nXSize,
                                            CPL_UNUSED int nYSize,
                                            CPL_UNUSED GDALDataType eDT,
                                            char **papszOptions )
 {
+    if( nBands != 0 )
+    {
+        CPLError(CE_Failure, CPLE_NotSupported,
+                 "Raster creation through Create() interface is not supported. "
+                 "Only CreateCopy() is supported");
+        return nullptr;
+    }
+
 /* -------------------------------------------------------------------- */
 /*      First, ensure there isn't any such file yet.                    */
 /* -------------------------------------------------------------------- */

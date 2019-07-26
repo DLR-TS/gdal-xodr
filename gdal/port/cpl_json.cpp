@@ -54,9 +54,9 @@ CPLJSONDocument::~CPLJSONDocument()
         json_object_put( TO_JSONOBJ(m_poRootJsonObject) );
 }
 
-CPLJSONDocument::CPLJSONDocument(const CPLJSONDocument& other)
+CPLJSONDocument::CPLJSONDocument(const CPLJSONDocument& other):
+    m_poRootJsonObject(json_object_get( TO_JSONOBJ(other.m_poRootJsonObject) ))
 {
-    m_poRootJsonObject = json_object_get( TO_JSONOBJ(other.m_poRootJsonObject) );
 }
 
 CPLJSONDocument& CPLJSONDocument::operator=(const CPLJSONDocument& other)
@@ -336,7 +336,7 @@ bool CPLJSONDocument::LoadUrl(const std::string & /*osUrl*/, char ** /*papszOpti
 #endif // HAVE_CURL
 {
 #ifdef HAVE_CURL
-    int nDepth = atoi( CSLFetchNameValueDef( papszOptions, "JSON_DEPTH", "10") );
+    int nDepth = atoi( CSLFetchNameValueDef( papszOptions, "JSON_DEPTH", "32") ); // Same as JSON_TOKENER_DEFAULT_DEPTH
     JsonContext ctx = { nullptr, json_tokener_new_ex(nDepth), 0 };
 
     CPLHTTPFetchWriteFunc pWriteFunc = CPLJSONWriteFunction;
@@ -344,11 +344,7 @@ bool CPLJSONDocument::LoadUrl(const std::string & /*osUrl*/, char ** /*papszOpti
                                               pfnProgress, pProgressArg,
                                               pWriteFunc, &ctx );
 
-    bool bResult = true;
-    if( psResult->nStatus != 0 /*CURLE_OK*/ )
-    {
-        bResult = false;
-    }
+    bool bResult = psResult->nStatus == 0 /*CURLE_OK*/ && psResult->pszErrBuf == nullptr;
 
     CPLHTTPDestroyResult( psResult );
 
@@ -1169,7 +1165,7 @@ CPLJSONArray::CPLJSONArray(const CPLJSONObject &other) : CPLJSONObject(other)
 int CPLJSONArray::Size() const
 {
     if( m_poJsonObject )
-        return json_object_array_length( TO_JSONOBJ(m_poJsonObject) );
+        return static_cast<int>(json_object_array_length( TO_JSONOBJ(m_poJsonObject) ));
     return 0;
 }
 

@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test SNODAS driver
-# Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault, <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,10 +28,8 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 from osgeo import gdal
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -39,7 +37,7 @@ import gdaltest
 # Test a fake SNODAS dataset
 
 
-def snodas_1():
+def test_snodas_1():
 
     tst = gdaltest.GDALTest('SNODAS', 'fake_snodas.hdr', 1, 0)
     expected_gt = [-124.733749999995, 0.0083333333333330643, 0.0, 52.874583333331302, 0.0, -0.0083333333333330054]
@@ -59,26 +57,11 @@ def snodas_1():
     if ret == 'success':
         ds = gdal.Open('data/fake_snodas.hdr')
         ds.GetFileList()
-        if ds.GetRasterBand(1).GetNoDataValue() != -9999:
-            print(ds.GetRasterBand(1).GetNoDataValue())
-            return 'fail'
-        if ds.GetRasterBand(1).GetMinimum() != 0:
-            print(ds.GetRasterBand(1).GetMinimum())
-            return 'fail'
-        if ds.GetRasterBand(1).GetMaximum() != 429:
-            print(ds.GetRasterBand(1).GetMaximum())
-            return 'fail'
+        assert ds.GetRasterBand(1).GetNoDataValue() == -9999
+        assert ds.GetRasterBand(1).GetMinimum() == 0
+        assert ds.GetRasterBand(1).GetMaximum() == 429
 
     return ret
 
 
-gdaltest_list = [
-    snodas_1]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('snodas')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

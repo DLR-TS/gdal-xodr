@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2009-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1405,22 +1405,21 @@ const char * GDALDefaultCSVFilename( const char *pszBasename )
               "Failed to find file in GDALDefaultCSVFilename.  "
               "Returning original basename: %s",
               pszBasename );
-    strcpy( pTLSData->szPath, pszBasename );
+    CPLStrlcpy(pTLSData->szPath, pszBasename, sizeof(pTLSData->szPath));
     return pTLSData->szPath;
 #else
 
 #ifdef GDAL_PREFIX
   #ifdef MACOSX_FRAMEWORK
     strcpy( pTLSData->szPath, GDAL_PREFIX "/Resources/epsg_csv/" );
-    CPLStrlcat( pTLSData->szPath, pszBasename, sizeof(pTLSData->szPath) );
   #else
     strcpy( pTLSData->szPath, GDAL_PREFIX "/share/epsg_csv/" );
-    CPLStrlcat( pTLSData->szPath, pszBasename, sizeof(pTLSData->szPath) );
   #endif
 #else
     strcpy( pTLSData->szPath, "/usr/local/share/epsg_csv/" );
-    CPLStrlcat( pTLSData->szPath, pszBasename, sizeof(pTLSData->szPath) );
 #endif  // GDAL_PREFIX
+
+    CPLStrlcat( pTLSData->szPath, pszBasename, sizeof(pTLSData->szPath) );
 
     VSILFILE *fp = VSIFOpenL( pTLSData->szPath, "rt" );
     if( fp == nullptr )

@@ -150,12 +150,20 @@
 %constant CPLE_AssertionFailed            = CPLE_AssertionFailed;
 %constant CPLE_NoWriteAccess              = CPLE_NoWriteAccess;
 %constant CPLE_UserInterrupt              = CPLE_UserInterrupt;
+%constant CPLE_ObjectNull                 = CPLE_ObjectNull;
+%constant CPLE_HttpResponse               = CPLE_HttpResponse;
+%constant CPLE_AWSBucketNotFound          = CPLE_AWSBucketNotFound;
+%constant CPLE_AWSObjectNotFound          = CPLE_AWSObjectNotFound;
+%constant CPLE_AWSAccessDenied            = CPLE_AWSAccessDenied;
+%constant CPLE_AWSInvalidCredentials      = CPLE_AWSInvalidCredentials;
+%constant CPLE_AWSSignatureDoesNotMatch   = CPLE_AWSSignatureDoesNotMatch;
 
 // Open flags
 %constant OF_ALL     = GDAL_OF_ALL;
 %constant OF_RASTER = GDAL_OF_RASTER;
 %constant OF_VECTOR = GDAL_OF_VECTOR;
 %constant OF_GNM = GDAL_OF_GNM;
+%constant OF_MULTIDIM_RASTER = GDAL_OF_MULTIDIM_RASTER;
 %constant OF_READONLY = GDAL_OF_READONLY;
 %constant OF_UPDATE = GDAL_OF_UPDATE;
 %constant OF_SHARED = GDAL_OF_SHARED;
@@ -184,6 +192,12 @@
 %constant char *DCAP_DEFAULT_FIELDS      = GDAL_DCAP_DEFAULT_FIELDS;
 %constant char *DCAP_NOTNULL_GEOMFIELDS  = GDAL_DCAP_NOTNULL_GEOMFIELDS;
 
+%constant char *DIM_TYPE_HORIZONTAL_X       = GDAL_DIM_TYPE_HORIZONTAL_X;
+%constant char *DIM_TYPE_HORIZONTAL_Y       = GDAL_DIM_TYPE_HORIZONTAL_Y;
+%constant char *DIM_TYPE_VERTICAL           = GDAL_DIM_TYPE_VERTICAL;
+%constant char *DIM_TYPE_TEMPORAL           = GDAL_DIM_TYPE_TEMPORAL;
+%constant char *DIM_TYPE_PARAMETRIC         = GDAL_DIM_TYPE_PARAMETRIC;
+
 #else
 
 #define GDAL_DMD_LONGNAME "DMD_LONGNAME"
@@ -206,6 +220,12 @@
 #define DCAP_NOTNULL_FIELDS  "GDAL_DCAP_NOTNULL_FIELDS"
 #define DCAP_DEFAULT_FIELDS  "GDAL_DCAP_DEFAULT_FIELDS"
 #define DCAP_NOTNULL_GEOMFIELDS  "GDAL_DCAP_NOTNULL_GEOMFIELDS"
+
+#define DIM_TYPE_HORIZONTAL_X "HORIZONTAL_X"
+#define DIM_TYPE_HORIZONTAL_Y "HORIZONTAL_Y"
+#define DIM_TYPE_VERTICAL     "VERTICAL"
+#define DIM_TYPE_TEMPORAL     "TEMPORAL"
+#define DIM_TYPE_PARAMETRIC   "PARAMETRIC"
 
 #endif
 
@@ -240,6 +260,10 @@
 %constant GFU_BlueMax             = GFU_BlueMax;
 %constant GFU_AlphaMax            = GFU_AlphaMax;
 %constant GFU_MaxCount            = GFU_MaxCount;
+
+// GDALRATTableType
+%constant GRTT_THEMATIC           = GRTT_THEMATIC;
+%constant GRTT_ATHEMATIC          = GRTT_ATHEMATIC;
 
 %constant GMF_ALL_VALID           = 0x01;
 %constant GMF_PER_DATASET         = 0x02;

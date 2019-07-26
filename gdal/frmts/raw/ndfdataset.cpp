@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2005, Frank Warmerdam
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -40,7 +40,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class NDFDataset : public RawDataset
+class NDFDataset final: public RawDataset
 {
     double      adfGeoTransform[6];
 
@@ -50,12 +50,17 @@ class NDFDataset : public RawDataset
     char        **papszHeader;
     const char  *Get( const char *pszKey, const char *pszDefault);
 
+    CPL_DISALLOW_COPY_ASSIGN(NDFDataset)
+
   public:
     NDFDataset();
     ~NDFDataset() override;
 
     CPLErr  GetGeoTransform( double * padfTransform ) override;
-    const char *GetProjectionRef(void) override;
+    const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     char **GetFileList(void) override;
 
     static GDALDataset *Open( GDALOpenInfo * );
@@ -90,19 +95,13 @@ NDFDataset::~NDFDataset()
     CPLFree( pszProjection );
     CSLDestroy( papszHeader );
     CSLDestroy( papszExtraFiles );
-
-    for( int i = 0; i < GetRasterCount(); i++ )
-    {
-       CPL_IGNORE_RET_VAL(VSIFCloseL( reinterpret_cast<RawRasterBand *>(
-           GetRasterBand(i+1) )->GetFPL() ));
-    }
 }
 
 /************************************************************************/
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *NDFDataset::GetProjectionRef()
+const char *NDFDataset::_GetProjectionRef()
 
 {
     return pszProjection;
@@ -317,7 +316,7 @@ GDALDataset *NDFDataset::Open( GDALOpenInfo * poOpenInfo )
 
         RawRasterBand *poBand =
             new RawRasterBand( poDS, iBand+1, fpRaw, 0, 1, poDS->nRasterXSize,
-                               GDT_Byte, TRUE, TRUE );
+                               GDT_Byte, TRUE, RawRasterBand::OwnFP::YES );
 
         snprintf( szKey, sizeof(szKey), "BAND%d_NAME", iBand+1 );
         poBand->SetDescription( poDS->Get(szKey, "") );

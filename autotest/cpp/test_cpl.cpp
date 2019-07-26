@@ -6,7 +6,7 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 // Copyright (c) 2006, Mateusz Loskot <mateusz@loskot.net>
-// Copyright (c) 2008-2012, Even Rouault <even dot rouault at mines-paris dot org>
+// Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
 // Copyright (c) 2017, Dmitry Baryshnikov <polimax@mail.ru>
 // Copyright (c) 2017, NextGIS <info@nextgis.com>
 //
@@ -26,6 +26,8 @@
 // Boston, MA 02111-1307, USA.
 ///////////////////////////////////////////////////////////////////////////////
 
+#define GDAL_COMPILATION
+
 #include "gdal_unit_test.h"
 
 #include "cpl_error.h"
@@ -37,8 +39,11 @@
 #include "cpl_time.h"
 #include "cpl_json.h"
 #include "cpl_json_streaming_parser.h"
+#include "cpl_json_streaming_writer.h"
 #include "cpl_mem_cache.h"
 #include "cpl_http.h"
+#include "cpl_auto_close.h"
+#include "cpl_minixml.h"
 
 #include <fstream>
 #include <string>
@@ -1139,29 +1144,7 @@ namespace tut
     template<>
     void object::test<24>()
     {
-        /* Check that our possibly #define'd snprintf() nul */
-        /* terminates */
-        char szBuffer[10] = "123456789";
-        snprintf(szBuffer, 0, "%s", "xy");
-        ensure( memcmp(szBuffer, "123", 3) == 0 );
-        snprintf(szBuffer, 2, "%s", "xy");
-        ensure( memcmp(szBuffer, "x" "\0" "3", 3) == 0 );
-        strcpy(szBuffer, "123456789");
-        snprintf(szBuffer, 1, "%s", "xy");
-        ensure( memcmp(szBuffer, "\0" "23", 3) == 0 );
-        strcpy(szBuffer, "123456789");
-        snprintf(szBuffer, 3, "%s", "xy");
-        ensure( memcmp(szBuffer, "xy" "\0" "4", 4) == 0 );
-#ifdef HAVE_CPL_SAFER_SNPRINTF
-        // Disabled by default, because crashes on gcc48_stdcpp11 target
-        // In function ‘int snprintf(char*, size_t, const char*, ...)’,
-        // inlined from ‘void tut::test_object<Data>::test() [with int n = 24; Data = tut::test_cpl_data]’ at test_cpl.cpp:1141:48:
-        // /usr/include/x86_64-linux-gnu/bits/stdio2.h:66:44: warning: call to int __builtin___snprintf_chk(char*, long unsigned int, int, long unsigned int, const char*, ...) will always overflow destination buffer [enabled by default]
-
-        strcpy(szBuffer, "123456789");
-        snprintf(szBuffer, INT_MAX, "%s", "xy");
-        ensure( memcmp(szBuffer, "xy" "\0" "4", 4) == 0 );
-#endif
+        // No longer used
     }
 
 
@@ -1261,6 +1244,24 @@ namespace tut
         ensure_equals( (CPLSM(4U) / CPLSM(2U)).v(), 2U );
         ensure_equals( (CPLSM(UINT_MAX) / CPLSM(1U)).v(), UINT_MAX );
         try { (CPLSM(1U) / CPLSM(0U)).v(); ensure(false); } catch (...) {}
+
+        ensure_equals( (CPLSM(static_cast<GUInt64>(2)*1000*1000*1000) +
+                        CPLSM(static_cast<GUInt64>(3)*1000*1000*1000)).v(),
+                       static_cast<GUInt64>(5)*1000*1000*1000 );
+        ensure_equals( (CPLSM(std::numeric_limits<GUInt64>::max() - 1) +
+                        CPLSM(static_cast<GUInt64>(1))).v(),
+                       std::numeric_limits<GUInt64>::max() );
+        try { (CPLSM(std::numeric_limits<GUInt64>::max()) +
+                        CPLSM(static_cast<GUInt64>(1))); } catch (...) {}
+
+        ensure_equals( (CPLSM(static_cast<GUInt64>(2)*1000*1000*1000) *
+                        CPLSM(static_cast<GUInt64>(3)*1000*1000*1000)).v(),
+                       static_cast<GUInt64>(6)*1000*1000*1000*1000*1000*1000 );
+        ensure_equals( (CPLSM(std::numeric_limits<GUInt64>::max()) *
+                        CPLSM(static_cast<GUInt64>(1))).v(),
+                       std::numeric_limits<GUInt64>::max() );
+        try { (CPLSM(std::numeric_limits<GUInt64>::max()) *
+                        CPLSM(static_cast<GUInt64>(2))); } catch (...) {}
     }
 
     // Test CPLParseRFC822DateTime()
@@ -1656,6 +1657,39 @@ namespace tut
                 ensure( oParser.Parse( sText + i, 1, sText[i+1] == 0 ) );
             ensure_equals( oParser.GetSerialized(), sExpected );
         }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "infinity";
+            ensure( oParser.Parse( sText, strlen(sText), true ) );
+            ensure_equals( oParser.GetSerialized(), sText );
+
+            oParser.Reset();
+            for( size_t i = 0; sText[i]; i++ )
+                ensure( oParser.Parse( sText + i, 1, sText[i+1] == 0 ) );
+            ensure_equals( oParser.GetSerialized(), sText );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "-infinity";
+            ensure( oParser.Parse( sText, strlen(sText), true ) );
+            ensure_equals( oParser.GetSerialized(), sText );
+
+            oParser.Reset();
+            for( size_t i = 0; sText[i]; i++ )
+                ensure( oParser.Parse( sText + i, 1, sText[i+1] == 0 ) );
+            ensure_equals( oParser.GetSerialized(), sText );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "nan";
+            ensure( oParser.Parse( sText, strlen(sText), true ) );
+            ensure_equals( oParser.GetSerialized(), sText );
+
+            oParser.Reset();
+            for( size_t i = 0; sText[i]; i++ )
+                ensure( oParser.Parse( sText + i, 1, sText[i+1] == 0 ) );
+            ensure_equals( oParser.GetSerialized(), sText );
+        }
 
         // errors
         {
@@ -1715,6 +1749,42 @@ namespace tut
         {
             CPLJSonStreamingParserDump oParser;
             const char sText[] = "nullx";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "na";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "nanx";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "infinit";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "infinityx";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "-infinit";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "-infinityx";
             ensure( !oParser.Parse( sText, strlen(sText), true ) );
             ensure( !oParser.GetException().empty() );
         }
@@ -1907,6 +1977,30 @@ namespace tut
             ensure( !oParser.Parse( sText, strlen(sText), true ) );
             ensure( !oParser.GetException().empty() );
         }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "[,]";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "[true,]";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "[true,,true]";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
+        {
+            CPLJSonStreamingParserDump oParser;
+            const char sText[] = "[true true]";
+            ensure( !oParser.Parse( sText, strlen(sText), true ) );
+            ensure( !oParser.GetException().empty() );
+        }
     }
 
     // Test cpl_mem_cache
@@ -1989,14 +2083,22 @@ namespace tut
 
             if( CPLHTTPEnabled() )
             {
+                CPLSetConfigOption("CPL_CURL_ENABLE_VSIMEM", "YES");
+                VSILFILE* fpTmp = VSIFOpenL("/vsimem/test.json", "wb");
+                const char* pszContent = "{ \"foo\": \"bar\" }";
+                VSIFWriteL(pszContent, 1, strlen(pszContent), fpTmp);
+                VSIFCloseL(fpTmp);
                 ensure( oDocument.LoadUrl(
-                    "http://demo.nextgis.com/api/component/pyramid/pkg_version",
+                    "/vsimem/test.json",
                     const_cast<char**>(options) ) );
+                CPLSetConfigOption("CPL_CURL_ENABLE_VSIMEM", nullptr);
+                VSIUnlink("/vsimem/test.json");
+
                 CPLJSONObject oJsonRoot = oDocument.GetRoot();
                 ensure( oJsonRoot.IsValid() );
 
-                CPLString soVersion = oJsonRoot.GetString("nextgisweb", "0");
-                ensure_not( EQUAL(soVersion, "0") );
+                CPLString value = oJsonRoot.GetString("foo", "");
+                ensure_not( EQUAL(value, "bar") );
             }
         }
         {
@@ -2443,4 +2545,271 @@ namespace tut
         ensure_equals(cpl::down_cast<Derived*>(static_cast<Base*>(nullptr)), static_cast<Derived*>(nullptr));
     }
 
+    // Test CPLPrintTime() in particular case of RFC822 formatting in C locale
+    template<>
+    template<>
+    void object::test<35>()
+    {
+        char szDate[64];
+        struct tm tm;
+        tm.tm_sec = 56;
+        tm.tm_min = 34;
+        tm.tm_hour = 12;
+        tm.tm_mday = 20;
+        tm.tm_mon = 6-1;
+        tm.tm_year = 2018 - 1900;
+        tm.tm_wday = 3; // Wednesday
+        tm.tm_yday = 0; // unused
+        tm.tm_isdst = 0; // unused
+        int nRet = CPLPrintTime(szDate, sizeof(szDate)-1,
+                     "%a, %d %b %Y %H:%M:%S GMT", &tm, "C");
+        szDate[nRet] = 0;
+        ensure_equals( std::string(szDate), std::string("Wed, 20 Jun 2018 12:34:56 GMT") );
+    }
+
+    // Test CPLAutoClose
+    template<>
+    template<>
+    void object::test<36>()
+    {
+        static int counter = 0;
+        class AutoCloseTest{
+        public:
+            AutoCloseTest() {
+                counter += 222;
+            }
+            virtual ~AutoCloseTest() { 
+                counter -= 22;
+            }
+            static AutoCloseTest* Create() {
+                return new AutoCloseTest;
+            }
+            static void Destroy(AutoCloseTest* p) {
+                delete p;
+            }
+        };
+        {
+            AutoCloseTest* p1 = AutoCloseTest::Create();
+            CPL_AUTO_CLOSE_WARP(p1,AutoCloseTest::Destroy);
+
+            AutoCloseTest* p2 = AutoCloseTest::Create();
+            CPL_AUTO_CLOSE_WARP(p2,AutoCloseTest::Destroy);
+
+        }
+        ensure_equals(counter,400);
+    }
+
+    // Test cpl_minixml
+    template<>
+    template<>
+    void object::test<37>()
+    {
+        CPLXMLNode* psRoot = CPLCreateXMLNode(nullptr, CXT_Element, "Root");
+        CPLXMLNode* psElt = CPLCreateXMLElementAndValue(psRoot, "Elt", "value");
+        CPLAddXMLAttributeAndValue(psElt, "attr1", "val1");
+        CPLAddXMLAttributeAndValue(psElt, "attr2", "val2");
+        char* str = CPLSerializeXMLTree(psRoot);
+        CPLDestroyXMLNode(psRoot);
+        ensure_equals( std::string(str), std::string("<Root>\n  <Elt attr1=\"val1\" attr2=\"val2\">value</Elt>\n</Root>\n") );
+        CPLFree(str);
+    }
+
+    // Test CPLCharUniquePtr
+    template<>
+    template<>
+    void object::test<38>()
+    {
+        CPLCharUniquePtr x;
+        ensure( x.get() == nullptr );
+        x.reset(CPLStrdup("foo"));
+        ensure_equals( std::string(x.get()), "foo");
+    }
+
+    // Test CPLJSonStreamingWriter
+    template<>
+    template<>
+    void object::test<39>()
+    {
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            ensure_equals( x.GetString(), std::string() );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(true);
+            ensure_equals( x.GetString(), std::string("true") );
+        }
+        {
+            std::string res;
+            struct MyCallback
+            {
+                static void f(const char* pszText, void* user_data)
+                {
+                    *static_cast<std::string*>(user_data) += pszText;
+                }
+            };
+            CPLJSonStreamingWriter x(&MyCallback::f, &res);
+            x.Add(true);
+            ensure_equals( x.GetString(), std::string() );
+            ensure_equals( res, std::string("true") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(false);
+            ensure_equals( x.GetString(), std::string("false") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.AddNull();
+            ensure_equals( x.GetString(), std::string("null") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(1);
+            ensure_equals( x.GetString(), std::string("1") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(4200000000U);
+            ensure_equals( x.GetString(), std::string("4200000000") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(static_cast<GIntBig>(-10000) * 1000000);
+            ensure_equals( x.GetString(), std::string("-10000000000") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(static_cast<GUInt64>(10000) * 1000000);
+            ensure_equals( x.GetString(), std::string("10000000000") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(1.5f);
+            ensure_equals( x.GetString(), std::string("1.5") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(std::numeric_limits<float>::quiet_NaN());
+            ensure_equals( x.GetString(), std::string("\"NaN\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(std::numeric_limits<float>::infinity());
+            ensure_equals( x.GetString(), std::string("\"Infinity\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(-std::numeric_limits<float>::infinity());
+            ensure_equals( x.GetString(), std::string("\"-Infinity\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(1.25);
+            ensure_equals( x.GetString(), std::string("1.25") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(std::numeric_limits<double>::quiet_NaN());
+            ensure_equals( x.GetString(), std::string("\"NaN\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(std::numeric_limits<double>::infinity());
+            ensure_equals( x.GetString(), std::string("\"Infinity\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(-std::numeric_limits<double>::infinity());
+            ensure_equals( x.GetString(), std::string("\"-Infinity\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add(std::string("foo\\bar\"baz\b\f\n\r\t" "\x01" "boo"));
+            ensure_equals( x.GetString(), std::string("\"foo\\\\bar\\\"baz\\b\\f\\n\\r\\t\\u0001boo\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.Add("foo\\bar\"baz\b\f\n\r\t" "\x01" "boo");
+            ensure_equals( x.GetString(), std::string("\"foo\\\\bar\\\"baz\\b\\f\\n\\r\\t\\u0001boo\"") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.SetPrettyFormatting(false);
+            {
+                auto ctxt(x.MakeObjectContext());
+            }
+            ensure_equals( x.GetString(), std::string("{}") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeObjectContext());
+            }
+            ensure_equals( x.GetString(), std::string("{}") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            x.SetPrettyFormatting(false);
+            {
+                auto ctxt(x.MakeObjectContext());
+                x.AddObjKey("key");
+                x.Add("value");
+            }
+            ensure_equals( x.GetString(), std::string("{\"key\":\"value\"}") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeObjectContext());
+                x.AddObjKey("key");
+                x.Add("value");
+            }
+            ensure_equals( x.GetString(), std::string("{\n  \"key\": \"value\"\n}") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeObjectContext());
+                x.AddObjKey("key");
+                x.Add("value");
+                x.AddObjKey("key2");
+                x.Add("value2");
+            }
+            ensure_equals( x.GetString(), std::string("{\n  \"key\": \"value\",\n  \"key2\": \"value2\"\n}") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeArrayContext());
+            }
+            ensure_equals( x.GetString(), std::string("[]") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeArrayContext());
+                x.Add(1);
+            }
+            ensure_equals( x.GetString(), std::string("[\n  1\n]") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeArrayContext());
+                x.Add(1);
+                x.Add(2);
+            }
+            ensure_equals( x.GetString(), std::string("[\n  1,\n  2\n]") );
+        }
+        {
+            CPLJSonStreamingWriter x(nullptr, nullptr);
+            {
+                auto ctxt(x.MakeArrayContext(true));
+                x.Add(1);
+                x.Add(2);
+            }
+            ensure_equals( x.GetString(), std::string("[1, 2]") );
+        }
+    }
 } // namespace tut

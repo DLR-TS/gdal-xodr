@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2012, David Zwarg <dzwarg@azavea.com>
- * Copyright (c) 2012-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -44,7 +44,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class ARGDataset : public RawDataset
+class ARGDataset final: public RawDataset
 {
     VSILFILE *fpImage;  // image data file.
     double adfGeoTransform[6];
@@ -465,7 +465,7 @@ GDALDataset *ARGDataset::Open( GDALOpenInfo *poOpenInfo )
 
         json_object_put(pJSONObject);
         pJSONObject = nullptr;
-
+        CPLFree(pszWKT);
         return nullptr;
     }
 
@@ -526,7 +526,7 @@ GDALDataset *ARGDataset::Open( GDALOpenInfo *poOpenInfo )
     RawRasterBand *poBand
         = new RawRasterBand( poDS, 1, poDS->fpImage,
                              0, nPixelOffset, nPixelOffset * nCols,
-                             eType, bNative, TRUE );
+                             eType, bNative, RawRasterBand::OwnFP::NO );
     poDS->SetBand( 1, poBand );
 
     poBand->SetNoDataValue( dfNoDataValue );
@@ -725,7 +725,9 @@ GDALDataset *ARGDataset::CreateCopy( const char *pszFilename,
     RawRasterBand *poDstBand = new RawRasterBand( fpImage, 0, nPixelOffset,
                                                   nPixelOffset * nXSize, eType,
                                                   bNative,
-                                                  nXSize, nYSize, TRUE, FALSE);
+                                                  nXSize, nYSize,
+                                                  RawRasterBand::OwnFP::NO);
+    poDstBand->SetAccess(GA_Update);
 
     int nXBlockSize, nYBlockSize;
     poSrcBand->GetBlockSize(&nXBlockSize, &nYBlockSize);

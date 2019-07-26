@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -39,11 +39,13 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class GSCDataset : public RawDataset
+class GSCDataset final: public RawDataset
 {
     VSILFILE    *fpImage;  // image data file.
 
     double      adfGeoTransform[6];
+
+    CPL_DISALLOW_COPY_ASSIGN(GSCDataset)
 
   public:
                 GSCDataset();
@@ -189,7 +191,8 @@ GDALDataset *GSCDataset::Open( GDALOpenInfo * poOpenInfo )
     RawRasterBand *poBand = new RawRasterBand( poDS, 1, poDS->fpImage,
                                                nRecordLen * 2 + 4,
                                                sizeof(float), nRecordLen,
-                                               GDT_Float32, bNative, TRUE );
+                                               GDT_Float32, bNative,
+                                               RawRasterBand::OwnFP::NO );
     poDS->SetBand( 1, poBand );
 
     poBand->SetNoDataValue( -1.0000000150474662199e+30 );

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2006, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -518,13 +518,17 @@ static bool ProcessError( CPLHTTPResult *psResult )
     {
         CPLXMLNode *psTree = CPLParseXMLString( (const char *)psResult->pabyData );
         CPLStripXMLNamespace( psTree, nullptr, TRUE );
-        const char *pszMsg = CPLGetXMLValue(psTree, "=ServiceExceptionReport.ServiceException", nullptr);
-        if (!pszMsg) {
-            pszMsg = CPLGetXMLValue(psTree, "=ExceptionReport.Exception.ExceptionText", nullptr);
+        CPLString msg = CPLGetXMLValue(psTree, "=ServiceExceptionReport.ServiceException", "");
+        if (msg == "") {
+            msg = CPLGetXMLValue(psTree, "=ExceptionReport.Exception.exceptionCode", "");
+            if (msg != "") {
+                msg += ": ";
+            }
+            msg += CPLGetXMLValue(psTree, "=ExceptionReport.Exception.ExceptionText", "");
         }
-        if( pszMsg )
+        if( msg != "" )
             CPLError( CE_Failure, CPLE_AppDefined,
-                      "%s", pszMsg );
+                      "%s", msg.c_str() );
         else
             CPLError( CE_Failure, CPLE_AppDefined,
                       "Corrupt Service Exception:\n%s",
@@ -1033,57 +1037,6 @@ static WCSDataset *BootstrapGlobal(GDALOpenInfo * poOpenInfo, const CPLString &c
 }
 
 /************************************************************************/
-/*                        CreateServiceMetadata()                       */
-/************************************************************************/
-
-// master filename is the name of the global metadata file
-// filename is the name of the metadata file of the service file
-static void CreateServiceMetadata(const CPLString &coverage,
-                                  const CPLString &master_filename,
-                                  const CPLString &meta_filename)
-{
-    CPLXMLTreeCloser doc(CPLParseXMLFile(master_filename));
-    CPLXMLNode *metadata = doc.getDocumentElement();
-    // remove other subdatasets than the current
-    int subdataset = 0;
-    CPLXMLNode *domain = SearchChildWithValue(metadata, "domain", "SUBDATASETS");
-    if (domain == nullptr) {
-        return;
-    }
-    for (CPLXMLNode *node = domain->psChild; node != nullptr; node = node->psNext) {
-        if (node->eType != CXT_Element) {
-            continue;
-        }
-        CPLString key = CPLGetXMLValue(node, "key", "");
-        if (!STARTS_WITH(key, "SUBDATASET_")) {
-            continue;
-        }
-        CPLString value = CPLGetXMLValue(node, nullptr, "");
-        if (value.find(coverage) != std::string::npos) {
-            key.erase(0, 11); // SUBDATASET_
-            key.erase(key.find("_"), std::string::npos);
-            subdataset = atoi(key);
-            break;
-        }
-    }
-    if (subdataset > 0) {
-        CPLXMLNode *next = nullptr;
-        for (CPLXMLNode *node = domain->psChild; node != nullptr; node = next) {
-            next = node->psNext;
-            if (node->eType != CXT_Element) {
-                continue;
-            }
-            CPLString key = CPLGetXMLValue(node, "key", "");
-            if (key.find(CPLString().Printf("SUBDATASET_%i_", subdataset)) == std::string::npos) {
-                CPLRemoveXMLChild(domain, node);
-                CPLDestroyXMLNode(node);
-            }
-        }
-    }
-    CPLSerializeXMLTreeToFile(metadata, meta_filename);
-}
-
-/************************************************************************/
 /*                          CreateService()                             */
 /************************************************************************/
 
@@ -1298,8 +1251,6 @@ GDALDataset *WCSDataset::Open( GDALOpenInfo * poOpenInfo )
             if (version == "") {
                 version = global->Version();
             }
-            CPLString global_meta = CPLString(global->GetDescription()) + ".aux.xml";
-            delete global;
             service = CreateService(url, version, coverage, parameters);
 /* -------------------------------------------------------------------- */
 /*          The filename for the new service file.                      */
@@ -1308,8 +1259,24 @@ GDALDataset *WCSDataset::Open( GDALOpenInfo * poOpenInfo )
             if (AddEntryToCache(cache, full_url, filename, ".xml") != CE_None) {
                 return nullptr; // error in cache
             }
-            CreateServiceMetadata(coverage, global_meta, filename + ".aux.xml");
-            CPLSetXMLValue(service, "Parameters", parameters);
+            // Create basic service metadata
+            // copy global metadata (not SUBDATASETS metadata)
+            CPLString global_base = CPLString(global->GetDescription());
+            CPLString global_meta = global_base + ".aux.xml";
+            CPLString capabilities = global_base + ".xml";
+            CPLXMLTreeCloser doc(CPLParseXMLFile(global_meta));
+            CPLXMLNode *metadata = doc.getDocumentElement();
+            CPLXMLNode *domain = SearchChildWithValue(metadata, "domain", "SUBDATASETS");
+            if (domain != nullptr) {
+                CPLRemoveXMLChild(metadata, domain);
+                CPLDestroyXMLNode(domain);
+            }
+            // get metadata for this coverage from the capabilities XML
+            CPLXMLTreeCloser doc2(CPLParseXMLFile(capabilities));
+            global->ParseCoverageCapabilities(doc2.getDocumentElement(), coverage, metadata->psChild);
+            delete global;
+            CPLString metadata_filename = filename + ".aux.xml";
+            CPLSerializeXMLTreeToFile(metadata, metadata_filename);
             updated = true;
         }
         CPLFree(poOpenInfo->pszFilename);
@@ -1517,16 +1484,18 @@ GDALDataset *WCSDataset::Open( GDALOpenInfo * poOpenInfo )
     for( iBand = 0; iBand < nBandCount; iBand++ ) {
         WCSRasterBand *band = new WCSRasterBand(poDS, iBand+1, -1);
         // copy band specific metadata to the band
-        char **md_from = poDS->GetMetadata("SUBDATASETS");
+        char **md_from = poDS->GetMetadata("");
         char **md_to = nullptr;
-        CPLString our_key = CPLString().Printf("FIELD_%d_", iBand + 1);
-        for (char **from = md_from; *from != nullptr; ++from) {
-            std::vector<CPLString> kv = Split(*from, "=");
-            if (kv.size() > 1 && STARTS_WITH(kv[0], our_key)) {
-                CPLString key = kv[0];
-                CPLString value = kv[1];
-                key.erase(0, our_key.length());
-                md_to = CSLSetNameValue(md_to, key, value);
+        if (md_from) {
+            CPLString our_key = CPLString().Printf("FIELD_%d_", iBand + 1);
+            for (char **from = md_from; *from != nullptr; ++from) {
+                std::vector<CPLString> kv = Split(*from, "=");
+                if (kv.size() > 1 && STARTS_WITH(kv[0], our_key)) {
+                    CPLString key = kv[0];
+                    CPLString value = kv[1];
+                    key.erase(0, our_key.length());
+                    md_to = CSLSetNameValue(md_to, key, value);
+                }
             }
         }
         band->SetMetadata(md_to, "");
@@ -1613,10 +1582,10 @@ CPLErr WCSDataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *WCSDataset::GetProjectionRef()
+const char *WCSDataset::_GetProjectionRef()
 
 {
-    const char* pszPrj = GDALPamDataset::GetProjectionRef();
+    const char* pszPrj = GDALPamDataset::_GetProjectionRef();
     if( pszPrj && strlen(pszPrj) > 0 )
         return pszPrj;
 
@@ -1659,7 +1628,7 @@ char **WCSDataset::GetMetadataDomainList()
 {
     return BuildMetadataDomainList(GDALPamDataset::GetMetadataDomainList(),
                                    TRUE,
-                                   "xml:CoverageOffering", NULL);
+                                   "xml:CoverageOffering", nullptr);
 }
 
 /************************************************************************/

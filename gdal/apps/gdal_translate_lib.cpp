@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1998, 2002, Frank Warmerdam
- * Copyright (c) 2007-2015, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2015, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2015, Faza Mahamood
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -59,7 +59,7 @@ CPL_CVSID("$Id$")
 static int ArgIsNumeric( const char * );
 static void AttachMetadata( GDALDatasetH, char ** );
 static void CopyBandInfo( GDALRasterBand * poSrcBand, GDALRasterBand * poDstBand,
-                            int bCanCopyStatsMetadata, int bCopyScale, int bCopyNoData );
+                            int bCanCopyStatsMetadata, int bCopyScale, int bCopyNoData, bool bCopyRAT );
 
 typedef enum
 {
@@ -191,6 +191,9 @@ struct GDALTranslateOptions
     /*! override the projection for the output file. The SRS may be any of the usual
         GDAL/OGR forms, complete WKT, PROJ.4, EPSG:n or a file containing the WKT. */
     char *pszOutputSRS;
+
+    /*! does not copy source GCP into destination dataset (when TRUE) */
+    bool bNoGCP;
 
     /*! number of GCPS to be added to the output dataset */
     int nGCPCount;
@@ -555,7 +558,7 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
 
     if(pbUsageError)
         *pbUsageError = FALSE;
-
+ 
     if(psOptions->adfULLR[0] != 0.0 || psOptions->adfULLR[1] != 0.0 || psOptions->adfULLR[2] != 0.0 || psOptions->adfULLR[3] != 0.0)
         bGotBounds = true;
 
@@ -577,6 +580,7 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
     if(psOptions->pszProjSRS != nullptr)
     {
         OGRSpatialReference oSRS;
+        oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
         if( oSRS.SetFromUserInput( psOptions->pszProjSRS ) != OGRERR_NONE )
         {
@@ -596,6 +600,7 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
     if(psOptions->pszOutputSRS != nullptr)
     {
         OGRSpatialReference oOutputSRS;
+        oOutputSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
         if( oOutputSRS.SetFromUserInput( psOptions->pszOutputSRS ) != OGRERR_NONE )
         {
@@ -653,9 +658,11 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
 
     if( psOptions->panBandList == nullptr )
     {
+
         psOptions->nBandCount = GDALGetRasterCount( hSrcDataset );
-        if( psOptions->nBandCount == 0 )
+        if( ( psOptions->nBandCount == 0 ) && (psOptions->bStrict ) )
         {
+            // if not strict then the driver can fail if it doesn't support zero bands
             CPLError( CE_Failure, CPLE_AppDefined, "Input file has no bands, and so cannot be translated." );
             GDALTranslateOptionsFree(psOptions);
             return nullptr;
@@ -752,6 +759,8 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
             {
                 OGRSpatialReference oSRSIn;
                 OGRSpatialReference oSRSDS;
+                oSRSIn.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                oSRSDS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
                 oSRSIn.SetFromUserInput(osProjSRS);
                 oSRSDS.SetFromUserInput(pszProjection);
                 if( !oSRSIn.IsSame(&oSRSDS) )
@@ -876,6 +885,36 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
         return nullptr;
     }
 
+/* -------------------------------------------------------------------- */
+/*      Make sure we cleanup if there is an existing dataset of this    */
+/*      name.  But even if that seems to fail we will continue since    */
+/*      it might just be a corrupt file or something.                   */
+/*      This is needed for                                              */
+/*      gdal_translate foo.tif foo.tif.ovr -outsize 50% 50%             */
+/* -------------------------------------------------------------------- */
+    if( !CPLFetchBool(psOptions->papszCreateOptions, "APPEND_SUBDATASET", false) )
+    {
+        // Someone issuing Create("foo.tif") on a
+        // memory driver doesn't expect files with those names to be deleted
+        // on a file system...
+        // This is somewhat messy. Ideally there should be a way for the
+        // driver to overload the default behaviour
+        if( !EQUAL(psOptions->pszFormat, "MEM") &&
+            !EQUAL(psOptions->pszFormat, "Memory") )
+        {
+            GDALDriver::FromHandle(hDriver)->QuietDelete( pszDest );
+        }
+        // Make sure to load early overviews, so that on the GTiff driver
+        // external .ovr is looked for before it might be created as the
+        // output dataset !
+        if( GDALGetRasterCount( hSrcDataset ) )
+        {
+            auto hBand = GDALGetRasterBand(hSrcDataset, 1);
+            if( hBand )
+                GDALGetOverviewCount(hBand);
+        }
+    }
+
     char** papszDriverMD = GDALGetMetadata(hDriver, nullptr);
 
     if( !CPLTestBool( CSLFetchNameValueDef(papszDriverMD,
@@ -921,9 +960,10 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
         && CSLCount(psOptions->papszMetadataOptions) == 0 && bAllBandsInOrder
         && psOptions->eMaskMode == MASK_AUTO
         && bSpatialArrangementPreserved
+        && !psOptions->bNoGCP
         && psOptions->nGCPCount == 0 && !bGotBounds
         && psOptions->pszOutputSRS == nullptr && !psOptions->bSetNoData && !psOptions->bUnsetNoData
-        && psOptions->nRGBExpand == 0 && !psOptions->bStats && !psOptions->bNoRAT
+        && psOptions->nRGBExpand == 0 && !psOptions->bNoRAT
         && psOptions->panColorInterp == nullptr )
     {
 
@@ -950,6 +990,21 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
             }
         }
 
+/* -------------------------------------------------------------------- */
+/*      Compute stats if required.                                      */
+/* -------------------------------------------------------------------- */
+        if (psOptions->bStats)
+        {
+            GDALDataset* poSrcDS = GDALDataset::FromHandle(hSrcDataset);
+            for( int i = 0; i < poSrcDS->GetRasterCount(); i++ )
+            {
+                double dfMin, dfMax, dfMean, dfStdDev;
+                poSrcDS->GetRasterBand(i+1)->ComputeStatistics(
+                    psOptions->bApproxStats,
+                    &dfMin, &dfMax, &dfMean, &dfStdDev,
+                    GDALDummyProgress, nullptr );
+            }
+        }
 
         hOutDS = GDALCreateCopy( hDriver, pszDest, hSrcDataset,
                                  psOptions->bStrict, psOptions->papszCreateOptions,
@@ -958,6 +1013,14 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
 
         GDALTranslateOptionsFree(psOptions);
         return hOutDS;
+    }
+
+    if( CSLFetchNameValue(psOptions->papszCreateOptions, "COPY_SRC_OVERVIEWS") )
+    {
+        CPLError(CE_Warning, CPLE_AppDefined,
+                 "General options of gdal_translate make the "
+                 "COPY_SRC_OVERVIEWS creation option ineffective as they hide "
+                 "the overviews");
     }
 
 /* -------------------------------------------------------------------- */
@@ -1186,7 +1249,7 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
         poVDS->SetGCPs( psOptions->nGCPCount, psOptions->pasGCPs, pszGCPProjection );
     }
 
-    else if( GDALGetGCPCount( hSrcDataset ) > 0 )
+    else if( !psOptions->bNoGCP && GDALGetGCPCount( hSrcDataset ) > 0 )
     {
         const int nGCPs = GDALGetGCPCount(hSrcDataset);
 
@@ -1216,6 +1279,10 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
     double adfDstWin[4] =
         {0.0, 0.0, static_cast<double>(nOXSize), static_cast<double>(nOYSize)};
 
+    double adfSrcWinOri[4];
+    static_assert(sizeof(adfSrcWinOri) == sizeof(psOptions->adfSrcWin),
+                  "inconsistent adfSrcWin size");
+    memcpy(adfSrcWinOri, psOptions->adfSrcWin, sizeof(psOptions->adfSrcWin));
     FixSrcDstWindow( psOptions->adfSrcWin, adfDstWin,
                      GDALGetRasterXSize(hSrcDataset),
                      GDALGetRasterYSize(hSrcDataset) );
@@ -1223,7 +1290,7 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
 /* -------------------------------------------------------------------- */
 /*      Transfer generally applicable metadata.                         */
 /* -------------------------------------------------------------------- */
-    GDALDataset* poSrcDS = reinterpret_cast<GDALDataset*>(hSrcDataset);
+    GDALDataset* poSrcDS = GDALDataset::FromHandle(hSrcDataset);
     char** papszMetadata = CSLDuplicate(poSrcDS->GetMetadata());
     if ( psOptions->nScaleRepeat > 0 || psOptions->bUnscale || psOptions->eOutputType != GDT_Unknown )
     {
@@ -1310,11 +1377,11 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
             double dfSAMP_SCALE = CPLAtof(CSLFetchNameValueDef(papszMD, "SAMP_SCALE", "1"));
             double dfLINE_SCALE = CPLAtof(CSLFetchNameValueDef(papszMD, "LINE_SCALE", "1"));
 
-            dfSAMP_OFF -= psOptions->adfSrcWin[0];
-            dfLINE_OFF -= psOptions->adfSrcWin[1];
+            dfSAMP_OFF -= adfSrcWinOri[0];
+            dfLINE_OFF -= adfSrcWinOri[1];
 
-            const double df2 = static_cast<double>(psOptions->adfSrcWin[2]);
-            const double df3 = static_cast<double>(psOptions->adfSrcWin[3]);
+            const double df2 = adfSrcWinOri[2];
+            const double df3 = adfSrcWinOri[3];
             dfSAMP_OFF *= nOXSize / df2;
             dfLINE_OFF *= nOYSize / df3;
             dfSAMP_SCALE *= nOXSize / df2;
@@ -1702,7 +1769,8 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
                           !psOptions->bStats && !bFilterOutStatsMetadata,
                           !psOptions->bUnscale && !psOptions->bSetScale &&
                             !psOptions->bSetOffset,
-                          !psOptions->bSetNoData && !psOptions->bUnsetNoData );
+                          !psOptions->bSetNoData && !psOptions->bUnsetNoData,
+                          !psOptions->bNoRAT );
             if( psOptions->nScaleRepeat == 0 &&
                 psOptions->nExponentRepeat == 0 &&
                 EQUAL(psOptions->pszFormat, "GRIB") )
@@ -1802,18 +1870,6 @@ GDALDatasetH GDALTranslate( const char *pszDest, GDALDatasetH hSrcDataset,
                                         psOptions->adfSrcWin[2], psOptions->adfSrcWin[3],
                                         adfDstWin[0], adfDstWin[1],
                                         adfDstWin[2], adfDstWin[3] );
-            }
-        }
-
-        // Only copy RAT if it is of reasonable size to fit in memory
-        if( !psOptions->bNoRAT )
-        {
-            GDALRasterAttributeTable* poRAT = poSrcBand->GetDefaultRAT();
-            if( poRAT != nullptr &&
-                static_cast<GIntBig>(poRAT->GetColumnCount()) *
-                    poRAT->GetRowCount() < 1024 * 1024 )
-            {
-                poVRTBand->SetDefaultRAT(poRAT);
             }
         }
     }
@@ -1927,13 +1983,17 @@ static void AttachMetadata( GDALDatasetH hDS, char **papszMetadataOptions )
 /* more and more custom behaviour in the context of gdal_translate ... */
 
 static void CopyBandInfo( GDALRasterBand * poSrcBand, GDALRasterBand * poDstBand,
-                          int bCanCopyStatsMetadata, int bCopyScale, int bCopyNoData )
+                          int bCanCopyStatsMetadata, int bCopyScale, int bCopyNoData, bool bCopyRAT )
 
 {
 
     if (bCanCopyStatsMetadata)
     {
         poDstBand->SetMetadata( poSrcBand->GetMetadata() );
+        if (bCopyRAT)
+        {
+            poDstBand->SetDefaultRAT( poSrcBand->GetDefaultRAT() );
+        }
     }
     else
     {
@@ -1946,6 +2006,21 @@ static void CopyBandInfo( GDALRasterBand * poSrcBand, GDALRasterBand * poDstBand
         }
         poDstBand->SetMetadata( papszMetadataNew );
         CSLDestroy(papszMetadataNew);
+
+        // we need to strip histogram data from the source RAT
+        if (poSrcBand->GetDefaultRAT() && bCopyRAT)
+        {
+            GDALRasterAttributeTable *poNewRAT = poSrcBand->GetDefaultRAT()->Clone();
+
+            // strip histogram data (as definied by the source RAT)
+            poNewRAT->RemoveStatistics();
+            if( poNewRAT->GetColumnCount() )
+            {
+                poDstBand->SetDefaultRAT( poNewRAT );
+            }
+            // since SetDefaultRAT copies the RAT data we need to delete our original
+            delete poNewRAT;
+        }
     }
 
     poDstBand->SetColorTable( poSrcBand->GetColorTable() );
@@ -2063,6 +2138,7 @@ GDALTranslateOptions *GDALTranslateOptionsNew(char** papszArgv, GDALTranslateOpt
     psOptions->dfLRX = 0.0;
     psOptions->dfLRY = 0.0;
     psOptions->pszOutputSRS = nullptr;
+    psOptions->bNoGCP = false;
     psOptions->nGCPCount = 0;
     psOptions->pasGCPs = nullptr;
     psOptions->adfULLR[0] = 0;
@@ -2212,6 +2288,10 @@ GDALTranslateOptions *GDALTranslateOptionsNew(char** papszArgv, GDALTranslateOpt
         {
             if( psOptionsForBinary )
                 psOptionsForBinary->bCopySubDatasets = TRUE;
+        }
+        else if (EQUAL(papszArgv[i], "-nogcp"))
+        {
+            psOptions->bNoGCP = true;
         }
         else if( i + 4 < argc && EQUAL(papszArgv[i],"-gcp") )
         {
@@ -2604,6 +2684,14 @@ GDALTranslateOptions *GDALTranslateOptionsNew(char** papszArgv, GDALTranslateOpt
             GDALTranslateOptionsFree(psOptions);
             return nullptr;
         }
+    }
+
+    if (psOptions->nGCPCount > 0 && psOptions->bNoGCP)
+    {
+        CPLError(CE_Failure, CPLE_IllegalArg,
+                 "-nogcp and -gcp cannot be used as the same time" );
+        GDALTranslateOptionsFree(psOptions);
+        return nullptr;
     }
 
     if( bOutsideExplicitlySet &&

@@ -2,10 +2,10 @@
  *
  * Project:  X-Plane apt.dat file reader
  * Purpose:  Implements OGRXPlaneAptReader class
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -237,7 +237,8 @@ void OGRXPlaneAptReader::Read()
         {
             bResumeLine = false;
 
-            if( nTokens == 1 && strcmp(papszTokens[0], "99") == 0 )
+            if( nTokens == 1 && papszTokens && papszTokens[0] &&
+                strcmp(papszTokens[0], "99") == 0 )
             {
                 CSLDestroy(papszTokens);
                 papszTokens = nullptr;

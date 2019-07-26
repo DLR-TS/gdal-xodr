@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2009-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -697,6 +697,7 @@ class OGRSQLiteBaseDataSource : public GDALPamDataset
 {
   protected:
     char               *m_pszFilename;
+    bool                m_bCallUndeclareFileNotToOpen = false;
 
     sqlite3             *hDB;
     int                 bUpdate;
@@ -864,10 +865,13 @@ class OGRSQLiteDataSource final : public OGRSQLiteBaseDataSource
     virtual char**      GetMetadata(const char* pszDomain = "") override;
 
     virtual CPLErr      GetGeoTransform( double* padfGeoTransform ) override;
-    virtual const char* GetProjectionRef() override;
+    virtual const char* _GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     char               *LaunderName( const char * );
-    int                 FetchSRSId( OGRSpatialReference * poSRS );
+    int                 FetchSRSId( const OGRSpatialReference * poSRS );
     OGRSpatialReference*FetchSRS( int nSRID );
 
     void                SetUpdate(int bUpdateIn) { bUpdate = bUpdateIn; }
@@ -948,9 +952,6 @@ class RL2RasterBand final: public GDALPamRasterBand
 
 CPLString OGRSQLiteFieldDefnToSQliteFieldDefn( OGRFieldDefn* poFieldDefn,
                                                int bSQLiteDialectInternalUse );
-
-int OGRSQLITEStringToDateTimeField( OGRFeature* poFeature, int iField,
-                                    const char* pszValue );
 
 typedef void (*pfnNotifyFileOpenedType)(void* pfnUserData, const char* pszFilename, VSILFILE* fp);
 sqlite3_vfs* OGRSQLiteCreateVFS(pfnNotifyFileOpenedType pfn, void* pfnUserData);

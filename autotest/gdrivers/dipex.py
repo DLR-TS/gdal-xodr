@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test DIPEx driver
-# Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault, <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,9 +28,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -38,19 +36,10 @@ import gdaltest
 # Test a fake DIPex dataset
 
 
-def dipex_1():
+def test_dipex_1():
 
     tst = gdaltest.GDALTest('DIPEx', 'fakedipex.dat', 1, 1)
     return tst.testOpen()
 
 
-gdaltest_list = [
-    dipex_1]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('dipex')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

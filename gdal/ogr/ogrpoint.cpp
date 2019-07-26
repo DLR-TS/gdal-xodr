@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -130,20 +130,13 @@ OGRPoint::OGRPoint( double xIn, double yIn, double zIn, double mIn ) :
  * @since GDAL 2.1
  */
 
-OGRPoint::OGRPoint( const OGRPoint& other ) :
-    OGRGeometry( other ),
-    x( other.x ),
-    y( other.y ),
-    z( other.z ),
-    m( other.m )
-{
-}
+OGRPoint::OGRPoint( const OGRPoint& ) = default;
 
 /************************************************************************/
 /*                             ~OGRPoint()                              */
 /************************************************************************/
 
-OGRPoint::~OGRPoint() {}
+OGRPoint::~OGRPoint() = default;
 
 /************************************************************************/
 /*                       operator=( const OGRPoint& )                   */

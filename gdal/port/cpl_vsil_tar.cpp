@@ -2,10 +2,10 @@
  *
  * Project:  CPL - Common Portability Library
  * Purpose:  Implement VSI large file api for tar files (.tar).
- * Author:   Even Rouault, even.rouault at mines-paris.org
+ * Author:   Even Rouault, even.rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2010-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -65,18 +65,14 @@ constexpr int BUFFER_SIZE = 2 * HALF_BUFFER_SIZE;
 class VSITarEntryFileOffset final : public VSIArchiveEntryFileOffset
 {
 public:
-        GUIntBig m_nOffset;
+        GUIntBig m_nOffset = 0;
 #ifdef HAVE_FUZZER_FRIENDLY_ARCHIVE
-        GUIntBig m_nFileSize;
-        CPLString m_osFileName;
+        GUIntBig m_nFileSize = 0;
+        CPLString m_osFileName{};
 #endif
 
-        explicit VSITarEntryFileOffset(GUIntBig nOffset)
+        explicit VSITarEntryFileOffset(GUIntBig nOffset): m_nOffset(nOffset)
         {
-            m_nOffset = nOffset;
-#ifdef HAVE_FUZZER_FRIENDLY_ARCHIVE
-            m_nFileSize = 0;
-#endif
         }
 
 #ifdef HAVE_FUZZER_FRIENDLY_ARCHIVE
@@ -98,17 +94,20 @@ public:
 class VSITarReader final : public VSIArchiveReader
 {
     private:
-        VSILFILE* fp;
-        GUIntBig nCurOffset;
-        GUIntBig nNextFileSize;
-        CPLString osNextFileName;
-        GIntBig nModifiedTime;
+
+        CPL_DISALLOW_COPY_ASSIGN(VSITarReader)
+
+        VSILFILE* fp = nullptr;
+        GUIntBig nCurOffset = 0;
+        GUIntBig nNextFileSize = 0;
+        CPLString osNextFileName{};
+        GIntBig nModifiedTime = 0;
 #ifdef HAVE_FUZZER_FRIENDLY_ARCHIVE
-        bool m_bIsFuzzerFriendly;
+        bool m_bIsFuzzerFriendly = false;
         GByte m_abyBuffer[BUFFER_SIZE+1] = {};
-        int m_abyBufferIdx;
-        int m_abyBufferSize;
-        GUIntBig m_nCurOffsetOld;
+        int m_abyBufferIdx = 0;
+        int m_abyBufferSize = 0;
+        GUIntBig m_nCurOffsetOld = 0;
 #endif
 
   public:
@@ -147,16 +146,9 @@ static bool VSIIsTGZ(const char* pszFilename)
 // And make it a symbolic constant.
 
 VSITarReader::VSITarReader(const char* pszTarFileName) :
-    nCurOffset(0),
-    nNextFileSize(0),
-    nModifiedTime(0)
+    fp(VSIFOpenL(pszTarFileName, "rb"))
 {
-    fp = VSIFOpenL(pszTarFileName, "rb");
 #ifdef HAVE_FUZZER_FRIENDLY_ARCHIVE
-    m_bIsFuzzerFriendly = false;
-    m_abyBufferIdx = 0;
-    m_abyBufferSize = 0;
-    m_nCurOffsetOld = 0;
     if( fp != nullptr )
     {
         GByte abySignature[24] = {};
@@ -333,36 +325,67 @@ int VSITarReader::GotoNextFile()
         }
     }
 #endif
-    char abyHeader[512] = {};
-    if (VSIFReadL(abyHeader, 512, 1, fp) != 1)
-        return FALSE;
 
-    if (abyHeader[99] != '\0' ||
-        abyHeader[107] != '\0' ||
-        abyHeader[115] != '\0' ||
-        abyHeader[123] != '\0' ||
-        (abyHeader[135] != '\0' && abyHeader[135] != ' ') ||
-        (abyHeader[147] != '\0' && abyHeader[147] != ' '))
+    osNextFileName.clear();
+    while( true )
     {
-        return FALSE;
-    }
-    if( abyHeader[124] < '0' || abyHeader[124] > '7' )
-        return FALSE;
+        GByte abyHeader[512] = {};
+        if (VSIFReadL(abyHeader, 512, 1, fp) != 1)
+            return FALSE;
 
-    osNextFileName = abyHeader;
-    nNextFileSize = 0;
-    for(int i=0;i<11;i++)
-        nNextFileSize = nNextFileSize * 8 + (abyHeader[124+i] - '0');
-    if( nNextFileSize > GINTBIG_MAX )
-    {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "Invalid file size for %s", osNextFileName.c_str());
-        return FALSE;
-    }
+        if (!(abyHeader[100] == 0x80 || abyHeader[107] == '\0') || /* start/end of filemode */
+            !(abyHeader[108] == 0x80 || abyHeader[115] == '\0') || /* start/end of owner ID */
+            !(abyHeader[116] == 0x80 || abyHeader[123] == '\0') || /* start/end of group ID */
+            (abyHeader[135] != '\0' && abyHeader[135] != ' ') || /* end of file size */
+            (abyHeader[147] != '\0' && abyHeader[147] != ' ')) /* end of mtime */
+        {
+            return FALSE;
+        }
+        if( !(abyHeader[124] == ' ' || (abyHeader[124] >= '0' && abyHeader[124] <= '7')) )
+            return FALSE;
 
-    nModifiedTime = 0;
-    for(int i=0;i<11;i++)
-        nModifiedTime = nModifiedTime * 8 + (abyHeader[136+i] - '0');
+        if( osNextFileName.empty() )
+        {
+            osNextFileName.assign(reinterpret_cast<const char*>(abyHeader),
+                                  CPLStrnlen(reinterpret_cast<const char*>(abyHeader), 100));
+        }
+
+        nNextFileSize = 0;
+        for(int i=0;i<11;i++)
+        {
+            if( abyHeader[124+i] != ' ' )
+                nNextFileSize = nNextFileSize * 8 + (abyHeader[124+i] - '0');
+        }
+        if( nNextFileSize > GINTBIG_MAX )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                    "Invalid file size for %s", osNextFileName.c_str());
+            return FALSE;
+        }
+
+        nModifiedTime = 0;
+        for(int i=0;i<11;i++)
+        {
+            if( abyHeader[136+i] != ' ' )
+                nModifiedTime = nModifiedTime * 8 + (abyHeader[136+i] - '0');
+        }
+
+        if( abyHeader[156] == 'L' && nNextFileSize > 0 && nNextFileSize < 32768 )
+        {
+            // If this is a large filename record, then read the filename
+            osNextFileName.clear();
+            osNextFileName.resize(static_cast<size_t>(((nNextFileSize + 511) / 512) * 512));
+            if (VSIFReadL(&osNextFileName[0], osNextFileName.size(), 1, fp) != 1)
+                return FALSE;
+            osNextFileName.resize(static_cast<size_t>(nNextFileSize));
+            if( osNextFileName.back() == '\0' )
+                osNextFileName.resize(osNextFileName.size() - 1);
+        }
+        else
+        {
+            break;
+        }
+    }
 
     nCurOffset = VSIFTellL(fp);
 

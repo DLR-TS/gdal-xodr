@@ -1,11 +1,11 @@
 /******************************************************************************
  *
  * Project:  OpenGIS Simple Features Reference Implementation
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  * Purpose:  OSM XML and OSM PBF parser
  *
  ******************************************************************************
- * Copyright (c) 2012-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -59,7 +59,9 @@ CPL_CVSID("$Id$")
 // doing checks for each byte.
 constexpr int EXTRA_BYTES = 1;
 
+#ifdef HAVE_EXPAT
 constexpr int XML_BUFSIZE = 64 * 1024;
+#endif
 
 // Per OSM PBF spec
 constexpr unsigned int MAX_BLOB_HEADER_SIZE = 64 * 1024;
@@ -2724,7 +2726,7 @@ OSMContext* OSM_Open( const char* pszFilename,
         psCtxt->nMembersAllocated = 2000;
         psCtxt->pasMembers = (OSMMember*) VSI_MALLOC_VERBOSE(sizeof(OSMMember) * psCtxt->nMembersAllocated);
 
-        psCtxt->nNodeRefsAllocated = 2000;
+        psCtxt->nNodeRefsAllocated = 10000;
         psCtxt->panNodeRefs = (GIntBig*) VSI_MALLOC_VERBOSE(sizeof(GIntBig) * psCtxt->nNodeRefsAllocated);
 
         if( psCtxt->pszStrBuf == nullptr ||
@@ -2756,10 +2758,11 @@ OSMContext* OSM_Open( const char* pszFilename,
                 CPLGetConfigOption("GDAL_NUM_THREADS", "ALL_CPUS");
     int nNumCPUs = CPLGetNumCPUs();
     if( pszNumThreads && !EQUAL(pszNumThreads, "ALL_CPUS") )
-        nNumCPUs = std::min(2 * nNumCPUs, atoi(pszNumThreads));
+        nNumCPUs = std::max(0, std::min(2 * nNumCPUs, atoi(pszNumThreads)));
     if( nNumCPUs > 1 )
     {
         psCtxt->poWTP = new CPLWorkerThreadPool();
+        // coverity[tainted_data]
         if( !psCtxt->poWTP->Setup(nNumCPUs , nullptr, nullptr) )
         {
             delete psCtxt->poWTP;

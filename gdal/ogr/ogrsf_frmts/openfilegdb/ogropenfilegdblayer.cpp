@@ -2,10 +2,10 @@
  *
  * Project:  OpenGIS Simple Features Reference Implementation
  * Purpose:  Implements Open FileGDB OGR driver.
- * Author:   Even Rouault, <even dot rouault at mines-dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -226,8 +226,9 @@ OGROpenFileGDBLayer::~OGROpenFileGDBLayer()
 
 static OGRSpatialReference* BuildSRS(const char* pszWKT)
 {
-    OGRSpatialReference* poSRS = new OGRSpatialReference( pszWKT );
-    if( poSRS->morphFromESRI() != OGRERR_NONE )
+    OGRSpatialReference* poSRS = new OGRSpatialReference();
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    if( poSRS->importFromWkt(pszWKT) != OGRERR_NONE )
     {
         delete poSRS;
         poSRS = nullptr;
@@ -244,6 +245,7 @@ static OGRSpatialReference* BuildSRS(const char* pszWKT)
             {
                 poSRS->Release();
                 poSRS = reinterpret_cast<OGRSpatialReference*>(pahSRS[0]);
+                poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
                 CPLFree(pahSRS);
             }
             else
@@ -371,6 +373,7 @@ int OGROpenFileGDBLayer::BuildGeometryColumnGDBv10()
         {
             int bSuccess = FALSE;
             poSRS = new OGRSpatialReference();
+            poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
             CPLPushErrorHandler(CPLQuietErrorHandler);
             // Try first with nLatestWKID as there is a higher chance it is a
             // EPSG code and not an ESRI one.

@@ -2,10 +2,10 @@
  *
  * Project:  SUA Translator
  * Purpose:  Implements OGRSUALayer class.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -41,12 +41,14 @@ CPL_CVSID("$Id$")
 
 OGRSUALayer::OGRSUALayer( VSILFILE* fp ) :
     poFeatureDefn(new OGRFeatureDefn( "layer" )),
-    poSRS(new OGRSpatialReference(SRS_WKT_WGS84)),
+    poSRS(new OGRSpatialReference(SRS_WKT_WGS84_LAT_LONG)),
     fpSUA(fp),
     bEOF(false),
     bHasLastLine(false),
     nNextFID(0)
 {
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
     SetDescription( poFeatureDefn->GetName() );
     poFeatureDefn->Reference();
     poFeatureDefn->SetGeomType( wkbPolygon );

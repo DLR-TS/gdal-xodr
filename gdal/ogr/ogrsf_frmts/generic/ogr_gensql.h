@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -111,6 +111,8 @@ class OGRGenSQLResultsLayer final: public OGRLayer
     void        InvalidateOrderByIndex();
 
     int         MustEvaluateSpatialFilterOnGenSQL();
+
+    CPL_DISALLOW_COPY_ASSIGN(OGRGenSQLResultsLayer)
 
   public:
                 OGRGenSQLResultsLayer( GDALDataset *poSrcDS,

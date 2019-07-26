@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <set>
 #include <string>
 
 #include "cpl_conv.h"
@@ -191,7 +192,7 @@ CPL_UNUSED
 GMLReader::~GMLReader()
 
 {
-    ClearClasses();
+    GMLReader::ClearClasses();
 
     CPLFree(m_pszFilename);
 
@@ -1317,9 +1318,19 @@ bool GMLReader::PrescanForSchema( bool bGetExtents,
     }
 
     GMLFeature *poFeature = nullptr;
+    std::set<GMLFeatureClass*> knownClasses;
     while( (poFeature = NextFeature()) != nullptr )
     {
         GMLFeatureClass *poClass = poFeature->GetClass();
+
+        if( knownClasses.find(poClass) == knownClasses.end() )
+        {
+            knownClasses.insert(poClass);
+            if( m_pszGlobalSRSName && GML_IsLegitSRSName(m_pszGlobalSRSName) )
+            {
+                poClass->SetSRSName(m_pszGlobalSRSName);
+            }
+        }
 
         if (poLastClass != nullptr && poClass != poLastClass &&
             poClass->GetFeatureCount() != -1)
@@ -1359,9 +1370,15 @@ bool GMLReader::PrescanForSchema( bool bGetExtents,
                         GML_ExtractSrsNameFromGeometry(papsGeometry,
                                                        osWork,
                                                        m_bConsiderEPSGAsURN);
-                    if (pszSRSName != nullptr)
+                    if (pszSRSName != nullptr && m_pszGlobalSRSName != nullptr &&
+                        !EQUAL(pszSRSName, m_pszGlobalSRSName))
+                    {
                         m_bCanUseGlobalSRSName = false;
-                    poClass->MergeSRSName(pszSRSName);
+                    }
+                    if( m_pszGlobalSRSName == nullptr || pszSRSName != nullptr)
+                    {
+                        poClass->MergeSRSName(pszSRSName);
+                    }
                 }
 
                 // Merge geometry type into layer.
@@ -1414,22 +1431,15 @@ bool GMLReader::PrescanForSchema( bool bGetExtents,
     {
         GMLFeatureClass *poClass = m_papoClass[i];
         const char* pszSRSName = poClass->GetSRSName();
-
-        if (m_bCanUseGlobalSRSName)
-            pszSRSName = m_pszGlobalSRSName;
+        if( pszSRSName != nullptr && !GML_IsLegitSRSName(pszSRSName) )
+        {
+            continue;
+        }
 
         OGRSpatialReference oSRS;
         if (m_bInvertAxisOrderIfLatLong && GML_IsSRSLatLongOrder(pszSRSName) &&
             oSRS.SetFromUserInput(pszSRSName) == OGRERR_NONE)
         {
-            OGR_SRSNode *poGEOGCS = oSRS.GetAttrNode("GEOGCS");
-            if( poGEOGCS != nullptr )
-                poGEOGCS->StripNodes("AXIS");
-
-            OGR_SRSNode *poPROJCS = oSRS.GetAttrNode("PROJCS");
-            if (poPROJCS != nullptr && oSRS.EPSGTreatsAsNorthingEasting())
-                poPROJCS->StripNodes("AXIS");
-
             char* pszWKT = nullptr;
             if (oSRS.exportToWkt(&pszWKT) == OGRERR_NONE)
                 poClass->SetSRSName(pszWKT);

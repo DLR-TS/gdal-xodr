@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  BSB Testing.
-# Author:   Even Rouault <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2008-2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2008-2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,31 +28,30 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 from osgeo import gdal
+from osgeo import osr
 
-sys.path.append('../pymod')
 
 import gdaltest
+import pytest
 
 ###############################################################################
 # Test driver availability
 
 
-def bsb_0():
+def test_bsb_0():
     gdaltest.bsb_dr = gdal.GetDriverByName('BSB')
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
-    return 'success'
-
+    
 ###############################################################################
 # Test Read
 
 
-def bsb_1():
+def test_bsb_1():
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('BSB', 'rgbsmall.kap', 1, 30321)
 
@@ -62,13 +61,13 @@ def bsb_1():
 # Test CreateCopy
 
 
-def bsb_2():
+def test_bsb_2():
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
     md = gdaltest.bsb_dr.GetMetadata()
     if 'DMD_CREATIONDATATYPES' not in md:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('BSB', 'rgbsmall.kap', 1, 30321)
 
@@ -81,9 +80,9 @@ def bsb_2():
 # --> This is probably not a valid BSB file, but it proves that we can read the index table
 
 
-def bsb_3():
+def test_bsb_3():
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('BSB', 'rgbsmall_index.kap', 1, 30321)
 
@@ -95,9 +94,9 @@ def bsb_3():
 # adding a 0 character in the middle of line data
 
 
-def bsb_4():
+def test_bsb_4():
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('BSB', 'rgbsmall_with_line_break.kap', 1, 30321)
 
@@ -107,9 +106,9 @@ def bsb_4():
 # Read a truncated BSB (at the level of the written scanline number starting a new row)
 
 
-def bsb_5():
+def test_bsb_5():
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('BSB', 'rgbsmall_truncated.kap', 1, 29696)
 
@@ -123,9 +122,9 @@ def bsb_5():
 # Read another truncated BSB (in the middle of row data)
 
 
-def bsb_6():
+def test_bsb_6():
     if gdaltest.bsb_dr is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('BSB', 'rgbsmall_truncated2.kap', 1, 29696)
 
@@ -135,22 +134,53 @@ def bsb_6():
 
     return ret
 
+###############################################################################
 
-gdaltest_list = [
-    bsb_0,
-    bsb_1,
-    bsb_2,
-    bsb_3,
-    bsb_4,
-    bsb_5,
-    bsb_6
-]
+def test_bsb_tmerc():
+    if gdaltest.bsb_dr is None:
+        pytest.skip()
+
+    ds = gdal.Open('data/transverse_mercator.kap')
+    gt = ds.GetGeoTransform()
+    expected_gt = [28487.6637325402, 1.2711141208521637, 0.009061669923111566,
+                   6539651.728646593, 0.015209115944776083, -1.267821834560455]
+    assert min([abs(gt[i] - expected_gt[i]) <= 1e-8 * abs(expected_gt[i]) for i in range(6)]) == True, gt
+    expected_wkt = """PROJCS["unnamed",
+    GEOGCS["WGS 84",
+        DATUM["WGS_1984",
+            SPHEROID["WGS 84",6378137,298.257223563,
+                AUTHORITY["EPSG","7030"]],
+            AUTHORITY["EPSG","6326"]],
+        PRIMEM["Greenwich",0,
+            AUTHORITY["EPSG","8901"]],
+        UNIT["degree",0.0174532925199433,
+            AUTHORITY["EPSG","9122"]],
+        AUTHORITY["EPSG","4326"]],
+    PROJECTION["Transverse_Mercator"],
+    PARAMETER["latitude_of_origin",0],
+    PARAMETER["central_meridian",18.0582833333333],
+    PARAMETER["scale_factor",1],
+    PARAMETER["false_easting",0],
+    PARAMETER["false_northing",0],
+    UNIT["Meter",1],
+    AXIS["Easting",EAST],
+    AXIS["Northing",NORTH]]"""
+    expected_sr = osr.SpatialReference()
+    expected_sr.SetFromUserInput(expected_wkt)
+    expected_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER);
+    got_sr = ds.GetSpatialRef()
+    assert expected_sr.IsSame(got_sr), got_sr.ExportToWkt()
+    got_sr = ds.GetGCPSpatialRef()
+    assert expected_sr.IsSame(got_sr), got_sr.ExportToWkt()
+    assert ds.GetGCPCount() == 3
+    gcps = ds.GetGCPs()
+    assert len(gcps) == 3
+
+    assert gcps[0].GCPPixel == 25 and \
+       gcps[0].GCPLine == 577 and \
+       abs(gcps[0].GCPX - 28524.670169107143) < 1e-5 and \
+       abs(gcps[0].GCPY - 6538920.57567595) < 1e-5 and \
+       gcps[0].GCPZ == 0
 
 
-if __name__ == '__main__':
 
-    gdaltest.setup_run('BSB')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

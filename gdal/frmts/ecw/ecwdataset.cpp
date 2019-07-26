@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1193,10 +1193,10 @@ CPLErr ECWDataset::SetGeoTransform( double * padfGeoTransform )
 /*                            SetProjection()                           */
 /************************************************************************/
 
-CPLErr ECWDataset::SetProjection( const char* pszProjectionIn )
+CPLErr ECWDataset::_SetProjection( const char* pszProjectionIn )
 {
     if ( bIsJPEG2000 || eAccess == GA_ReadOnly )
-        return GDALPamDataset::SetProjection(pszProjectionIn);
+        return GDALPamDataset::_SetProjection(pszProjectionIn);
 
     if ( !( (pszProjection == nullptr && pszProjectionIn == nullptr) ||
             (pszProjection != nullptr && pszProjectionIn != nullptr &&

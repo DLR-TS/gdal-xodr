@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2003, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -38,6 +38,9 @@
 
 #include <algorithm>
 #include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
 
 #include "cpl_config.h"
 #include "cpl_conv.h"
@@ -57,6 +60,34 @@ struct _GDALWarpChunk {
     int sx, sy, ssx, ssy;
     double sExtraSx, sExtraSy;
 };
+
+struct GDALWarpPrivateData
+{
+    int nStepCount = 0;
+    std::vector<int> abSuccess{};
+    std::vector<double> adfDstX{};
+    std::vector<double> adfDstY{};
+};
+
+static std::mutex gMutex{};
+static std::map<GDALWarpOperation*, std::unique_ptr<GDALWarpPrivateData>> gMapPrivate{};
+
+static GDALWarpPrivateData* GetWarpPrivateData(GDALWarpOperation* poWarpOperation)
+{
+    std::lock_guard<std::mutex> oLock(gMutex);
+    auto oItem = gMapPrivate.find(poWarpOperation);
+    if( oItem != gMapPrivate.end() )
+    {
+        return oItem->second.get();
+    }
+    else
+    {
+        gMapPrivate[poWarpOperation] = std::unique_ptr<GDALWarpPrivateData>(
+            new GDALWarpPrivateData());
+        return gMapPrivate[poWarpOperation].get();
+    }
+}
+
 
 /************************************************************************/
 /* ==================================================================== */
@@ -154,6 +185,15 @@ GDALWarpOperation::GDALWarpOperation() :
 GDALWarpOperation::~GDALWarpOperation()
 
 {
+    {
+        std::lock_guard<std::mutex> oLock(gMutex);
+        auto oItem = gMapPrivate.find(this);
+        if( oItem != gMapPrivate.end() )
+        {
+            gMapPrivate.erase(oItem);
+        }
+    }
+
     WipeOptions();
 
     if( hIOMutex != nullptr )
@@ -243,6 +283,21 @@ int GDALWarpOperation::ValidateOptions()
                   "GDALWarpOptions.Validate(): "
                   "eWorkingDataType=%d is not a supported value.",
                   psOptions->eWorkingDataType );
+        return FALSE;
+    }
+
+    if ( GDALDataTypeIsComplex(psOptions->eWorkingDataType)!=0 &&
+         (psOptions->eResampleAlg == GRA_Mode ||
+          psOptions->eResampleAlg == GRA_Max  ||
+          psOptions->eResampleAlg == GRA_Min  ||
+          psOptions->eResampleAlg == GRA_Med  ||
+          psOptions->eResampleAlg == GRA_Q1   ||
+          psOptions->eResampleAlg == GRA_Q3))
+    {
+
+        CPLError( CE_Failure, CPLE_NotSupported,
+                  "GDALWarpOptions.Validate(): "
+                  "min/max/qnt not supported for complex valued data.");
         return FALSE;
     }
 
@@ -591,23 +646,13 @@ void* GDALWarpOperation::CreateDestinationBuffer(
 /*      for this block.                                                 */
 /* -------------------------------------------------------------------- */
     const int nWordSize = GDALGetDataTypeSizeBytes(psOptions->eWorkingDataType);
-    const int nBandSize = nWordSize * nDstXSize * nDstYSize;
 
-    const int knIntMax = std::numeric_limits<int>::max();
-    if( nDstXSize > knIntMax / nDstYSize ||
-        nDstXSize * nDstYSize > knIntMax / (nWordSize * psOptions->nBandCount) )
-    {
-        CPLError( CE_Failure, CPLE_AppDefined,
-                  "Integer overflow : nDstXSize=%d, nDstYSize=%d",
-                  nDstXSize, nDstYSize);
-        return nullptr;
-    }
-
-    void *pDstBuffer = VSI_MALLOC_VERBOSE( nBandSize * psOptions->nBandCount );
+    void *pDstBuffer = VSI_MALLOC3_VERBOSE( nWordSize * psOptions->nBandCount, nDstXSize, nDstYSize );
     if( pDstBuffer == nullptr )
     {
         return nullptr;
     }
+    const GPtrDiff_t nBandSize = static_cast<GPtrDiff_t>(nWordSize) * nDstXSize * nDstYSize;
 
 /* -------------------------------------------------------------------- */
 /*      Initialize if requested in the options                                 */
@@ -674,17 +719,17 @@ void* GDALWarpOperation::CreateDestinationBuffer(
         }
         else if( !CPLIsNan(adfInitRealImag[1]) && adfInitRealImag[1] == 0.0 )
         {
-            GDALCopyWords( &adfInitRealImag, GDT_Float64, 0,
+            GDALCopyWords64( &adfInitRealImag, GDT_Float64, 0,
                             pBandData, psOptions->eWorkingDataType,
                             nWordSize,
-                            nDstXSize * nDstYSize );
+                            static_cast<GPtrDiff_t>(nDstXSize) * nDstYSize );
         }
         else
         {
-            GDALCopyWords( &adfInitRealImag, GDT_CFloat64, 0,
+            GDALCopyWords64( &adfInitRealImag, GDT_CFloat64, 0,
                             pBandData, psOptions->eWorkingDataType,
                             nWordSize,
-                            nDstXSize * nDstYSize );
+                            static_cast<GPtrDiff_t>(nDstXSize) * nDstYSize );
         }
     }
 
@@ -1287,9 +1332,10 @@ CPLErr GDALWarpOperation::CollectChunkListInternal(
     // in case the heuristics would cause issues.
 #if DEBUG_VERBOSE
     CPLDebug("WARP",
-             "dst=(%d,%d,%d,%d) src=(%d,%d,%d,%d) srcfillratio=%.18g",
+             "dst=(%d,%d,%d,%d) src=(%d,%d,%d,%d) srcfillratio=%.18g, dfTotalMemoryUse=%.1f MB",
              nDstXOff, nDstYOff, nDstXSize, nDstYSize,
-             nSrcXOff, nSrcYOff, nSrcXSize, nSrcYSize, dfSrcFillRatio);
+             nSrcXOff, nSrcYOff, nSrcXSize, nSrcYSize, dfSrcFillRatio,
+             dfTotalMemoryUse / (1024 * 1024));
 #endif
     if( (dfTotalMemoryUse > psOptions->dfWarpMemoryLimit &&
          (nDstXSize > 2 || nDstYSize > 2)) ||
@@ -1761,23 +1807,22 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
     oWK.dfSrcXExtraSize = dfSrcXExtraSize;
     oWK.dfSrcYExtraSize = dfSrcYExtraSize;
 
-    const int knIntMax = std::numeric_limits<int>::max();
-    if( nSrcXSize != 0 && nSrcYSize != 0 &&
-        (nSrcXSize > knIntMax / nSrcYSize ||
-         nSrcXSize * nSrcYSize >
-         knIntMax / (nWordSize * psOptions->nBandCount) - WARP_EXTRA_ELTS) )
+    GInt64 nAlloc64 = nWordSize * (static_cast<GInt64>(nSrcXSize) * nSrcYSize + WARP_EXTRA_ELTS)
+                           * psOptions->nBandCount;
+#if SIZEOF_VOIDP == 4
+    if( nAlloc64 != static_cast<GInt64>(static_cast<size_t>(nAlloc64)) )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
                   "Integer overflow : nSrcXSize=%d, nSrcYSize=%d",
                   nSrcXSize, nSrcYSize);
         return CE_Failure;
     }
+#endif
 
     oWK.papabySrcImage = static_cast<GByte **>(
         CPLCalloc(sizeof(GByte*), psOptions->nBandCount));
     oWK.papabySrcImage[0] = static_cast<GByte *>(
-        VSI_MALLOC_VERBOSE(nWordSize * (nSrcXSize * nSrcYSize + WARP_EXTRA_ELTS)
-                           * psOptions->nBandCount));
+        VSI_MALLOC_VERBOSE(static_cast<size_t>(nAlloc64)));
 
     CPLErr eErr =
         nSrcXSize != 0 && nSrcYSize != 0 && oWK.papabySrcImage[0] == nullptr
@@ -1787,7 +1832,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
 
     for( int i = 0; i < psOptions->nBandCount && eErr == CE_None; i++ )
         oWK.papabySrcImage[i] = reinterpret_cast<GByte *>(oWK.papabySrcImage[0])
-            + nWordSize * (nSrcXSize * nSrcYSize + WARP_EXTRA_ELTS) * i;
+            + nWordSize * (static_cast<GPtrDiff_t>(nSrcXSize) * nSrcYSize + WARP_EXTRA_ELTS) * i;
 
     if( eErr == CE_None && nSrcXSize > 0 && nSrcYSize > 0 )
     {
@@ -1810,7 +1855,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
                   oWK.papabySrcImage[0], nSrcXSize, nSrcYSize,
                   psOptions->eWorkingDataType,
                   psOptions->nBandCount, psOptions->panSrcBands,
-                  0, 0, nWordSize * (nSrcXSize * nSrcYSize + WARP_EXTRA_ELTS),
+                  0, 0, nWordSize * (static_cast<GPtrDiff_t>(nSrcXSize) * nSrcYSize + WARP_EXTRA_ELTS),
                   nullptr );
         }
     }
@@ -1832,7 +1877,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
     for( ; i1 < psOptions->nBandCount && eErr == CE_None; i1++ )
     {
         oWK.papabyDstImage[i1] = static_cast<GByte *>(pDataBuf)
-            + i1 * nDstXSize * nDstYSize * nWordSize;
+            + i1 * static_cast<GPtrDiff_t>(nDstXSize) * nDstYSize * nWordSize;
     }
 
 /* -------------------------------------------------------------------- */
@@ -1889,7 +1934,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
 
             if( eErr == CE_None )
             {
-                for( int j = 0; j < oWK.nSrcXSize * oWK.nSrcYSize; j++ )
+                for( GPtrDiff_t j = 0; j < static_cast<GPtrDiff_t>(oWK.nSrcXSize) * oWK.nSrcYSize; j++ )
                     oWK.pafUnifiedSrcDensity[j] = 1.0;
             }
         }
@@ -1999,7 +2044,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
                           false )
             && eErr == CE_None )
         {
-            const int nBytesInMask = (oWK.nSrcXSize * oWK.nSrcYSize + 31) / 8;
+            const GPtrDiff_t nBytesInMask = (static_cast<GPtrDiff_t>(oWK.nSrcXSize) * oWK.nSrcYSize + 31) / 8;
 
             eErr = CreateKernelMask( &oWK, i2, "UnifiedSrcValid" );
 
@@ -2009,7 +2054,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
 
                 for( int k = 0; k < psOptions->nBandCount; k++ )
                 {
-                    for( int iWord = nBytesInMask/4 - 1; iWord >= 0; iWord-- )
+                    for( GPtrDiff_t iWord = nBytesInMask/4 - 1; iWord >= 0; iWord-- )
                         oWK.panUnifiedSrcValid[iWord] |=
                             oWK.papanBandSrcValid[k][iWord];
                     CPLFree( oWK.papanBandSrcValid[k] );
@@ -2068,7 +2113,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
     {
         CPLAssert( oWK.panDstValid == nullptr );
 
-        const int nMaskWords = (oWK.nDstXSize * oWK.nDstYSize + 31)/32;
+        const GPtrDiff_t nMaskWords = (static_cast<GPtrDiff_t>(oWK.nDstXSize) * oWK.nDstYSize + 31)/32;
 
         eErr = CreateKernelMask( &oWK, 0, "DstValid" );
         GUInt32 *panBandMask =
@@ -2112,7 +2157,7 @@ CPLErr GDALWarpOperation::WarpRegionToBuffer(
                     break;
                 }
 
-                for( int iWord = nMaskWords - 1; iWord >= 0; iWord-- )
+                for( GPtrDiff_t iWord = nMaskWords - 1; iWord >= 0; iWord-- )
                     oWK.panDstValid[iWord] |= panBandMask[iWord];
             }
             CPLFree( panBandMask );
@@ -2347,6 +2392,127 @@ CPLErr GDALWarpOperation::CreateKernelMask( GDALWarpKernel *poKernel,
 }
 
 /************************************************************************/
+/*               ComputeSourceWindowStartingFromSource()                */
+/************************************************************************/
+
+void GDALWarpOperation::ComputeSourceWindowStartingFromSource(
+                                    int nDstXOff, int nDstYOff,
+                                    int nDstXSize, int nDstYSize,
+                                    double* padfSrcMinX, double* padfSrcMinY,
+                                    double* padfSrcMaxX, double* padfSrcMaxY)
+{
+    const int nSrcRasterXSize = GDALGetRasterXSize(psOptions->hSrcDS);
+    const int nSrcRasterYSize = GDALGetRasterYSize(psOptions->hSrcDS);
+
+    GDALWarpPrivateData* privateData = GetWarpPrivateData(this);
+    if( privateData->nStepCount == 0 )
+    {
+        int nStepCount = 21;
+        std::vector<double> adfDstZ{};
+
+        if( CSLFetchNameValue( psOptions->papszWarpOptions,
+                            "SAMPLE_STEPS" ) != nullptr )
+        {
+            nStepCount =
+                atoi(CSLFetchNameValue( psOptions->papszWarpOptions,
+                                        "SAMPLE_STEPS" ));
+            nStepCount = std::max(2, nStepCount);
+        }
+
+        const double dfStepSize = 1.0 / (nStepCount - 1);
+        // Already checked for int overflow by calling method
+        const int nSampleMax = (nStepCount + 2) * (nStepCount + 2);
+
+        try
+        {
+            privateData->abSuccess.resize(nSampleMax);
+            privateData->adfDstX.resize(nSampleMax);
+            privateData->adfDstY.resize(nSampleMax);
+            adfDstZ.resize(nSampleMax);
+        }
+        catch( const std::bad_alloc& )
+        {
+            return;
+        }
+
+/* -------------------------------------------------------------------- */
+/*      Setup sample points on a grid pattern throughout the source     */
+/*      raster.                                                         */
+/* -------------------------------------------------------------------- */
+        int iPoint = 0;
+        for( int iY = 0; iY < nStepCount + 2; iY++ )
+        {
+            const double dfRatioY = (iY == 0) ? 0.5 / nSrcRasterYSize :
+                        (iY <= nStepCount) ? (iY - 1) * dfStepSize :
+                        1 - 0.5 / nSrcRasterYSize;
+            for( int iX = 0; iX < nStepCount + 2; iX++ )
+            {
+                const double dfRatioX = (iX == 0) ? 0.5 / nSrcRasterXSize :
+                            (iX <= nStepCount) ? (iX - 1) * dfStepSize :
+                            1 - 0.5 / nSrcRasterXSize;
+                privateData->adfDstX[iPoint]   = dfRatioX * nSrcRasterXSize;
+                privateData->adfDstY[iPoint]   = dfRatioY * nSrcRasterYSize;
+                iPoint ++;
+            }
+        }
+
+/* -------------------------------------------------------------------- */
+/*      Transform them to the output pixel coordinate space             */
+/* -------------------------------------------------------------------- */
+        if( !psOptions->pfnTransformer( psOptions->pTransformerArg,
+                                        FALSE, nSampleMax,
+                                        privateData->adfDstX.data(),
+                                        privateData->adfDstY.data(),
+                                        adfDstZ.data(),
+                                        privateData->abSuccess.data() ) )
+        {
+            return;
+        }
+
+        privateData->nStepCount = nStepCount;
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Collect the bounds, ignoring any failed points.                 */
+/* -------------------------------------------------------------------- */
+    const int nStepCount = privateData->nStepCount;
+    const double dfStepSize = 1.0 / (nStepCount - 1);
+    int iPoint = 0;
+#ifdef DEBUG
+    const size_t nSampleMax = (nStepCount + 2) * (nStepCount + 2);
+    CPLAssert( privateData->adfDstX.size() == nSampleMax );
+    CPLAssert( privateData->adfDstY.size() == nSampleMax );
+    CPLAssert( privateData->abSuccess.size() == nSampleMax );
+#endif
+    for( int iY = 0; iY < nStepCount + 2; iY++ )
+    {
+        const double dfRatioY = (iY == 0) ? 0.5 / nSrcRasterYSize :
+                    (iY <= nStepCount) ? (iY - 1) * dfStepSize :
+                    1 - 0.5 / nSrcRasterYSize;
+        for( int iX = 0; iX < nStepCount + 2; iX++ )
+        {
+            if( privateData->abSuccess[iPoint] &&
+                privateData->adfDstX[iPoint] >= nDstXOff &&
+                privateData->adfDstX[iPoint] <= nDstXOff + nDstXSize &&
+                privateData->adfDstY[iPoint] >= nDstYOff &&
+                privateData->adfDstY[iPoint] <= nDstYOff + nDstYSize )
+            {
+                const double dfRatioX = (iX == 0) ? 0.5 / nSrcRasterXSize :
+                            (iX <= nStepCount) ? (iX - 1) * dfStepSize :
+                            1 - 0.5 / nSrcRasterXSize;
+                double dfSrcX = dfRatioX * nSrcRasterXSize;
+                double dfSrcY = dfRatioY * nSrcRasterYSize;
+                *padfSrcMinX = std::min(*padfSrcMinX, dfSrcX);
+                *padfSrcMinY = std::min(*padfSrcMinY, dfSrcY);
+                *padfSrcMaxX = std::max(*padfSrcMaxX, dfSrcX);
+                *padfSrcMaxY = std::max(*padfSrcMaxY, dfSrcY);
+            }
+            iPoint ++;
+        }
+    }
+}
+
+/************************************************************************/
 /*                        ComputeSourceWindow()                         */
 /************************************************************************/
 
@@ -2373,7 +2539,6 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
     double *padfY = nullptr;
     double *padfZ = nullptr;
     int nSamplePoints = 0;
-    double dfRatio = 0.0;
 
     if( CSLFetchNameValue( psOptions->papszWarpOptions,
                            "SAMPLE_STEPS" ) != nullptr )
@@ -2394,13 +2559,14 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
     if( bUseGrid )
     {
         const int knIntMax = std::numeric_limits<int>::max();
-        if( nStepCount > knIntMax / nStepCount )
+        if( nStepCount > knIntMax - 2 ||
+            (nStepCount + 2) > knIntMax / (nStepCount + 2) )
         {
             CPLError( CE_Failure, CPLE_AppDefined,
                       "Too many steps : %d", nStepCount);
             return CE_Failure;
         }
-        nSampleMax = nStepCount * nStepCount;
+        nSampleMax = (nStepCount + 2) * (nStepCount + 2);
     }
     else
     {
@@ -2432,15 +2598,17 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
 /* -------------------------------------------------------------------- */
     if( bUseGrid )
     {
-        for( double dfRatioY = 0.0;
-             dfRatioY <= 1.0 + dfStepSize*0.5;
-             dfRatioY += dfStepSize )
+        for( int iY = 0; iY < nStepCount + 2; iY++ )
         {
-            for( dfRatio = 0.0;
-                 dfRatio <= 1.0 + dfStepSize*0.5;
-                 dfRatio += dfStepSize )
+            const double dfRatioY = (iY == 0) ? 0.5 / nDstXSize :
+                        (iY <= nStepCount) ? (iY - 1) * dfStepSize :
+                        1 - 0.5 / nDstXSize;
+            for( int iX = 0; iX < nStepCount + 2; iX++ )
             {
-                padfX[nSamplePoints]   = dfRatio * nDstXSize + nDstXOff;
+                const double dfRatioX = (iX == 0) ? 0.5 / nDstXSize :
+                            (iX <= nStepCount) ? (iX - 1) * dfStepSize :
+                            1 - 0.5 / nDstXSize;
+                padfX[nSamplePoints]   = dfRatioX * nDstXSize + nDstXOff;
                 padfY[nSamplePoints]   = dfRatioY * nDstYSize + nDstYOff;
                 padfZ[nSamplePoints++] = 0.0;
             }
@@ -2451,7 +2619,7 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
  /* -------------------------------------------------------------------- */
     else
     {
-        for( dfRatio = 0.0;
+        for( double dfRatio = 0.0;
              dfRatio <= 1.0 + dfStepSize*0.5;
              dfRatio += dfStepSize )
         {
@@ -2498,11 +2666,10 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
 /* -------------------------------------------------------------------- */
 /*      Collect the bounds, ignoring any failed points.                 */
 /* -------------------------------------------------------------------- */
-    double dfMinXOut = 0.0;
-    double dfMinYOut = 0.0;
-    double dfMaxXOut = 0.0;
-    double dfMaxYOut = 0.0;
-    bool bGotInitialPoint = false;
+    double dfMinXOut = std::numeric_limits<double>::infinity();
+    double dfMinYOut = std::numeric_limits<double>::infinity();
+    double dfMaxXOut = -std::numeric_limits<double>::infinity();
+    double dfMaxYOut = -std::numeric_limits<double>::infinity();
     int nFailedCount = 0;
 
     for( int i = 0; i < nSamplePoints; i++ )
@@ -2526,21 +2693,10 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
             continue;
         }
 
-        if( !bGotInitialPoint )
-        {
-            bGotInitialPoint = true;
-            dfMinXOut = padfX[i];
-            dfMaxXOut = padfX[i];
-            dfMinYOut = padfY[i];
-            dfMaxYOut = padfY[i];
-        }
-        else
-        {
-            dfMinXOut = std::min(dfMinXOut, padfX[i]);
-            dfMinYOut = std::min(dfMinYOut, padfY[i]);
-            dfMaxXOut = std::max(dfMaxXOut, padfX[i]);
-            dfMaxYOut = std::max(dfMaxYOut, padfY[i]);
-        }
+        dfMinXOut = std::min(dfMinXOut, padfX[i]);
+        dfMinYOut = std::min(dfMinYOut, padfY[i]);
+        dfMaxXOut = std::max(dfMaxXOut, padfX[i]);
+        dfMaxYOut = std::max(dfMaxYOut, padfY[i]);
     }
 
     CPLFree( padfX );
@@ -2575,6 +2731,22 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
                   "GDALWarpOperation::ComputeSourceWindow() %d out of %d "
                   "points failed to transform.",
                   nFailedCount, nSamplePoints );
+
+
+/* -------------------------------------------------------------------- */
+/*   In some cases (see https://github.com/OSGeo/gdal/issues/862)       */
+/*   the reverse transform does not work at some points, so try by      */
+/*   transforming from source raster space to target raster space and   */
+/*   see which source coordinates end up being in the AOI in the target */
+/*   raster space.                                                      */
+/* -------------------------------------------------------------------- */
+    if( bUseGrid )
+    {
+        ComputeSourceWindowStartingFromSource(nDstXOff, nDstYOff,
+                                              nDstXSize, nDstYSize,
+                                              &dfMinXOut, &dfMinYOut,
+                                              &dfMaxXOut, &dfMaxYOut );
+    }
 
 /* -------------------------------------------------------------------- */
 /*   Early exit to avoid crazy values to cause a huge nResWinSize that  */
@@ -2647,47 +2819,47 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
         nDstXOff, nDstYOff, nDstXSize, nDstYSize,
         dfMinXOut, dfMinYOut, dfMaxXOut, dfMaxYOut);
 #endif
-    const int knIntMax = std::numeric_limits<int>::max();
-    const int nMinXOutClamped =
-        dfMinXOut > knIntMax ? knIntMax :
-        dfMinXOut >= 0.0 ? static_cast<int>(dfMinXOut) : 0;
-    *pnSrcXOff = nMinXOutClamped;
-    const int nMinYOutClamped =
-        dfMinYOut > knIntMax ? knIntMax :
-        dfMinYOut >= 0.0 ? static_cast<int>(dfMinYOut) : 0;
-    *pnSrcYOff = nMinYOutClamped;
-    *pnSrcXOff = std::min(*pnSrcXOff, nRasterXSize);
-    *pnSrcYOff = std::min(*pnSrcYOff, nRasterYSize);
+    const int nMinXOutClamped = static_cast<int>(std::max(0.0, dfMinXOut));
+    const int nMinYOutClamped = static_cast<int>(std::max(0.0, dfMinYOut));
+    const int nMaxXOutClamped = static_cast<int>(
+        std::min(ceil(dfMaxXOut), static_cast<double>(nRasterXSize)));
+    const int nMaxYOutClamped = static_cast<int>(
+        std::min(ceil(dfMaxYOut), static_cast<double>(nRasterYSize)));
 
-    double dfCeilMaxXOut = ceil(dfMaxXOut);
-    if( dfCeilMaxXOut > knIntMax )
-        dfCeilMaxXOut = knIntMax;
-    double dfCeilMaxYOut = ceil(dfMaxYOut);
-    if( dfCeilMaxYOut > knIntMax )
-        dfCeilMaxYOut = knIntMax;
+    const double dfSrcXSizeRaw = std::max(0.0,
+        std::min(static_cast<double>(nRasterXSize - nMinXOutClamped),
+                 dfMaxXOut - dfMinXOut));
+    const double dfSrcYSizeRaw = std::max(0.0,
+        std::min(static_cast<double>(nRasterYSize - nMinYOutClamped),
+                 dfMaxYOut - dfMinYOut));
 
-    double dfSrcXSizeRaw = dfMaxXOut - dfMinXOut;
-    double dfSrcYSizeRaw = dfMaxYOut - dfMinYOut;
-    dfSrcXSizeRaw = std::min(static_cast<double>(nRasterXSize - *pnSrcXOff),
-                             dfSrcXSizeRaw);
-    dfSrcYSizeRaw = std::min(static_cast<double>(nRasterYSize - *pnSrcYOff),
-                             dfSrcYSizeRaw);
-    dfSrcXSizeRaw = std::max(0.0, dfSrcXSizeRaw);
-    dfSrcYSizeRaw = std::max(0.0, dfSrcYSizeRaw);
+    // If we cover more than 90% of the width, then use it fully (helps for
+    // anti-meridian discontinuities)
+    if( nMaxXOutClamped - nMinXOutClamped > 0.9 * nRasterXSize )
+    {
+        *pnSrcXOff = 0;
+        *pnSrcXSize = nRasterXSize;
+    }
+    else
+    {
+        *pnSrcXOff = std::max(0,
+                        std::min(nMinXOutClamped - nResWinSize, nRasterXSize));
+        *pnSrcXSize = std::max(0, std::min(nRasterXSize - *pnSrcXOff,
+                                nMaxXOutClamped - *pnSrcXOff + nResWinSize));
+    }
 
-    *pnSrcXOff = std::max(0, nMinXOutClamped - nResWinSize);
-    *pnSrcYOff = std::max(0, nMinYOutClamped - nResWinSize);
-    *pnSrcXOff = std::min(*pnSrcXOff, nRasterXSize);
-    *pnSrcYOff = std::min(*pnSrcYOff, nRasterYSize);
-
-    *pnSrcXSize =
-        std::min(nRasterXSize - *pnSrcXOff,
-                 static_cast<int>(dfCeilMaxXOut) - *pnSrcXOff + nResWinSize);
-    *pnSrcYSize =
-        std::min(nRasterYSize - *pnSrcYOff,
-                 static_cast<int>(dfCeilMaxYOut) - *pnSrcYOff + nResWinSize);
-    *pnSrcXSize = std::max(0, *pnSrcXSize);
-    *pnSrcYSize = std::max(0, *pnSrcYSize);
+    if( nMaxYOutClamped - nMinYOutClamped > 0.9 * nRasterYSize )
+    {
+        *pnSrcYOff = 0;
+        *pnSrcYSize = nRasterYSize;
+    }
+    else
+    {
+        *pnSrcYOff = std::max(0,
+                        std::min(nMinYOutClamped - nResWinSize, nRasterYSize));
+        *pnSrcYSize = std::max(0, std::min(nRasterYSize - *pnSrcYOff,
+                                nMaxYOutClamped - *pnSrcYOff + nResWinSize));
+    }
 
     if( pdfSrcXExtraSize )
         *pdfSrcXExtraSize = *pnSrcXSize - dfSrcXSizeRaw;
@@ -2698,7 +2870,7 @@ CPLErr GDALWarpOperation::ComputeSourceWindow(
     // the unclamped source raster window size.
     if( pdfSrcFillRatio )
         *pdfSrcFillRatio =
-            *pnSrcXSize * *pnSrcYSize /
+            static_cast<double>(*pnSrcXSize) * (*pnSrcYSize) /
             std::max(1.0,
                      (dfMaxXOut - dfMinXOut + 2 * nResWinSize) *
                      (dfMaxYOut - dfMinYOut + 2 * nResWinSize));

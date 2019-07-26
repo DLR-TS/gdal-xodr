@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2009-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -55,7 +55,7 @@ OGRS57Layer::OGRS57Layer( OGRS57DataSource *poDSIn,
     SetDescription( poFeatureDefn->GetName() );
     if( poFeatureDefn->GetGeomFieldCount() > 0 )
         poFeatureDefn->GetGeomFieldDefn(0)->SetSpatialRef(
-            poDS->GetSpatialRef() );
+            poDS->DSGetSpatialRef() );
 
     if( EQUAL(poDefnIn->GetName(),OGRN_VI) )
         nRCNM = RCNM_VI;

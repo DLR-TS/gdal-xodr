@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2010, Brian Case
- * Copyright (c) 2010-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1681,31 +1681,33 @@ void kml2FeatureDef(
         {
             osName = poKmlSimpleField->get_name();
         }
-
-        if( EQUAL( pszType, "bool" ) ||
-            EQUAL( pszType, "boolean" ) ||
-            EQUAL( pszType, "int" ) ||
-            EQUAL( pszType, "short" ) ||
-            EQUAL( pszType, "ushort" ) )
+        if( poOgrFeatureDefn->GetFieldIndex(osName.c_str()) < 0 )
         {
-            OGRFieldDefn oOgrFieldName( osName.c_str(), OFTInteger );
-            poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
-        }
-        else if( EQUAL( pszType, "uint" ) )
-        {
-            OGRFieldDefn oOgrFieldName( osName.c_str(), OFTInteger64 );
-            poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
-        }
-        else if( EQUAL( pszType, "float" ) ||
-                 EQUAL( pszType, "double" ) )
-        {
-            OGRFieldDefn oOgrFieldName( osName.c_str(), OFTReal );
-            poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
-        }
-        else  // string, or any other unrecognized type.
-        {
-            OGRFieldDefn oOgrFieldName( osName.c_str(), OFTString );
-            poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
+            if( EQUAL( pszType, "bool" ) ||
+                EQUAL( pszType, "boolean" ) ||
+                EQUAL( pszType, "int" ) ||
+                EQUAL( pszType, "short" ) ||
+                EQUAL( pszType, "ushort" ) )
+            {
+                OGRFieldDefn oOgrFieldName( osName.c_str(), OFTInteger );
+                poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
+            }
+            else if( EQUAL( pszType, "uint" ) )
+            {
+                OGRFieldDefn oOgrFieldName( osName.c_str(), OFTInteger64 );
+                poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
+            }
+            else if( EQUAL( pszType, "float" ) ||
+                    EQUAL( pszType, "double" ) )
+            {
+                OGRFieldDefn oOgrFieldName( osName.c_str(), OFTReal );
+                poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
+            }
+            else  // string, or any other unrecognized type.
+            {
+                OGRFieldDefn oOgrFieldName( osName.c_str(), OFTString );
+                poOgrFeatureDefn->AddFieldDefn( &oOgrFieldName );
+            }
         }
     }
 }

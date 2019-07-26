@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2012, Jean-Claude Repetto
- * Copyright (c) 2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -57,10 +57,16 @@ class MAPDataset : public GDALDataset
     MAPDataset();
     virtual ~MAPDataset();
 
-    virtual const char* GetProjectionRef() override;
+    virtual const char* _GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     virtual CPLErr      GetGeoTransform( double * ) override;
     virtual int GetGCPCount() override;
-    virtual const char *GetGCPProjection() override;
+    virtual const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     virtual const GDAL_GCP *GetGCPs() override;
     virtual char **GetFileList() override;
 
@@ -417,7 +423,7 @@ GDALDataset *MAPDataset::Open( GDALOpenInfo * poOpenInfo )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char* MAPDataset::GetProjectionRef()
+const char* MAPDataset::_GetProjectionRef()
 {
     return (pszWKT && nGCPCount == 0) ? pszWKT : "";
 }
@@ -447,7 +453,7 @@ int MAPDataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char * MAPDataset::GetGCPProjection()
+const char * MAPDataset::_GetGCPProjection()
 {
     return (pszWKT && nGCPCount != 0) ? pszWKT : "";
 }

@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (C) 2010 Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -76,8 +76,6 @@ static const swq_operation swq_apsOperations[] =
     { "CAST", SWQ_CAST, SWQCastEvaluator, SWQCastChecker }
 };
 
-#define N_OPERATIONS (sizeof(swq_apsOperations) / sizeof(swq_apsOperations[0]))
-
 /************************************************************************/
 /*                            GetOperator()                             */
 /************************************************************************/
@@ -85,10 +83,10 @@ static const swq_operation swq_apsOperations[] =
 const swq_operation *swq_op_registrar::GetOperator( const char *pszName )
 
 {
-    for( unsigned int i = 0; i < N_OPERATIONS; ++i )
+    for( const auto& op: swq_apsOperations )
     {
-        if( EQUAL(pszName, swq_apsOperations[i].pszName) )
-            return &(swq_apsOperations[i]);
+        if( EQUAL(pszName, op.pszName) )
+            return &op;
     }
 
     return nullptr;
@@ -101,10 +99,10 @@ const swq_operation *swq_op_registrar::GetOperator( const char *pszName )
 const swq_operation *swq_op_registrar::GetOperator( swq_op eOperator )
 
 {
-    for( unsigned int i = 0; i < N_OPERATIONS; ++i )
+    for( const auto& op: swq_apsOperations )
     {
-        if( eOperator == swq_apsOperations[i].eOperation )
-            return &(swq_apsOperations[i]);
+        if( eOperator == op.eOperation )
+            return &op;
     }
 
     return nullptr;

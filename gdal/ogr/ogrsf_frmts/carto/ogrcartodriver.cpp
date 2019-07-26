@@ -2,10 +2,10 @@
  *
  * Project:  Carto Translator
  * Purpose:  Implements OGRCARTODriver.
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -117,6 +117,7 @@ void RegisterOGRCarto()
     "  <Option name='API_KEY' type='string' description='Account API key'/>"
     "  <Option name='ACCOUNT' type='string' description='Account name' required='true'/>"
     "  <Option name='BATCH_INSERT' type='boolean' description='Whether to group features to be inserted in a batch' default='YES'/>"
+    "  <Option name='COPY_MODE' type='boolean' description='Whether to use the COPY API for faster uploads' default='YES'/>"
     "</OpenOptionList>");
 
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONOPTIONLIST, "<CreationOptionList/>");

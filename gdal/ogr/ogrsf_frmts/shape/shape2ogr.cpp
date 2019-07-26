@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1369,20 +1369,6 @@ OGRErr SHPWriteOGRFeature( SHPHandle hSHP, DBFHandle hDBF,
                            bool bRewind )
 
 {
-#if DEBUG_VERBOSE
-/* -------------------------------------------------------------------- */
-/*      Don't write objects with missing geometry.                      */
-/* -------------------------------------------------------------------- */
-    if( poFeature->GetGeometryRef() == NULL && hSHP != NULL )
-    {
-        CPLError( CE_Failure, CPLE_AppDefined,
-                  "Attempt to write feature without geometry not supported "
-                  "for shapefile driver." );
-
-        return OGRERR_UNSUPPORTED_GEOMETRY_TYPE;
-    }
-#endif
-
 /* -------------------------------------------------------------------- */
 /*      Write the geometry.                                             */
 /* -------------------------------------------------------------------- */

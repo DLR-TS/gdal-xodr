@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -44,7 +44,7 @@ CPL_CVSID("$Id$")
  * \brief Create an empty multi polygon collection.
  */
 
-OGRMultiPolygon::OGRMultiPolygon() {}
+OGRMultiPolygon::OGRMultiPolygon() = default;
 
 /************************************************************************/
 /*              OGRMultiPolygon( const OGRMultiPolygon& )               */
@@ -59,15 +59,13 @@ OGRMultiPolygon::OGRMultiPolygon() {}
  * @since GDAL 2.1
  */
 
-OGRMultiPolygon::OGRMultiPolygon( const OGRMultiPolygon& other ) :
-    OGRMultiSurface(other)
-{}
+OGRMultiPolygon::OGRMultiPolygon( const OGRMultiPolygon& ) = default;
 
 /************************************************************************/
 /*                         ~OGRMultiPolygon()                           */
 /************************************************************************/
 
-OGRMultiPolygon::~OGRMultiPolygon() {}
+OGRMultiPolygon::~OGRMultiPolygon() = default;
 
 /************************************************************************/
 /*                  operator=( const OGRMultiPolygon&)                    */

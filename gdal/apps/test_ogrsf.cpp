@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2009-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -896,7 +896,8 @@ static int TestCreateLayer( GDALDriver* poDriver, OGRwkbGeometryType eGeomType )
         !EQUAL(poDriver->GetDescription(), "LIBKML") &&
         !EQUAL(poDriver->GetDescription(), "PDF") &&
         !EQUAL(poDriver->GetDescription(), "GeoJSON") &&
-        !EQUAL(poDriver->GetDescription(), "OGR_GMT") )
+        !EQUAL(poDriver->GetDescription(), "OGR_GMT") &&
+        !EQUAL(poDriver->GetDescription(), "PDS4") )
     {
         /* Reopen dataset */
         poDS = LOG_ACTION(static_cast<GDALDataset*>(GDALOpenEx(osFilename,
@@ -1696,6 +1697,12 @@ static int TestOGRLayerRandomWrite( OGRLayer *poLayer )
 
     GIntBig nFID2;
     GIntBig nFID5;
+
+    CPLString os_Id2;
+    CPLString os_Id5;
+
+    const bool bHas_Id = poLayer->GetLayerDefn()->GetFieldIndex("_id") == 0;
+
 /* -------------------------------------------------------------------- */
 /*      Fetch five features.                                            */
 /* -------------------------------------------------------------------- */
@@ -1720,6 +1727,15 @@ static int TestOGRLayerRandomWrite( OGRLayer *poLayer )
 
     papoFeatures[1]->SetFID(nFID5);
     papoFeatures[4]->SetFID(nFID2);
+
+    if( bHas_Id )
+    {
+        os_Id2 = papoFeatures[1]->GetFieldAsString(0);
+        os_Id5 = papoFeatures[4]->GetFieldAsString(0);
+
+        papoFeatures[1]->SetField(0, os_Id5);
+        papoFeatures[4]->SetField(0, os_Id2);
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Rewrite them.                                                   */
@@ -1766,6 +1782,12 @@ static int TestOGRLayerRandomWrite( OGRLayer *poLayer )
 
     papoFeatures[1]->SetFID(nFID2);
     papoFeatures[4]->SetFID(nFID5);
+
+    if( bHas_Id )
+    {
+        papoFeatures[1]->SetField(0, os_Id2);
+        papoFeatures[4]->SetField(0, os_Id5);
+    }
 
     if( LOG_ACTION(poLayer->SetFeature(papoFeatures[1])) != OGRERR_NONE )
     {
@@ -2315,7 +2337,18 @@ static int TestAttributeFilter( CPL_UNUSED GDALDataset* poDS,
         poTargetFeature->GetFieldDefnRef(i)->GetNameRef();
     CPLString osValue = poTargetFeature->GetFieldAsString(i);
     if( eType == OFTReal )
-        osValue.Printf("%.18g", poTargetFeature->GetFieldAsDouble(i));
+    {
+        int nWidth = poTargetFeature->GetFieldDefnRef(i)->GetWidth();
+        int nPrecision = poTargetFeature->GetFieldDefnRef(i)->GetPrecision();
+        if( nWidth > 0 )
+        {
+            char szFormat[32];
+            snprintf(szFormat, sizeof(szFormat), "%%%d.%df", nWidth, nPrecision);
+            osValue.Printf(szFormat, poTargetFeature->GetFieldAsDouble(i));
+        }
+        else
+            osValue.Printf("%.18g", poTargetFeature->GetFieldAsDouble(i));
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Construct inclusive filter.                                     */

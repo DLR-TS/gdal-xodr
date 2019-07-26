@@ -3,10 +3,10 @@
  *
  * Project:  BNA Translator
  * Purpose:  Definition of classes for OGR .bna driver.
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2007-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -108,8 +108,6 @@ class OGRBNADataSource : public OGRDataSource
     OGRBNALayer**       papoLayers;
     int                 nLayers;
 
-    int                 bUpdate;
-
     /*  Export related */
     VSILFILE                *fpOutput; /* Virtual file API */
     bool                bUseCRLF;
@@ -133,8 +131,7 @@ class OGRBNADataSource : public OGRDataSource
     int                 GetCoordinatePrecision() { return coordinatePrecision; }
     const char*         GetCoordinateSeparator() { return pszCoordinateSeparator; }
 
-    int                 Open( const char * pszFilename,
-                              int bUpdate );
+    int                 Open( const char * pszFilename );
 
     int                 Create( const char *pszFilename,
                               char **papszOptions );

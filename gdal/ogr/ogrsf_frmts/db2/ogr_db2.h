@@ -147,10 +147,10 @@ class OGRDB2Session
 protected:
 // From CPLODBCSession
     char      m_szLastError[SQL_MAX_MESSAGE_LENGTH + 1];
-    HENV      m_hEnv;
-    HDBC      m_hDBC;
-    int       m_bInTransaction;
-    int       m_bAutoCommit;
+    HENV      m_hEnv = nullptr;
+    HDBC      m_hDBC = nullptr;
+    int       m_bInTransaction = FALSE;
+    int       m_bAutoCommit = TRUE;
 
 public:
     OGRDB2Session( );
@@ -765,8 +765,14 @@ public:
                                          const char * pszDomain = "" ) override;
     CPLErr              FlushCacheWithErrCode();
 
-    virtual const char* GetProjectionRef() override;
-    virtual CPLErr      SetProjection( const char* pszProjection ) override;
+    virtual const char* _GetProjectionRef() override;
+    virtual CPLErr      _SetProjection( const char* pszProjection ) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override {
+        return OldSetProjectionFromSetSpatialRef(poSRS);
+    }
 
     virtual CPLErr      GetGeoTransform( double* padfGeoTransform ) override;
     virtual CPLErr      SetGeoTransform( double* padfGeoTransform ) override;

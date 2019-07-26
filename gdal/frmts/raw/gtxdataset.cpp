@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2010, Frank Warmerdam
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -65,12 +65,13 @@ Values are an offset in meters between two vertical datums.
 /* ==================================================================== */
 /************************************************************************/
 
-class GTXDataset : public RawDataset
+class GTXDataset final: public RawDataset
 {
-  public:
     VSILFILE    *fpImage;  // image data file.
 
     double      adfGeoTransform[6];
+
+    CPL_DISALLOW_COPY_ASSIGN(GTXDataset)
 
   public:
     GTXDataset() : fpImage(nullptr) {
@@ -85,7 +86,10 @@ class GTXDataset : public RawDataset
 
     CPLErr GetGeoTransform( double * padfTransform ) override;
     CPLErr SetGeoTransform( double * padfTransform ) override;
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     static GDALDataset *Open( GDALOpenInfo * );
     static int          Identify( GDALOpenInfo * );
@@ -100,8 +104,10 @@ class GTXDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class GTXRasterBand : public RawRasterBand
+class GTXRasterBand final: public RawRasterBand
 {
+    CPL_DISALLOW_COPY_ASSIGN(GTXRasterBand)
+
   public:
     GTXRasterBand( GDALDataset *poDS, int nBand, VSILFILE * fpRaw,
                    vsi_l_offset nImgOffset, int nPixelOffset,
@@ -124,7 +130,7 @@ GTXRasterBand::GTXRasterBand( GDALDataset *poDSIn, int nBandIn,
                                 GDALDataType eDataTypeIn, int bNativeOrderIn ) :
     RawRasterBand( poDSIn, nBandIn, fpRawIn,
                    nImgOffsetIn, nPixelOffsetIn, nLineOffsetIn,
-                   eDataTypeIn, bNativeOrderIn, TRUE )
+                   eDataTypeIn, bNativeOrderIn, RawRasterBand::OwnFP::NO )
 {
 }
 
@@ -365,10 +371,10 @@ CPLErr GTXDataset::SetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *GTXDataset::GetProjectionRef()
+const char *GTXDataset::_GetProjectionRef()
 
 {
-    return SRS_WKT_WGS84;
+    return SRS_WKT_WGS84_LAT_LONG;
 }
 
 /************************************************************************/

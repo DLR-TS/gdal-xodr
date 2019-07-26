@@ -2,10 +2,10 @@
  *
  * Project:  OGR
  * Purpose:  Geo-computations
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2008-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -107,6 +107,11 @@ double OGR_GreatCircle_InitialHeading( double LatA_deg, double LonA_deg,
         const double sin_diffG = sin(diffG);
 
         const double denom = sin_LatA * cos_diffG - cos_LatA * tan(LatB_rad);
+        if( denom == 0.0 )
+        {
+            // Can be the the case if Lat_A = -Lat_B and abs(LonA - LonB) = 180
+            return 0.0;
+        }
 
         double track = atan (sin_diffG / denom) * RAD2DEG;
 

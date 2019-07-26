@@ -2,10 +2,10 @@
  *
  * Project:  XLSX Translator
  * Purpose:  Implements OGRXLSXDataSource class
- * Author:   Even Rouault, even dot rouault at mines dash paris dot org
+ * Author:   Even Rouault, even dot rouault at spatialys.com
  *
  ******************************************************************************
- * Copyright (c) 2012-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -110,6 +110,19 @@ OGRFeature* OGRXLSXLayer::GetNextFeature()
         poFeature->SetFID(poFeature->GetFID() +
                           1 + static_cast<int>(bHasHeaderLine));
     return poFeature;
+}
+
+OGRErr OGRXLSXLayer::CreateField( OGRFieldDefn *poField, int bApproxOK )
+{
+    Init();
+    if( GetLayerDefn()->GetFieldCount() >= 2000 )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Maximum number of fields supported is 2000");
+        return OGRERR_FAILURE;
+    }
+    SetUpdated();
+    return OGRMemLayer::CreateField(poField, bApproxOK);
 }
 
 /************************************************************************/
@@ -701,7 +714,10 @@ void OGRXLSXDataSource::endElementTable(CPL_UNUSED const char *pszNameIn)
                                                      eSubType);
                 OGRFieldDefn oFieldDefn(pszFieldName, eType);
                 oFieldDefn.SetSubType(eSubType);
-                poCurLayer->CreateField(&oFieldDefn);
+                if( poCurLayer->CreateField(&oFieldDefn) != OGRERR_NONE )
+                {
+                    return;
+                }
             }
 
             OGRFeature* poFeature = new OGRFeature(poCurLayer->GetLayerDefn());
@@ -869,7 +885,10 @@ void OGRXLSXDataSource::endElementRow(CPL_UNUSED const char *pszNameIn)
                     }
                     OGRFieldDefn oFieldDefn(pszFieldName, eType);
                     oFieldDefn.SetSubType(eSubType);
-                    poCurLayer->CreateField(&oFieldDefn);
+                    if( poCurLayer->CreateField(&oFieldDefn) != OGRERR_NONE )
+                    {
+                        return;
+                    }
                 }
             }
             else
@@ -885,7 +904,10 @@ void OGRXLSXDataSource::endElementRow(CPL_UNUSED const char *pszNameIn)
                                             eSubType);
                     OGRFieldDefn oFieldDefn(pszFieldName, eType);
                     oFieldDefn.SetSubType(eSubType);
-                    poCurLayer->CreateField(&oFieldDefn);
+                    if( poCurLayer->CreateField(&oFieldDefn) != OGRERR_NONE )
+                    {
+                        return;
+                    }
                 }
 
                 OGRFeature* poFeature = new OGRFeature(poCurLayer->GetLayerDefn());
@@ -929,7 +951,10 @@ void OGRXLSXDataSource::endElementRow(CPL_UNUSED const char *pszNameIn)
                                                 eSubType);
                     OGRFieldDefn oFieldDefn(pszFieldName, eType);
                     oFieldDefn.SetSubType(eSubType);
-                    poCurLayer->CreateField(&oFieldDefn);
+                    if( poCurLayer->CreateField(&oFieldDefn) != OGRERR_NONE )
+                    {
+                        return;
+                    }
                 }
             }
 
@@ -976,6 +1001,7 @@ void OGRXLSXDataSource::endElementRow(CPL_UNUSED const char *pszNameIn)
                         else if (eFieldType != OFTString && eValType != eFieldType)
                         {
                             OGRFieldDefn oNewFieldDefn(poFieldDefn);
+                            oNewFieldDefn.SetSubType(OFSTNone);
                             if ((eFieldType == OFTDate || eFieldType == OFTTime) &&
                                    eValType == OFTDateTime)
                                 oNewFieldDefn.SetType(OFTDateTime);
@@ -1419,7 +1445,10 @@ void OGRXLSXDataSource::startElementWBCbk(const char *pszNameIn,
                 return;
             if( oMapRelsIdToTarget[pszId][0] == '/' )
             {
-                if( oMapRelsIdToTarget[pszId][1] == '\0' )
+                int nIdx = 1;
+                while( oMapRelsIdToTarget[pszId][nIdx] == '/' )
+                    nIdx ++;
+                if( oMapRelsIdToTarget[pszId][nIdx] == '\0' )
                     return;
                 // Is it an "absolute" path ?
                 osFilename = osPrefixedFilename +
@@ -1647,8 +1676,8 @@ void OGRXLSXDataSource::AnalyseStyles(VSILFILE* fpStyles)
 
 OGRLayer *
 OGRXLSXDataSource::ICreateLayer( const char * pszLayerName,
-                                 CPL_UNUSED OGRSpatialReference *poSRS,
-                                 CPL_UNUSED OGRwkbGeometryType eType,
+                                 OGRSpatialReference * /*poSRS*/,
+                                 OGRwkbGeometryType /*eType*/,
                                  char ** papszOptions )
 
 {
@@ -1915,29 +1944,30 @@ static bool WriteWorkbook(const char* pszName, GDALDataset* poDS)
 /*                            BuildColString()                          */
 /************************************************************************/
 
-static void BuildColString(char szCol[5], int nCol)
+static CPLString BuildColString(int nCol)
 {
     /*
     A Z   AA AZ   BA BZ   ZA   ZZ   AAA    ZZZ      AAAA
     0 25  26 51   52 77   676  701  702    18277    18278
     */
-    int k = 0;
-    szCol[k++] = (nCol % 26) + 'A';
+    CPLString osRet;
+    osRet += (nCol % 26) + 'A';
     while(nCol >= 26)
     {
         nCol /= 26;
         // We would not need a decrement if this was a proper base 26
         // numeration scheme.
         nCol --;
-        szCol[k++] = (nCol % 26) + 'A';
+        osRet += (nCol % 26) + 'A';
     }
-    szCol[k] = 0;
-    for(int l=0;l<k/2;l++)
+    const size_t nSize = osRet.size();
+    for(size_t l=0;l<nSize/2;l++)
     {
-        char chTmp = szCol[k-1-l];
-        szCol[k-1-l] = szCol[l];
-        szCol[l] = chTmp;
+        char chTmp = osRet[nSize-1-l];
+        osRet[nSize-1-l] = osRet[l];
+        osRet[l] = chTmp;
     }
+    return osRet;
 }
 
 /************************************************************************/
@@ -2005,10 +2035,9 @@ static bool WriteLayer(const char* pszName, OGRLayer* poLayer, int iLayer,
                 oStringList.push_back(pszVal);
             }
 
-            char szCol[5];
-            BuildColString(szCol, j);
+            CPLString osCol = BuildColString(j);
 
-            VSIFPrintfL(fp, "<c r=\"%s%d\" t=\"s\">\n", szCol, iRow);
+            VSIFPrintfL(fp, "<c r=\"%s%d\" t=\"s\">\n", osCol.c_str(), iRow);
             VSIFPrintfL(fp, "<v>%d</v>\n", nStringIndex);
             VSIFPrintfL(fp, "</c>\n");
         }
@@ -2024,15 +2053,14 @@ static bool WriteLayer(const char* pszName, OGRLayer* poLayer, int iLayer,
         {
             if (poFeature->IsFieldSetAndNotNull(j))
             {
-                char szCol[5];
-                BuildColString(szCol, j);
+                CPLString osCol = BuildColString(j);
 
                 OGRFieldDefn* poFieldDefn = poFDefn->GetFieldDefn(j);
                 OGRFieldType eType = poFieldDefn->GetType();
 
                 if (eType == OFTReal)
                 {
-                    VSIFPrintfL(fp, "<c r=\"%s%d\">\n", szCol, iRow);
+                    VSIFPrintfL(fp, "<c r=\"%s%d\">\n", osCol.c_str(), iRow);
                     VSIFPrintfL(fp, "<v>%.16g</v>\n", poFeature->GetFieldAsDouble(j));
                     VSIFPrintfL(fp, "</c>\n");
                 }
@@ -2040,15 +2068,15 @@ static bool WriteLayer(const char* pszName, OGRLayer* poLayer, int iLayer,
                 {
                     OGRFieldSubType eSubType = poFieldDefn->GetSubType();
                     if( eSubType == OFSTBoolean )
-                        VSIFPrintfL(fp, "<c r=\"%s%d\" t=\"b\" s=\"5\">\n", szCol, iRow);
+                        VSIFPrintfL(fp, "<c r=\"%s%d\" t=\"b\" s=\"5\">\n", osCol.c_str(), iRow);
                     else
-                        VSIFPrintfL(fp, "<c r=\"%s%d\">\n", szCol, iRow);
+                        VSIFPrintfL(fp, "<c r=\"%s%d\">\n", osCol.c_str(), iRow);
                     VSIFPrintfL(fp, "<v>%d</v>\n", poFeature->GetFieldAsInteger(j));
                     VSIFPrintfL(fp, "</c>\n");
                 }
                 else if (eType == OFTInteger64)
                 {
-                    VSIFPrintfL(fp, "<c r=\"%s%d\">\n", szCol, iRow);
+                    VSIFPrintfL(fp, "<c r=\"%s%d\">\n", osCol.c_str(), iRow);
                     VSIFPrintfL(fp, "<v>" CPL_FRMT_GIB "</v>\n", poFeature->GetFieldAsInteger64(j));
                     VSIFPrintfL(fp, "</c>\n");
                 }
@@ -2077,7 +2105,7 @@ static bool WriteLayer(const char* pszName, OGRLayer* poLayer, int iLayer,
                     int s = (eType == OFTDate) ? 1 : (eType == OFTDateTime) ? 2 : 3;
                     if( eType == OFTDateTime && OGR_GET_MS(fSecond) )
                         s = 4;
-                    VSIFPrintfL(fp, "<c r=\"%s%d\" s=\"%d\">\n", szCol, iRow, s);
+                    VSIFPrintfL(fp, "<c r=\"%s%d\" s=\"%d\">\n", osCol.c_str(), iRow, s);
                     if (eType != OFTTime)
                         dfNumberOfDaysSince1900 += NUMBER_OF_DAYS_BETWEEN_1900_AND_1970;
                     if (eType == OFTDate)
@@ -2099,7 +2127,7 @@ static bool WriteLayer(const char* pszName, OGRLayer* poLayer, int iLayer,
                         oStringMap[pszVal] = nStringIndex;
                         oStringList.push_back(pszVal);
                     }
-                    VSIFPrintfL(fp, "<c r=\"%s%d\" t=\"s\">\n", szCol, iRow);
+                    VSIFPrintfL(fp, "<c r=\"%s%d\" t=\"s\">\n", osCol.c_str(), iRow);
                     VSIFPrintfL(fp, "<v>%d</v>\n", nStringIndex);
                     VSIFPrintfL(fp, "</c>\n");
                 }

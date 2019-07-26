@@ -1,14 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 # -*- coding: utf-8 -*-
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test TPS algorithm.
-# Author:   Even Rouault <even dot rouault at mines-paris dot org>
+# Author:   Even Rouault <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2014, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2014, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -29,9 +29,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 
-sys.path.append('../pymod')
 
 import gdaltest
 from osgeo import gdal, osr
@@ -40,7 +38,7 @@ from osgeo import gdal, osr
 # Test error case (#5586)
 
 
-def tps_1():
+def test_tps_1():
 
     drv = gdal.GetDriverByName('MEM')
     ds = drv.Create('foo', 2, 2)
@@ -58,20 +56,7 @@ def tps_1():
         transformer = gdal.Transformer(ds, None,
                                        ['DST_SRS=' + utm_wkt,
                                         'METHOD=GCP_TPS'])
-    if transformer is not None:
-        return 'fail'
-
-    return 'success'
+    assert transformer is None
 
 
-gdaltest_list = [
-    tps_1,
-]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('tps')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

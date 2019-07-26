@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Pirmin Kalberer, Sourcepole AG
- * Copyright (c) 2007-2008, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2008, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -262,9 +262,9 @@ static char *ExtractTopic(const char * pszLayerName)
 
 OGRLayer *
 OGRILI1DataSource::ICreateLayer( const char * pszLayerName,
-                               CPL_UNUSED OGRSpatialReference *poSRS,
-                               OGRwkbGeometryType eType,
-                               CPL_UNUSED char ** papszOptions )
+                                OGRSpatialReference * /*poSRS*/,
+                                OGRwkbGeometryType eType,
+                                char ** /* papszOptions */ )
 {
     FeatureDefnInfo featureDefnInfo
         = poImdReader->GetFeatureDefnInfo(pszLayerName);

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -50,7 +50,7 @@ CPL_CVSID("$Id$")
  * \brief Create an empty multi point collection.
  */
 
-OGRMultiPoint::OGRMultiPoint() {}
+OGRMultiPoint::OGRMultiPoint() = default;
 
 /************************************************************************/
 /*                OGRMultiPoint( const OGRMultiPoint& )                 */
@@ -65,15 +65,13 @@ OGRMultiPoint::OGRMultiPoint() {}
  * @since GDAL 2.1
  */
 
-OGRMultiPoint::OGRMultiPoint( const OGRMultiPoint& other ) :
-    OGRGeometryCollection(other)
-{}
+OGRMultiPoint::OGRMultiPoint( const OGRMultiPoint& ) = default;
 
 /************************************************************************/
 /*                          ~OGRMultiPoint()                            */
 /************************************************************************/
 
-OGRMultiPoint::~OGRMultiPoint() {}
+OGRMultiPoint::~OGRMultiPoint() = default;
 
 /************************************************************************/
 /*                  operator=( const OGRMultiPoint&)                    */

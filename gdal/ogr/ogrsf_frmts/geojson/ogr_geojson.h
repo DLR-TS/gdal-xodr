@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Mateusz Loskot
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -113,6 +113,7 @@ class OGRGeoJSONLayer final: public OGRMemLayer
     bool bUpdated_;
     bool bOriginalIdModified_;
     GIntBig nTotalFeatureCount_;
+    GIntBig nFeatureReadSinceReset_ = 0;
     GIntBig nNextFID_;
 
     bool IngestAll();
@@ -161,6 +162,7 @@ class OGRGeoJSONWriteLayer final: public OGRLayer
 
     bool bRFC7946_;
     OGRCoordinateTransformation* poCT_;
+    OGRGeometryFactory::TransformWithOptionsCache oTransformCache_;
     OGRGeoJSONWriteOptions oWriteOptions_;
 };
 

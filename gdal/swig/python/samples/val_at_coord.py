@@ -8,7 +8,7 @@
 # Author:   Even Rouault
 #
 ###############################################################################
-# Copyright (c) 2010, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2010, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -29,10 +29,10 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+import sys
+
 from osgeo import gdal
 from osgeo import osr
-
-import sys
 
 # =============================================================================
 

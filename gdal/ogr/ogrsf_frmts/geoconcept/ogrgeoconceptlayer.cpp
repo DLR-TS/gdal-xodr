@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007,  Geoconcept and IGN
- * Copyright (c) 2008, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -611,6 +611,7 @@ void OGRGeoconceptLayer::SetSpatialRef( OGRSpatialReference *poSpatialRef )
     if( !poSpatialRef ) return;
 
     poSRS = poSpatialRef->Clone();
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
     GCExportFileH* hGXT = GetSubTypeGCHandle_GCIO(_gcFeature);
     if( !hGXT )
     {

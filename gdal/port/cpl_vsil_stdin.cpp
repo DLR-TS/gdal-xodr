@@ -2,10 +2,10 @@
  *
  * Project:  CPL - Common Portability Library
  * Purpose:  Implement VSI large file api for stdin
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  **********************************************************************
- * Copyright (c) 2010-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -87,6 +87,8 @@ static void VSIStdinInit()
 
 class VSIStdinFilesystemHandler final : public VSIFilesystemHandler
 {
+    CPL_DISALLOW_COPY_ASSIGN(VSIStdinFilesystemHandler)
+
   public:
     VSIStdinFilesystemHandler();
     ~VSIStdinFilesystemHandler() override;
@@ -107,12 +109,14 @@ class VSIStdinFilesystemHandler final : public VSIFilesystemHandler
 class VSIStdinHandle final : public VSIVirtualHandle
 {
   private:
-    GUIntBig nCurOff;
+    CPL_DISALLOW_COPY_ASSIGN(VSIStdinHandle)
+
+    GUIntBig nCurOff = 0;
     int               ReadAndCache( void* pBuffer, int nToRead );
 
   public:
-    VSIStdinHandle();
-    ~VSIStdinHandle() override;
+    VSIStdinHandle() = default;
+    ~VSIStdinHandle() override = default;
 
     int Seek( vsi_l_offset nOffset, int nWhence ) override;
     vsi_l_offset Tell() override;
@@ -121,23 +125,6 @@ class VSIStdinHandle final : public VSIVirtualHandle
     int Eof() override;
     int Close() override;
 };
-
-/************************************************************************/
-/*                           VSIStdinHandle()                           */
-/************************************************************************/
-
-VSIStdinHandle::VSIStdinHandle()
-{
-    nCurOff = 0;
-}
-
-/************************************************************************/
-/*                          ~VSIStdinHandle()                           */
-/************************************************************************/
-
-VSIStdinHandle::~VSIStdinHandle()
-{
-}
 
 /************************************************************************/
 /*                              ReadAndCache()                          */

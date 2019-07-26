@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -46,7 +46,7 @@ CPL_CVSID("$Id$")
 /************************************************************************/
 
 /** Constructor */
-OGRLinearRing::OGRLinearRing() {}
+OGRLinearRing::OGRLinearRing() = default;
 
 /************************************************************************/
 /*                  OGRLinearRing( const OGRLinearRing& )               */
@@ -61,15 +61,13 @@ OGRLinearRing::OGRLinearRing() {}
  * @since GDAL 2.1
  */
 
-OGRLinearRing::OGRLinearRing( const OGRLinearRing& other ) :
-    OGRLineString( other )
-{}
+OGRLinearRing::OGRLinearRing( const OGRLinearRing& ) = default;
 
 /************************************************************************/
 /*                          ~OGRLinearRing()                            */
 /************************************************************************/
 
-OGRLinearRing::~OGRLinearRing() {}
+OGRLinearRing::~OGRLinearRing() = default;
 
 /************************************************************************/
 /*                           OGRLinearRing()                            */

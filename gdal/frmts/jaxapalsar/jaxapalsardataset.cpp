@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2007, Philippe P. Vachon <philippe@cowpig.ca>
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -470,6 +470,17 @@ void PALSARJaxaDataset::ReadMetadata( PALSARJaxaDataset *poDS, VSILFILE *fp ) {
 /*                              Identify()                              */
 /************************************************************************/
 
+static void ReadWord(VSILFILE* fp, int* pVal)
+{
+    READ_WORD(fp, *pVal);
+}
+
+static void ReadByte(VSILFILE* fp, int* pVal)
+{
+    READ_BYTE(fp, *pVal);
+}
+
+
 int PALSARJaxaDataset::Identify( GDALOpenInfo *poOpenInfo ) {
     if ( poOpenInfo->nHeaderBytes < 360 || poOpenInfo->fpL == nullptr )
         return 0;
@@ -491,12 +502,12 @@ int PALSARJaxaDataset::Identify( GDALOpenInfo *poOpenInfo ) {
 
     VSIFSeekL(poOpenInfo->fpL, 0, SEEK_SET);
 
-    READ_WORD(poOpenInfo->fpL, nRecordSeq);
-    READ_BYTE(poOpenInfo->fpL, nRecordSubtype);
-    READ_BYTE(poOpenInfo->fpL, nRecordType);
-    READ_BYTE(poOpenInfo->fpL, nSecondSubtype);
-    READ_BYTE(poOpenInfo->fpL, nThirdSubtype);
-    READ_WORD(poOpenInfo->fpL, nLengthRecord);
+    ReadWord(poOpenInfo->fpL, &nRecordSeq);
+    ReadByte(poOpenInfo->fpL, &nRecordSubtype);
+    ReadByte(poOpenInfo->fpL, &nRecordType);
+    ReadByte(poOpenInfo->fpL, &nSecondSubtype);
+    ReadByte(poOpenInfo->fpL, &nThirdSubtype);
+    ReadWord(poOpenInfo->fpL, &nLengthRecord);
 
     VSIFSeekL(poOpenInfo->fpL, 0, SEEK_SET);
 

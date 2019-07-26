@@ -3,10 +3,10 @@
  * Project:  ACE2 Driver
  * Purpose:  Implementation of ACE2 elevation format read support.
  *           http://tethys.eaprs.cse.dmu.ac.uk/ACE2/shared/documentation
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2011-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -101,7 +101,10 @@ class ACE2Dataset : public GDALPamDataset
     ACE2Dataset();
     ~ACE2Dataset() override {}
 
-    const char *GetProjectionRef(void) override;
+    const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     CPLErr GetGeoTransform( double * ) override;
 
     static GDALDataset *Open( GDALOpenInfo * );
@@ -161,10 +164,10 @@ CPLErr ACE2Dataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *ACE2Dataset::GetProjectionRef()
+const char *ACE2Dataset::_GetProjectionRef()
 
 {
-    return SRS_WKT_WGS84;
+    return SRS_WKT_WGS84_LAT_LONG;
 }
 
 /************************************************************************/
@@ -176,7 +179,7 @@ ACE2RasterBand::ACE2RasterBand( VSILFILE* fpRawIn,
                                 int nXSize, int nYSize) :
     RawRasterBand( fpRawIn, 0, GDALGetDataTypeSizeBytes(eDataTypeIn),
                    nXSize * GDALGetDataTypeSizeBytes(eDataTypeIn), eDataTypeIn,
-                   CPL_IS_LSB, nXSize, nYSize, TRUE, TRUE )
+                   CPL_IS_LSB, nXSize, nYSize, RawRasterBand::OwnFP::YES )
 {}
 
 /************************************************************************/

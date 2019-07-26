@@ -8,7 +8,7 @@
  ******************************************************************************
  * Copyright (c) 2006, Christopher Condit
  *               2007, Jens Oberender
- * Copyright (c) 2007-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -203,16 +203,9 @@ int OGRKMLDataSource::Open( const char * pszNewName, int bTestOpen )
     papoLayers_ = static_cast<OGRKMLLayer **>(
         CPLMalloc( sizeof(OGRKMLLayer *) * nLayers ));
 
-    OGRSpatialReference *poSRS = new OGRSpatialReference("GEOGCS[\"WGS 84\", "
-        "   DATUM[\"WGS_1984\","
-        "       SPHEROID[\"WGS 84\",6378137,298.257223563,"
-        "           AUTHORITY[\"EPSG\",\"7030\"]],"
-        "           AUTHORITY[\"EPSG\",\"6326\"]],"
-        "       PRIMEM[\"Greenwich\",0,"
-        "           AUTHORITY[\"EPSG\",\"8901\"]],"
-        "       UNIT[\"degree\",0.01745329251994328,"
-        "           AUTHORITY[\"EPSG\",\"9122\"]],"
-        "           AUTHORITY[\"EPSG\",\"4326\"]]");
+    OGRSpatialReference *poSRS =
+        new OGRSpatialReference( SRS_WKT_WGS84_LAT_LONG );
+    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
 /* -------------------------------------------------------------------- */
 /*      Create the Layers and fill them                                 */

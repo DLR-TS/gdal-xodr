@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2012-2014, Martin Landa <landa.martin gmail.com>
- * Copyright (c) 2012-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2012-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -38,6 +38,15 @@
 #include "cpl_error.h"
 
 CPL_CVSID("$Id$")
+
+/*!
+  \brief VFKDataBlockSQLite constructor
+*/
+VFKDataBlockSQLite::VFKDataBlockSQLite(const char *pszName, const IVFKReader *poReader) :
+   IVFKDataBlock(pszName, poReader),
+   m_hStmt(nullptr)
+{
+}
 
 /*!
   \brief Load geometry (point layers)
@@ -107,6 +116,7 @@ int VFKDataBlockSQLite::LoadGeometryPoint()
   \param poLine VFK feature
   \param oOGRLine line geometry
   \param[in,out] bValid true when feature's geometry is valid
+  \param ftype geometry VFK type
   \param[in,out] rowIdFeat list of row ids which forms linestring
   \param[in,out] nGeometries number of features with valid geometry
 */
@@ -259,7 +269,6 @@ int VFKDataBlockSQLite::LoadGeometryLineStringSBP()
             const GUIntBig ipcb  = sqlite3_column_int64(hStmt, 1);
             const char* pszFType = reinterpret_cast<const char*>(
                 sqlite3_column_text(hStmt, 2));
-            osFType = pszFType ? pszFType : "";
             int rowId = sqlite3_column_int(hStmt, 3);
 
             if (ipcb == 1) {
@@ -275,18 +284,17 @@ int VFKDataBlockSQLite::LoadGeometryLineStringSBP()
                 poFeature->SetRowId(rowId);
 
                 /* set geometry & reset */
-                CPLString osFTypeLine;
                 if( poLine &&
                     !SetGeometryLineString(
                         poLine, &oOGRLine,
-                        bValid, osFTypeLine, rowIdFeat, nGeometries) )
+                        bValid, osFType.c_str(), rowIdFeat, nGeometries) )
                 {
                     nInvalid++;
                 }
 
                 bValid = true;
                 poLine = poFeature;
-                osFTypeLine = osFType;
+                osFType = pszFType ? pszFType : "";
                 iIdx++;
             }
 
@@ -739,7 +747,7 @@ IVFKFeature *VFKDataBlockSQLite::GetFeature(GIntBig nFID)
     CPLString osSQL;
     osSQL.Printf("SELECT rowid FROM %s WHERE %s = " CPL_FRMT_GIB,
                  m_pszName, FID_COLUMN, nFID);
-    if (EQUAL(m_pszName, "SBP")) {
+    if ( EQUAL(m_pszName, "SBP") || EQUAL(m_pszName, "SBPG") ) {
         osSQL += " AND PORADOVE_CISLO_BODU = 1";
     }
     sqlite3_stmt *hStmt = poReader->PrepareStatement(osSQL.c_str());
@@ -963,7 +971,7 @@ bool VFKDataBlockSQLite::LoadGeometryFromDB()
     /* load geometry from DB */
     osSQL.Printf("SELECT %s,rowid,%s FROM %s ",
                  GEOM_COLUMN, FID_COLUMN, m_pszName);
-    if (EQUAL(m_pszName, "SBP"))
+    if ( EQUAL(m_pszName, "SBP") || EQUAL(m_pszName, "SBPG") )
         osSQL += "WHERE PORADOVE_CISLO_BODU = 1 ";
     osSQL += "ORDER BY ";
     osSQL += FID_COLUMN;
@@ -1147,6 +1155,51 @@ OGRErr VFKDataBlockSQLite::AddGeometryColumn() const
         osSQL.Printf("ALTER TABLE %s ADD COLUMN %s blob",
                      m_pszName, GEOM_COLUMN);
         return poReader->ExecuteSQL(osSQL.c_str());
+    }
+
+    return OGRERR_NONE;
+}
+
+/*!
+  \brief Load feature properties
+
+  Used for sequential access, see OGRVFKLayer:GetNextFeature().
+
+  \return OGRERR_NONE on success otherwise OGRERR_FAILURE
+*/
+OGRErr VFKDataBlockSQLite::LoadProperties()
+{
+    CPLString osSQL;
+
+    if ( m_hStmt )
+        sqlite3_finalize(m_hStmt);
+
+    osSQL.Printf("SELECT * FROM %s", // TODO: where
+                m_pszName);
+    if ( EQUAL(m_pszName, "SBP") || EQUAL(m_pszName, "SBPG") )
+        osSQL += " WHERE PORADOVE_CISLO_BODU = 1";
+
+    m_hStmt = ((VFKReaderSQLite*) m_poReader)->PrepareStatement(osSQL.c_str());
+
+    if ( m_hStmt == nullptr )
+        return OGRERR_FAILURE;
+
+    return OGRERR_NONE;
+}
+
+/*
+  \brief Clean feature properties for a next run
+
+  \return OGRERR_NONE on success otherwise OGRERR_FAILURE
+*/
+OGRErr VFKDataBlockSQLite::CleanProperties()
+{
+    if ( m_hStmt ) {
+        if ( sqlite3_finalize(m_hStmt) != SQLITE_OK ) {
+            m_hStmt = nullptr;
+            return OGRERR_FAILURE;
+        }
+        m_hStmt = nullptr;
     }
 
     return OGRERR_NONE;

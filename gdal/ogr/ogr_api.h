@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -66,6 +66,7 @@ typedef void *OGRGeometryH;
 #define DEFINED_OGRSpatialReferenceH
 /*! @endcond */
 
+#ifndef DOXYGEN_XML
 #ifdef DEBUG
 typedef struct OGRSpatialReferenceHS *OGRSpatialReferenceH;
 typedef struct OGRCoordinateTransformationHS *OGRCoordinateTransformationH;
@@ -74,6 +75,7 @@ typedef struct OGRCoordinateTransformationHS *OGRCoordinateTransformationH;
 typedef void *OGRSpatialReferenceH;
 /** Opaque type for a coordinate transformation object */
 typedef void *OGRCoordinateTransformationH;
+#endif
 #endif
 
 #endif /* DEFINED_OGRSpatialReferenceH */
@@ -190,6 +192,7 @@ void   CPL_DLL OGR_G_Empty( OGRGeometryH );
 int    CPL_DLL OGR_G_IsEmpty( OGRGeometryH );
 int    CPL_DLL OGR_G_IsValid( OGRGeometryH );
 /*char    CPL_DLL *OGR_G_IsValidReason( OGRGeometryH );*/
+OGRGeometryH CPL_DLL OGR_G_MakeValid( OGRGeometryH ) CPL_WARN_UNUSED_RESULT;
 int    CPL_DLL OGR_G_IsSimple( OGRGeometryH );
 int    CPL_DLL OGR_G_IsRing( OGRGeometryH );
 
@@ -449,7 +452,7 @@ void   CPL_DLL OGR_F_SetFieldInteger64List( OGRFeatureH, int, int, const GIntBig
 void   CPL_DLL OGR_F_SetFieldDoubleList( OGRFeatureH, int, int, const double * );
 void   CPL_DLL OGR_F_SetFieldStringList( OGRFeatureH, int, CSLConstList );
 void   CPL_DLL OGR_F_SetFieldRaw( OGRFeatureH, int, OGRField * );
-void   CPL_DLL OGR_F_SetFieldBinary( OGRFeatureH, int, int, GByte * );
+void   CPL_DLL OGR_F_SetFieldBinary( OGRFeatureH, int, int, const void * );
 void   CPL_DLL OGR_F_SetFieldDateTime( OGRFeatureH, int,
                                        int, int, int, int, int, int, int );
 void   CPL_DLL OGR_F_SetFieldDateTimeEx( OGRFeatureH, int,

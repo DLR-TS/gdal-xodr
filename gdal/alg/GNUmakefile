@@ -31,9 +31,9 @@ ifeq ($(QHULL_SETTING),internal)
 CPPFLAGS 	:=	-DINTERNAL_QHULL $(CPPFLAGS)
 endif
 
-CPPFLAGS	:=	-I../frmts/vrt $(CPPFLAGS) $(OPENCL_FLAGS) $(PROJ_FLAGS) $(PROJ_INCLUDE)
+CPPFLAGS	:=	-I../frmts/vrt $(CPPFLAGS) $(OPENCL_FLAGS) $(PROJ_FLAGS) $(PROJ_INCLUDE) -Imarching_squares
 
-CXXFLAGS	:=	$(WARN_OLD_STYLE_CAST) $(CXXFLAGS)
+CXXFLAGS	:=	$(WARN_EFFCPLUSPLUS) $(WARN_OLD_STYLE_CAST) $(CXXFLAGS)
 
 default:	$(OBJ:.o=.$(OBJ_EXT)) gdalgridavx.$(OBJ_EXT) gdalgridsse.$(OBJ_EXT)
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 # -*- coding: utf-8 -*-
 ###############################################################################
 # $Id: ogr_sxf.py 26513 2013-10-02 11:59:50Z bishop $
@@ -26,18 +26,18 @@
 # Boston, MA 02111-1307, USA.
 ###############################################################################
 
-import sys
-
-sys.path.append('../pymod')
+import shutil
 
 import gdaltest
+from osgeo import gdal
 from osgeo import ogr
+import pytest
 
 ###############################################################################
 # Open SXF datasource.
 
 
-def ogr_sxf_1():
+def test_ogr_sxf_1():
 
     gdaltest.sxf_ds = None
     with gdaltest.error_handler():
@@ -45,50 +45,90 @@ def ogr_sxf_1():
         gdaltest.sxf_ds = ogr.Open('data/100_test.sxf')
 
     if gdaltest.sxf_ds is not None:
-        return 'success'
-    return 'fail'
+        return
+    pytest.fail()
 
 
 ###############################################################################
 # Run test_ogrsf
 
-def ogr_sxf_2():
+def test_ogr_sxf_2():
 
     import test_cli_utilities
     if test_cli_utilities.get_test_ogrsf_path() is None:
-        return 'skip'
+        pytest.skip()
 
     ret = gdaltest.runexternal(test_cli_utilities.get_test_ogrsf_path() + ' data/100_test.sxf')
 
-    if ret.find('INFO') == -1 or ret.find('ERROR') != -1:
-        print(ret)
-        return 'fail'
+    assert ret.find('INFO') != -1 and ret.find('ERROR') == -1
 
-    return 'success'
+
+###############################################################################
+# Open SXF datasource with custom RSC file.
+
+def test_ogr_sxf_3():
+
+    lyr_names = ['SYSTEM',
+                 'Not_Classified']
+    sxf_name = 'tmp/test_ogr_sxf_3.sxf'
+    rsc_name = 'tmp/test_ogr_sxf_3.rsc'
+    fake_rsc = open(rsc_name, 'w')
+    fake_rsc.close()
+    shutil.copy('data/100_test.sxf', sxf_name)
+    sxf_ds = gdal.OpenEx(sxf_name, gdal.OF_VECTOR, open_options=['SXF_RSC_FILENAME=' + rsc_name])
+
+    assert sxf_ds is not None
+
+    for layer_n in range(sxf_ds.GetLayerCount()):
+        lyr = sxf_ds.GetLayer(layer_n)
+        assert lyr_names[layer_n] == lyr.GetName()
+
+###############################################################################
+# Open SXF datasource with layers fullname.
+
+def test_ogr_sxf_4(capsys):
+
+    lyr_names = ['СИСТЕМНЫЙ',
+                 'ВОДНЫЕ ОБЪЕКТЫ',
+                 'НАСЕЛЕННЫЕ ПУНКТЫ',
+                 'ИНФРАСТРУКТУРА',
+                 'ЗЕМЛЕПОЛЬЗОВАНИЕ',
+                 'РЕЛЬЕФ СУШИ',
+                 'ГИДРОГРАФИЯ (РЕЛЬЕФ)',
+                 'МАТЕМАТИЧЕСКАЯ ОСНОВА',
+                 'Not_Classified']
+    sxf_name = 'data/100_test.sxf'
+    sxf_ds = gdal.OpenEx(sxf_name, gdal.OF_VECTOR, open_options=['SXF_LAYER_FULLNAME=YES'])
+
+    assert sxf_ds is not None
+    assert sxf_ds.GetLayerCount() == len(lyr_names)
+
+    with capsys.disabled():
+        print('Expected:')
+        for n in lyr_names:
+            print(n)
+        print('In fact:')
+        for layer_n in range(sxf_ds.GetLayerCount()):
+            lyr = sxf_ds.GetLayer(layer_n)
+            print(lyr.GetName())
+
+    for layer_n in range(sxf_ds.GetLayerCount()):
+        lyr = sxf_ds.GetLayer(layer_n)
+        if lyr.TestCapability(ogr.OLCStringsAsUTF8) != 1:
+            pytest.skip('skipping test: recode is not possible')
+        assert lyr_names[layer_n] == lyr.GetName()
+
 
 ###############################################################################
 #
 
 
-def ogr_sxf_cleanup():
+def test_ogr_sxf_cleanup():
 
     if gdaltest.sxf_ds is None:
-        return 'skip'
+        pytest.skip()
 
     gdaltest.sxf_ds = None
 
-    return 'success'
 
 
-gdaltest_list = [
-    ogr_sxf_1,
-    ogr_sxf_2,
-    ogr_sxf_cleanup]
-
-if __name__ == '__main__':
-
-    gdaltest.setup_run('ogr_sxf')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

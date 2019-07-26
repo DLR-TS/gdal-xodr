@@ -87,22 +87,22 @@ class GDALPamRasterBand;
 class GDALDatasetPamInfo
 {
 public:
-    char        *pszPamFilename;
+    char        *pszPamFilename = nullptr;
 
-    char        *pszProjection;
+    OGRSpatialReference* poSRS = nullptr;
 
-    int         bHaveGeoTransform;
-    double      adfGeoTransform[6];
+    int         bHaveGeoTransform = false;
+    double      adfGeoTransform[6]{0,0,0,0,0,0};
 
-    int         nGCPCount;
-    GDAL_GCP   *pasGCPList;
-    char       *pszGCPProjection;
+    int         nGCPCount = 0;
+    GDAL_GCP   *pasGCPList = nullptr;
+    OGRSpatialReference* poGCP_SRS = nullptr;
 
-    CPLString   osPhysicalFilename;
-    CPLString   osSubdatasetName;
-    CPLString   osAuxFilename;
+    CPLString   osPhysicalFilename{};
+    CPLString   osSubdatasetName{};
+    CPLString   osAuxFilename{};
 
-    int         bHasMetadata;
+    int         bHasMetadata = false;
 };
 //! @endcond
 
@@ -122,8 +122,14 @@ class CPL_DLL GDALPamDataset : public GDALDataset
 
                 GDALPamDataset(void);
 //! @cond Doxygen_Suppress
-    int         nPamFlags;
-    GDALDatasetPamInfo *psPam;
+    int         nPamFlags = 0;
+    GDALDatasetPamInfo *psPam = nullptr;
+
+    virtual const char *_GetProjectionRef() override;
+    virtual const char *_GetGCPProjection() override;
+    virtual CPLErr _SetProjection( const char * pszProjection ) override;
+    virtual CPLErr _SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
+                    const char *pszGCPProjection ) override;
 
     virtual CPLXMLNode *SerializeToXML( const char *);
     virtual CPLErr      XMLInit( CPLXMLNode *, const char * );
@@ -150,17 +156,18 @@ class CPL_DLL GDALPamDataset : public GDALDataset
 
     void FlushCache(void) override;
 
-    const char *GetProjectionRef(void) override;
-    CPLErr SetProjection( const char * ) override;
+    const OGRSpatialReference* GetSpatialRef() const override;
+    CPLErr SetSpatialRef(const OGRSpatialReference* poSRS) override;
 
     CPLErr GetGeoTransform( double * ) override;
     CPLErr SetGeoTransform( double * ) override;
 
     int GetGCPCount() override;
-    const char *GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override;
     const GDAL_GCP *GetGCPs() override;
+    using GDALDataset::SetGCPs;
     CPLErr SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
-                    const char *pszGCPProjection ) override;
+                    const OGRSpatialReference* poSRS ) override;
 
     CPLErr SetMetadata( char ** papszMetadata,
                         const char * pszDomain = "" ) override;
@@ -230,6 +237,8 @@ typedef struct {
 
     GDALRasterAttributeTable *poDefaultRAT;
 
+    bool           bOffsetSet;
+    bool           bScaleSet;
 } GDALRasterBandPamInfo;
 //! @endcond
 /* ******************************************************************** */
@@ -249,7 +258,7 @@ class CPL_DLL GDALPamRasterBand : public GDALRasterBand
     void   PamInitialize();
     void   PamClear();
 
-    GDALRasterBandPamInfo *psPam;
+    GDALRasterBandPamInfo *psPam = nullptr;
 //! @endcond
 
   public:

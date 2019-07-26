@@ -5,10 +5,10 @@
 #
 #  Project:  GDAL samples
 #  Purpose:  Edit in place various information of an existing GDAL dataset
-#  Author:   Even Rouault <even dot rouault at mines dash paris dot org>
+#  Author:   Even Rouault <even dot rouault at spatialys.com>
 #
 ###############################################################################
-#  Copyright (c) 2011-2013, Even Rouault <even dot rouault at mines-paris dot org>
+#  Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a
 #  copy of this software and associated documentation files (the "Software"),
@@ -30,17 +30,17 @@
 ###############################################################################
 
 import sys
-
 from osgeo import gdal
 from osgeo import osr
 
 
 def Usage():
     print('Usage: gdal_edit [--help-general] [-ro] [-a_srs srs_def] [-a_ullr ulx uly lrx lry]')
-    print('                 [-tr xres yres] [-unsetgt] [-a_nodata value] [-unsetnodata]')
+    print('                 [-tr xres yres] [-unsetgt] [-unsetrpc] [-a_nodata value] [-unsetnodata]')
     print('                 [-offset value] [-scale value]')
     print('                 [-colorinterp_X red|green|blue|alpha|gray|undefined]*')
     print('                 [-unsetstats] [-stats] [-approx_stats]')
+    print('                 [-setstats min max mean stddev]')
     print('                 [-gcp pixel line easting northing [elevation]]*')
     print('                 [-unsetmd] [-oo NAME=VALUE]* [-mo "META-TAG=VALUE"]*  datasetname')
     print('')
@@ -78,15 +78,17 @@ def gdal_edit(argv):
     unsetgt = False
     unsetstats = False
     stats = False
+    setstats = False
     approx_stats = False
     unsetmd = False
     ro = False
     molist = []
     gcp_list = []
     open_options = []
-    offset = None
-    scale = None
+    offset = []
+    scale = []
     colorinterp = {}
+    unsetrpc = False
 
     i = 1
     argc = len(argv)
@@ -113,12 +115,18 @@ def gdal_edit(argv):
         elif argv[i] == '-a_nodata' and i < len(argv) - 1:
             nodata = float(argv[i + 1])
             i = i + 1
-        elif argv[i] == '-scale' and i < len(argv) - 1:
-            scale = float(argv[i + 1])
+        elif argv[i] == '-scale' and i < len(argv) :
+            scale.append(float(argv[i+1]))
             i = i + 1
+            while i < len(argv) - 1 and ArgIsNumeric(argv[i+1]):
+                scale.append(float(argv[i+1]))
+                i = i + 1
         elif argv[i] == '-offset' and i < len(argv) - 1:
-            offset = float(argv[i + 1])
+            offset.append(float(argv[i+1]))
             i = i + 1
+            while i < len(argv) - 1 and ArgIsNumeric(argv[i+1]):
+                offset.append(float(argv[i+1]))
+                i = i + 1
         elif argv[i] == '-mo' and i < len(argv) - 1:
             molist.append(argv[i + 1])
             i = i + 1
@@ -140,6 +148,8 @@ def gdal_edit(argv):
             gcp_list.append(gcp)
         elif argv[i] == '-unsetgt':
             unsetgt = True
+        elif argv[i] == '-unsetrpc':
+            unsetrpc = True
         elif argv[i] == '-unsetstats':
             unsetstats = True
         elif argv[i] == '-approx_stats':
@@ -147,6 +157,29 @@ def gdal_edit(argv):
             approx_stats = True
         elif argv[i] == '-stats':
             stats = True
+        elif argv[i] == '-setstats' and i < len(argv)-4:
+            stats = True
+            setstats = True
+            if argv[i + 1] != 'None':
+                statsmin = float(argv[i + 1])
+            else:
+                statsmin = None
+            i = i + 1
+            if argv[i + 1] != 'None':
+                statsmax = float(argv[i + 1])
+            else:
+                statsmax = None
+            i = i + 1
+            if argv[i + 1] != 'None':
+                statsmean = float(argv[i + 1])
+            else:
+                statsmean = None
+            i = i + 1
+            if argv[i + 1] != 'None':
+                statsdev = float(argv[i + 1])
+            else:
+                statsdev = None
+            i = i + 1
         elif argv[i] == '-unsetmd':
             unsetmd = True
         elif argv[i] == '-unsetnodata':
@@ -190,10 +223,10 @@ def gdal_edit(argv):
         return Usage()
 
     if (srs is None and lry is None and yres is None and not unsetgt and
-            not unsetstats and not stats and nodata is None and
+            not unsetstats and not stats and not setstats and nodata is None and
             not molist and not unsetmd and not gcp_list and
             not unsetnodata and not colorinterp and
-            scale is None and offset is None):
+            scale is None and offset is None and not unsetrpc):
         print('No option specified')
         print('')
         return Usage()
@@ -233,6 +266,22 @@ def gdal_edit(argv):
     if ds is None:
         return -1
 
+    if scale:
+        if len(scale) == 1:
+            scale = scale * ds.RasterCount 
+        elif len(scale) != ds.RasterCount:
+            print('If more than one scale value is provided, their number must match the number of bands.')
+            print('')
+            return Usage()
+    
+    if offset:
+        if len(offset) == 1:
+            offset = offset * ds.RasterCount
+        elif len(offset) != ds.RasterCount:
+            print('If more than one offset value is provided, their number must match the number of bands.')
+            print('')
+            return Usage()
+    
     wkt = None
     if srs == '' or srs == 'None':
         ds.SetProjection('')
@@ -280,13 +329,13 @@ def gdal_edit(argv):
         for i in range(ds.RasterCount):
             ds.GetRasterBand(i + 1).DeleteNoDataValue()
 
-    if scale is not None:
+    if scale:
         for i in range(ds.RasterCount):
-            ds.GetRasterBand(i + 1).SetScale(scale)
+            ds.GetRasterBand(i + 1).SetScale(scale[i])
 
-    if offset is not None:
+    if offset:
         for i in range(ds.RasterCount):
-            ds.GetRasterBand(i + 1).SetOffset(offset)
+            ds.GetRasterBand(i + 1).SetOffset(offset[i])
 
     if unsetstats:
         for i in range(ds.RasterCount):
@@ -298,6 +347,21 @@ def gdal_edit(argv):
     if stats:
         for i in range(ds.RasterCount):
             ds.GetRasterBand(i + 1).ComputeStatistics(approx_stats)
+
+    if setstats:
+        for i in range(ds.RasterCount):
+            if statsmin is None or statsmax is None or statsmean is None or statsdev is None:
+                ds.GetRasterBand(i+1).ComputeStatistics(approx_stats)
+                min,max,mean,stdev = ds.GetRasterBand(i+1).GetStatistics(approx_stats,True)
+                if statsmin is None:
+                    statsmin = min
+                if statsmax is None:
+                    statsmax = max
+                if statsmean is None:
+                    statsmean = mean
+                if statsdev is None:
+                    statsdev = stdev
+            ds.GetRasterBand(i+1).SetStatistics(statsmin, statsmax, statsmean, statsdev)
 
     if molist:
         if unsetmd:
@@ -314,6 +378,9 @@ def gdal_edit(argv):
 
     for band in colorinterp:
         ds.GetRasterBand(band).SetColorInterpretation(colorinterp[band])
+
+    if unsetrpc:
+        ds.SetMetadata(None, 'RPC')
 
     ds = band = None
 

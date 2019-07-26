@@ -33,6 +33,7 @@
 #include "cpl_port.h"
 #include "mitab.h"
 
+#include <cassert>
 #include <cctype>
 #include <cstring>
 #include <algorithm>
@@ -152,7 +153,7 @@ IMapInfoFile *IMapInfoFile::SmartOpen(const char *pszFname,
         const char *pszLine = nullptr;
         while(fp && (pszLine = CPLReadLineL(fp)) != nullptr)
         {
-            while (isspace((unsigned char)*pszLine))  pszLine++;
+            while (isspace(static_cast<unsigned char>(*pszLine)))  pszLine++;
             if (STARTS_WITH_CI(pszLine, "Fields"))
                 bFoundFields = TRUE;
             else if (STARTS_WITH_CI(pszLine, "create view"))
@@ -259,7 +260,7 @@ TABFeature* IMapInfoFile::CreateTABFeature(OGRFeature *poFeature)
         poTABFeature = new TABPoint(poFeature->GetDefnRef());
         if(poFeature->GetStyleString())
         {
-            poTABPointFeature = (TABPoint*)poTABFeature;
+            poTABPointFeature = cpl::down_cast<TABPoint*>(poTABFeature);
             poTABPointFeature->SetSymbolFromStyleString(
                 poFeature->GetStyleString());
         }
@@ -272,7 +273,7 @@ TABFeature* IMapInfoFile::CreateTABFeature(OGRFeature *poFeature)
         poTABFeature = new TABRegion(poFeature->GetDefnRef());
         if(poFeature->GetStyleString())
         {
-            poTABRegionFeature = (TABRegion*)poTABFeature;
+            poTABRegionFeature = cpl::down_cast<TABRegion*>(poTABFeature);
             poTABRegionFeature->SetPenFromStyleString(
                 poFeature->GetStyleString());
 
@@ -288,7 +289,7 @@ TABFeature* IMapInfoFile::CreateTABFeature(OGRFeature *poFeature)
         poTABFeature = new TABPolyline(poFeature->GetDefnRef());
         if(poFeature->GetStyleString())
         {
-            poTABPolylineFeature = (TABPolyline*)poTABFeature;
+            poTABPolylineFeature = cpl::down_cast<TABPolyline*>(poTABFeature);
             poTABPolylineFeature->SetPenFromStyleString(
                 poFeature->GetStyleString());
         }
@@ -301,6 +302,7 @@ TABFeature* IMapInfoFile::CreateTABFeature(OGRFeature *poFeature)
       case wkbMultiPoint:
       {
           OGRErr eStatus = OGRERR_NONE;
+          assert(poGeom); // for clang static analyzer
           OGRGeometryCollection *poColl = poGeom->toGeometryCollection();
           OGRFeature *poTmpFeature = poFeature->Clone();
 
@@ -628,24 +630,55 @@ int IMapInfoFile::TestUtf8Capability() const
         return FALSE;
     }
 
-    CPLClearRecodeWarningFlags();
-    CPLErrorReset();
-
-    CPLPushErrorHandler(CPLQuietErrorHandler);
-    char* pszTest( CPLRecode( "test", GetEncoding(), CPL_ENC_UTF8 ) );
-    CPLPopErrorHandler();
-
-    if( pszTest == nullptr )
-    {
-        return FALSE;
-    }
-
-    CPLFree( pszTest );
-
-    if( CPLGetLastErrorType() != 0 )
-    {
-        return FALSE;
-    }
-
-    return TRUE;
+    return CPLCanRecode("test", GetEncoding(), CPL_ENC_UTF8);
 }
+
+CPLString IMapInfoFile::NormalizeFieldName(const char *pszName) const
+{
+    CPLString   osName(pszName);
+    if( strlen( GetEncoding() ) > 0 )
+        osName.Recode( CPL_ENC_UTF8, GetEncoding() );
+
+    char szNewFieldName[31+1]; /* 31 is the max characters for a field name*/
+    unsigned int nRenameNum = 1;
+
+    strncpy(szNewFieldName, osName.c_str(), sizeof(szNewFieldName)-1);
+    szNewFieldName[sizeof(szNewFieldName)-1] = '\0';
+
+    while (m_oSetFields.find(CPLString(szNewFieldName).toupper()) != m_oSetFields.end() &&
+           nRenameNum < 10)
+    {
+        CPLsnprintf( szNewFieldName, sizeof(szNewFieldName), "%.29s_%.1u",
+                     osName.c_str(), nRenameNum );
+        nRenameNum ++;
+    }
+
+    while (m_oSetFields.find(CPLString(szNewFieldName).toupper()) != m_oSetFields.end() &&
+           nRenameNum < 100)
+    {
+        CPLsnprintf( szNewFieldName, sizeof(szNewFieldName),
+                     "%.29s%.2u", osName.c_str(), nRenameNum );
+        nRenameNum ++;
+    }
+
+    if (m_oSetFields.find(CPLString(szNewFieldName).toupper()) != m_oSetFields.end())
+    {
+        CPLError( CE_Failure, CPLE_NotSupported,
+                  "Too many field names like '%s' when truncated to 31 letters "
+                  "for MapInfo format.", pszName );
+    }
+
+    CPLString   osNewFieldName(szNewFieldName);
+    if( strlen( GetEncoding() ) > 0 )
+        osNewFieldName.Recode( GetEncoding(), CPL_ENC_UTF8 );
+
+    if( !EQUAL( pszName, osNewFieldName.c_str() ) )
+    {
+        CPLError( CE_Warning, CPLE_NotSupported,
+                  "Normalized/laundered field name: '%s' to '%s'",
+                  pszName, osNewFieldName.c_str() );
+    }
+
+    return osNewFieldName;
+}
+

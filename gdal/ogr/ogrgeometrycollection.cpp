@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -52,12 +52,7 @@ CPL_CVSID("$Id$")
  * \brief Create an empty geometry collection.
  */
 
-OGRGeometryCollection::OGRGeometryCollection()
-
-{
-    nGeomCount = 0;
-    papoGeoms = nullptr;
-}
+OGRGeometryCollection::OGRGeometryCollection() = default;
 
 /************************************************************************/
 /*         OGRGeometryCollection( const OGRGeometryCollection& )        */
@@ -74,9 +69,7 @@ OGRGeometryCollection::OGRGeometryCollection()
 
 OGRGeometryCollection::OGRGeometryCollection(
     const OGRGeometryCollection& other ) :
-    OGRGeometry(other),
-    nGeomCount(0),
-    papoGeoms(nullptr)
+    OGRGeometry(other)
 {
     // Do not use addGeometry() as it is virtual.
     papoGeoms = static_cast<OGRGeometry **>(

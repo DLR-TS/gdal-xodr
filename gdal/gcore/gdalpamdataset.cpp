@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2005, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2007-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -140,9 +140,7 @@ CPL_CVSID("$Id$")
  */
 class GDALPamDataset;
 
-GDALPamDataset::GDALPamDataset() :
-    nPamFlags(0),
-    psPam(nullptr)
+GDALPamDataset::GDALPamDataset()
 {
     SetMOFlags( GetMOFlags() | GMO_PAM_CLASS );
 }
@@ -157,7 +155,7 @@ GDALPamDataset::~GDALPamDataset()
     if( nPamFlags & GPF_DIRTY )
     {
         CPLDebug( "GDALPamDataset", "In destructor with dirty metadata." );
-        FlushCache();
+        GDALPamDataset::TrySaveXML();
     }
 
     PamClear();
@@ -194,8 +192,23 @@ CPLXMLNode *GDALPamDataset::SerializeToXML( const char *pszUnused )
 /* -------------------------------------------------------------------- */
 /*      SRS                                                             */
 /* -------------------------------------------------------------------- */
-    if( psPam->pszProjection != nullptr && strlen(psPam->pszProjection) > 0 )
-        CPLSetXMLValue( psDSTree, "SRS", psPam->pszProjection );
+    if( psPam->poSRS && !psPam->poSRS->IsEmpty() )
+    {
+        char* pszWKT = nullptr;
+        psPam->poSRS->exportToWkt(&pszWKT);
+        CPLXMLNode* psSRSNode = CPLCreateXMLElementAndValue( psDSTree, "SRS", pszWKT );
+        CPLFree(pszWKT);
+        const auto& mapping = psPam->poSRS->GetDataAxisToSRSAxisMapping();
+        CPLString osMapping;
+        for( size_t i = 0; i < mapping.size(); ++i )
+        {
+            if( !osMapping.empty() )
+                osMapping += ",";
+            osMapping += CPLSPrintf("%d", mapping[i]);
+        }
+        CPLAddXMLAttributeAndValue(psSRSNode, "dataAxisToSRSAxisMapping",
+                                   osMapping.c_str());
+    }
 
 /* -------------------------------------------------------------------- */
 /*      GeoTransform.                                                   */
@@ -233,7 +246,7 @@ CPLXMLNode *GDALPamDataset::SerializeToXML( const char *pszUnused )
         GDALSerializeGCPListToXML( psDSTree,
                                    psPam->pasGCPList,
                                    psPam->nGCPCount,
-                                   psPam->pszGCPProjection );
+                                   psPam->poGCP_SRS );
     }
 
 /* -------------------------------------------------------------------- */
@@ -249,14 +262,13 @@ CPLXMLNode *GDALPamDataset::SerializeToXML( const char *pszUnused )
 
     for( int iBand = 0; iBand < GetRasterCount(); iBand++ )
     {
-        GDALPamRasterBand * const poBand =
-            cpl::down_cast<GDALPamRasterBand *>(
-                GetRasterBand(iBand+1) );
+        GDALRasterBand * const poBand = GetRasterBand(iBand+1);
 
         if( poBand == nullptr || !(poBand->GetMOFlags() & GMO_PAM_CLASS) )
             continue;
 
-        CPLXMLNode * const psBandTree = poBand->SerializeToXML( pszUnused );
+        CPLXMLNode * const psBandTree =
+            cpl::down_cast<GDALPamRasterBand *>(poBand)->SerializeToXML( pszUnused );
 
         if( psBandTree != nullptr )
         {
@@ -313,14 +325,6 @@ void GDALPamDataset::PamInitialize()
         nPamFlags |= GPF_AUXMODE;
 
     psPam = new GDALDatasetPamInfo;
-    psPam->pszPamFilename = nullptr;
-    psPam->pszProjection = nullptr;
-    psPam->bHaveGeoTransform = FALSE;
-    psPam->nGCPCount = 0;
-    psPam->pasGCPList = nullptr;
-    psPam->pszGCPProjection = nullptr;
-    psPam->bHasMetadata = FALSE;
-
     for( int iBand = 0; iBand < GetRasterCount(); iBand++ )
     {
         GDALRasterBand *poBand = GetRasterBand(iBand+1);
@@ -342,8 +346,10 @@ void GDALPamDataset::PamClear()
     if( psPam )
     {
         CPLFree( psPam->pszPamFilename );
-        CPLFree( psPam->pszProjection );
-        CPLFree( psPam->pszGCPProjection );
+        if( psPam->poSRS )
+            psPam->poSRS->Release();
+        if( psPam->poGCP_SRS )
+            psPam->poGCP_SRS->Release();
         if( psPam->nGCPCount > 0 )
         {
             GDALDeinitGCPs( psPam->nGCPCount, psPam->pasGCPList );
@@ -365,15 +371,30 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
 /* -------------------------------------------------------------------- */
 /*      Check for an SRS node.                                          */
 /* -------------------------------------------------------------------- */
-    if( strlen(CPLGetXMLValue(psTree, "SRS", "")) > 0 )
+    CPLXMLNode* psSRSNode = CPLGetXMLNode(psTree, "SRS");
+    if( psSRSNode )
     {
-        CPLFree( psPam->pszProjection );
-        psPam->pszProjection = nullptr;
-
-        OGRSpatialReference oSRS;
-        if( oSRS.SetFromUserInput( CPLGetXMLValue(psTree, "SRS", "") )
-            == OGRERR_NONE )
-            oSRS.exportToWkt( &(psPam->pszProjection) );
+        if( psPam->poSRS )
+            psPam->poSRS->Release();
+        psPam->poSRS = new OGRSpatialReference();
+        psPam->poSRS->SetFromUserInput( CPLGetXMLValue(psSRSNode, nullptr, "") );
+        const char* pszMapping =
+            CPLGetXMLValue(psSRSNode, "dataAxisToSRSAxisMapping", nullptr);
+        if( pszMapping )
+        {
+            char** papszTokens = CSLTokenizeStringComplex( pszMapping, ",", FALSE, FALSE);
+            std::vector<int> anMapping;
+            for( int i = 0; papszTokens && papszTokens[i]; i++ )
+            {
+                anMapping.push_back(atoi(papszTokens[i]));
+            }
+            CSLDestroy(papszTokens);
+            psPam->poSRS->SetDataAxisToSRSAxisMapping(anMapping);
+        }
+        else
+        {
+            psPam->poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        }
     }
 
 /* -------------------------------------------------------------------- */
@@ -407,8 +428,9 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
 
     if( psGCPList != nullptr )
     {
-        CPLFree( psPam->pszGCPProjection );
-        psPam->pszGCPProjection = nullptr;
+        if( psPam->poGCP_SRS )
+            psPam->poGCP_SRS->Release();
+        psPam->poGCP_SRS = nullptr;
 
         // Make sure any previous GCPs, perhaps from an .aux file, are cleared
         // if we have new ones.
@@ -423,18 +445,21 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
         GDALDeserializeGCPListFromXML( psGCPList,
                                        &(psPam->pasGCPList),
                                        &(psPam->nGCPCount),
-                                       &(psPam->pszGCPProjection) );
+                                       &(psPam->poGCP_SRS) );
     }
 
 /* -------------------------------------------------------------------- */
 /*      Apply any dataset level metadata.                               */
 /* -------------------------------------------------------------------- */
-    oMDMD.XMLInit( psTree, TRUE );
+    if( oMDMD.XMLInit( psTree, TRUE ) )
+    {
+        psPam->bHasMetadata = TRUE;
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Try loading ESRI xml encoded GeodataXform.                      */
 /* -------------------------------------------------------------------- */
-    if (psPam->pszProjection == nullptr)
+    if (psPam->poSRS == nullptr)
     {
         // ArcGIS 9.3: GeodataXform as a root element
         CPLXMLNode* psGeodataXform = CPLGetXMLNode(psTree, "=GeodataXform");
@@ -465,18 +490,13 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
                                 "SpatialReference.WKT", nullptr);
             if (pszESRI_WKT)
             {
-                OGRSpatialReference* poSRS = new OGRSpatialReference(nullptr);
-                if (poSRS->importFromWkt(pszESRI_WKT) == OGRERR_NONE &&
-                    poSRS->morphFromESRI() == OGRERR_NONE)
+                psPam->poSRS = new OGRSpatialReference(nullptr);
+                psPam->poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                if( psPam->poSRS->importFromWkt(pszESRI_WKT) != OGRERR_NONE)
                 {
-                    char* pszWKT = nullptr;
-                    if (poSRS->exportToWkt(&pszWKT) == OGRERR_NONE)
-                    {
-                        psPam->pszProjection = CPLStrdup(pszWKT);
-                    }
-                    CPLFree(pszWKT);
+                    delete psPam->poSRS;
+                    psPam->poSRS = nullptr;
                 }
-                delete poSRS;
             }
         }
         if( psValueAsXML )
@@ -499,13 +519,15 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
         if( nBand < 1 || nBand > GetRasterCount() )
             continue;
 
-        GDALPamRasterBand *poBand = cpl::down_cast<GDALPamRasterBand *>(
-            GetRasterBand(nBand) );
+        GDALRasterBand *poBand = GetRasterBand(nBand);
 
         if( poBand == nullptr || !(poBand->GetMOFlags() & GMO_PAM_CLASS) )
             continue;
 
-        poBand->XMLInit( psBandTree, pszUnused );
+        GDALPamRasterBand *poPamBand = cpl::down_cast<GDALPamRasterBand *>(
+            GetRasterBand(nBand) );
+
+        poPamBand->XMLInit( psBandTree, pszUnused );
     }
 
 /* -------------------------------------------------------------------- */
@@ -933,14 +955,13 @@ CPLErr GDALPamDataset::CloneInfo( GDALDataset *poSrcDS, int nCloneFlags )
 /* -------------------------------------------------------------------- */
     if( nCloneFlags & GCIF_PROJECTION )
     {
-        const char *pszWKT = poSrcDS->GetProjectionRef();
+        const auto poSRS = poSrcDS->GetSpatialRef();
 
-        if( pszWKT != nullptr && strlen(pszWKT) > 0 )
+        if( poSRS != nullptr )
         {
             if( !bOnlyIfMissing
-                || GetProjectionRef() == nullptr
-                || strlen(GetProjectionRef()) == 0 )
-                SetProjection( pszWKT );
+                || GetSpatialRef() == nullptr )
+                SetSpatialRef( poSRS );
         }
     }
 
@@ -955,7 +976,7 @@ CPLErr GDALPamDataset::CloneInfo( GDALDataset *poSrcDS, int nCloneFlags )
             {
                 SetGCPs( poSrcDS->GetGCPCount(),
                          poSrcDS->GetGCPs(),
-                         poSrcDS->GetGCPProjection() );
+                         poSrcDS->GetGCPSpatialRef() );
             }
         }
     }
@@ -991,15 +1012,16 @@ CPLErr GDALPamDataset::CloneInfo( GDALDataset *poSrcDS, int nCloneFlags )
     {
         for( int iBand = 0; iBand < GetRasterCount(); iBand++ )
         {
-            GDALPamRasterBand *poBand = cpl::down_cast<GDALPamRasterBand *>(
-                GetRasterBand(iBand+1) );
+            GDALRasterBand *poBand = GetRasterBand(iBand+1);
 
             if( poBand == nullptr || !(poBand->GetMOFlags() & GMO_PAM_CLASS) )
                 continue;
 
             if( poSrcDS->GetRasterCount() >= iBand+1 )
-                poBand->CloneInfo( poSrcDS->GetRasterBand(iBand+1),
-                                   nCloneFlags );
+            {
+                cpl::down_cast<GDALPamRasterBand *>(poBand)->
+                    CloneInfo( poSrcDS->GetRasterBand(iBand+1), nCloneFlags );
+            }
             else
                 CPLDebug(
                     "GDALPamDataset",
@@ -1121,32 +1143,33 @@ CPLErr GDALPamDataset::IBuildOverviews( const char *pszResampling,
 //! @endcond
 
 /************************************************************************/
-/*                          GetProjectionRef()                          */
+/*                           GetSpatialRef()                            */
 /************************************************************************/
 
-const char *GDALPamDataset::GetProjectionRef()
+const OGRSpatialReference *GDALPamDataset::GetSpatialRef() const
 
 {
-    if( psPam && psPam->pszProjection )
-        return psPam->pszProjection;
+    if( psPam && psPam->poSRS )
+        return psPam->poSRS;
 
-    return GDALDataset::GetProjectionRef();
+    return GDALDataset::GetSpatialRef();
 }
 
 /************************************************************************/
-/*                           SetProjection()                            */
+/*                           SetSpatialRef()                            */
 /************************************************************************/
 
-CPLErr GDALPamDataset::SetProjection( const char *pszProjectionIn )
+CPLErr GDALPamDataset::SetSpatialRef( const OGRSpatialReference* poSRS )
 
 {
     PamInitialize();
 
     if( psPam == nullptr )
-        return GDALDataset::SetProjection( pszProjectionIn );
+        return GDALDataset::SetSpatialRef( poSRS );
 
-    CPLFree( psPam->pszProjection );
-    psPam->pszProjection = CPLStrdup( pszProjectionIn );
+    if( psPam->poSRS )
+        psPam->poSRS->Release();
+    psPam->poSRS = poSRS ? poSRS->Clone() : nullptr;
     MarkPamDirty();
 
     return CE_None;
@@ -1202,16 +1225,16 @@ int GDALPamDataset::GetGCPCount()
 }
 
 /************************************************************************/
-/*                          GetGCPProjection()                          */
+/*                          GetGCPSpatialRef()                          */
 /************************************************************************/
 
-const char *GDALPamDataset::GetGCPProjection()
+const OGRSpatialReference *GDALPamDataset::GetGCPSpatialRef() const
 
 {
-    if( psPam && psPam->pszGCPProjection != nullptr )
-        return psPam->pszGCPProjection;
+    if( psPam && psPam->poGCP_SRS != nullptr )
+        return psPam->poGCP_SRS;
 
-    return GDALDataset::GetGCPProjection();
+    return GDALDataset::GetGCPSpatialRef();
 }
 
 /************************************************************************/
@@ -1232,21 +1255,22 @@ const GDAL_GCP *GDALPamDataset::GetGCPs()
 /************************************************************************/
 
 CPLErr GDALPamDataset::SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
-                                const char *pszGCPProjection )
+                                const OGRSpatialReference* poGCP_SRS )
 
 {
     PamInitialize();
 
     if( psPam )
     {
-        CPLFree( psPam->pszGCPProjection );
+        if( psPam->poGCP_SRS )
+            psPam->poGCP_SRS->Release();
         if( psPam->nGCPCount > 0 )
         {
             GDALDeinitGCPs( psPam->nGCPCount, psPam->pasGCPList );
             CPLFree( psPam->pasGCPList );
         }
 
-        psPam->pszGCPProjection = CPLStrdup(pszGCPProjection);
+        psPam->poGCP_SRS = poGCP_SRS ? poGCP_SRS->Clone() : nullptr;
         psPam->nGCPCount = nGCPCount;
         psPam->pasGCPList = GDALDuplicateGCPs( nGCPCount, pasGCPList );
 
@@ -1255,7 +1279,7 @@ CPLErr GDALPamDataset::SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
         return CE_None;
     }
 
-    return GDALDataset::SetGCPs( nGCPCount, pasGCPList, pszGCPProjection );
+    return GDALDataset::SetGCPs( nGCPCount, pasGCPList, poGCP_SRS );
 }
 
 /************************************************************************/
@@ -1534,5 +1558,73 @@ CPLErr GDALPamDataset::TryLoadAux(char **papszSiblingFiles)
     nPamFlags &= ~GPF_DIRTY;
 
     return CE_Failure;
+}
+//! @endcond
+
+/************************************************************************/
+/*                        _GetProjectionRef()                           */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+const char *GDALPamDataset::_GetProjectionRef()
+{
+    return GetProjectionRefFromSpatialRef(GDALPamDataset::GetSpatialRef());
+}
+
+/************************************************************************/
+/*                          _SetProjection()                            */
+/************************************************************************/
+
+CPLErr GDALPamDataset::_SetProjection( const char *pszProjection )
+{
+    if( pszProjection && pszProjection[0] != '\0' )
+    {
+        OGRSpatialReference oSRS;
+        oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        if( oSRS.importFromWkt(pszProjection) != OGRERR_NONE )
+        {
+            return CE_Failure;
+        }
+        return GDALPamDataset::SetSpatialRef(&oSRS);
+    }
+    else
+    {
+        return GDALPamDataset::SetSpatialRef(nullptr);
+    }
+}
+
+/************************************************************************/
+/*                        _GetGCPProjection()                           */
+/************************************************************************/
+
+const char *GDALPamDataset::_GetGCPProjection()
+{
+    return GetGCPProjectionFromSpatialRef(GDALPamDataset::GetGCPSpatialRef());
+}
+
+/************************************************************************/
+/*                            _SetGCPs()                                */
+/************************************************************************/
+
+CPLErr GDALPamDataset::_SetGCPs( int nGCPCount,
+                             const GDAL_GCP *pasGCPList,
+                             const char *pszGCPProjection )
+
+{
+    if( pszGCPProjection && pszGCPProjection[0] != '\0' )
+    {
+        OGRSpatialReference oSRS;
+        oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        if( oSRS.importFromWkt(pszGCPProjection) != OGRERR_NONE )
+        {
+            return CE_Failure;
+        }
+        return GDALPamDataset::SetGCPs(nGCPCount, pasGCPList, &oSRS);
+    }
+    else
+    {
+        return GDALPamDataset::SetGCPs(nGCPCount, pasGCPList,
+                       static_cast<const OGRSpatialReference*>(nullptr));
+    }
 }
 //! @endcond

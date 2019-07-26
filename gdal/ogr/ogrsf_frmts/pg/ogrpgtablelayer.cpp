@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2000, Frank Warmerdam
- * Copyright (c) 2008-2014, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -54,7 +54,7 @@ class OGRPGTableFeatureDefn final: public OGRPGFeatureDefn
         void SolveFields() const;
 
     public:
-        OGRPGTableFeatureDefn( OGRPGTableLayer* poLayerIn,
+        explicit OGRPGTableFeatureDefn( OGRPGTableLayer* poLayerIn,
                                const char * pszName = nullptr ) :
             OGRPGFeatureDefn(pszName), poLayer(poLayerIn)
         {
@@ -156,7 +156,8 @@ OGRPGTableLayer::OGRPGTableLayer( OGRPGDataSource *poDSIn,
     papszOverrideColumnTypes(nullptr),
     nForcedSRSId(UNDETERMINED_SRID),
     nForcedGeometryTypeFlags(-1),
-    bCreateSpatialIndexFlag(TRUE),
+    bCreateSpatialIndexFlag(true),
+    osSpatialIndexType("GIST"),
     bInResetReading(FALSE),
     bAutoFIDOnCreateViaCopy(FALSE),
     bUseCopyByDefault(FALSE),
@@ -1337,7 +1338,7 @@ OGRErr OGRPGTableLayer::ISetFeature( OGRFeature *poFeature )
                 char    *pszWKT = nullptr;
 
                 if (poGeom != nullptr)
-                    poGeom->exportToWkt( &pszWKT );
+                    poGeom->exportToWkt( &pszWKT, wkbVariantIso );
 
                 int nSRSId = poGeomFieldDefn->nSRSId;
                 if( pszWKT != nullptr )
@@ -1775,7 +1776,7 @@ OGRErr OGRPGTableLayer::CreateFeatureViaInsert( OGRFeature *poFeature )
             else
             {
                 char    *pszWKT = nullptr;
-                poGeom->exportToWkt( &pszWKT );
+                poGeom->exportToWkt( &pszWKT, wkbVariantIso );
 
                 if( pszWKT != nullptr )
                 {
@@ -2266,10 +2267,11 @@ OGRErr OGRPGTableLayer::RunCreateSpatialIndex( OGRPGGeomFieldDefn *poGeomField )
     PGconn *hPGConn = poDS->GetPGConn();
     CPLString osCommand;
 
-    osCommand.Printf("CREATE INDEX %s ON %s USING GIST (%s)",
+    osCommand.Printf("CREATE INDEX %s ON %s USING %s (%s)",
                     OGRPGEscapeColumnName(
                         CPLSPrintf("%s_%s_geom_idx", pszTableName, poGeomField->GetNameRef())).c_str(),
                     pszSqlTableName,
+                    osSpatialIndexType.c_str(),
                     OGRPGEscapeColumnName(poGeomField->GetNameRef()).c_str());
 
     PGresult *hResult = OGRPG_PQexec(hPGConn, osCommand.c_str());
@@ -2321,8 +2323,14 @@ OGRErr OGRPGTableLayer::CreateGeomField( OGRGeomFieldDefn *poGeomFieldIn,
             poGeomField->SetName(
                 CPLSPrintf("wkb_geometry%d", poFeatureDefn->GetGeomFieldCount()+1) );
     }
-    poGeomField->SetSpatialRef(poGeomFieldIn->GetSpatialRef());
-
+    auto l_poSRS = poGeomFieldIn->GetSpatialRef();
+    if( l_poSRS )
+    {
+        l_poSRS = l_poSRS->Clone();
+        l_poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        poGeomField->SetSpatialRef(l_poSRS);
+        l_poSRS->Release();
+    }
 /* -------------------------------------------------------------------- */
 /*      Do we want to "launder" the column names into Postgres          */
 /*      friendly format?                                                */

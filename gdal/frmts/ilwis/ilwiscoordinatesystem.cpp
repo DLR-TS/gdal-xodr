@@ -5,7 +5,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, ITC
- * Copyright (c) 2008-2012, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -561,14 +561,14 @@ CPLErr ILWISDataset::ReadProjection( const std::string& csyFileName )
              STARTS_WITH_CI(pszProj.c_str(), "Plate Rectangle"))
     {
         // set 0.0 for CenterLat for Plate Carree projection
-        // skipp Latitude_Of_True_Scale for Plate Rectangle projection definition
+        // skip Latitude_Of_True_Scale for Plate Rectangle projection definition
         oSRS.SetProjCS(pszProj.c_str());
         oSRS.SetEquirectangular( padfPrjParams[5], padfPrjParams[6],
                                  padfPrjParams[3], padfPrjParams[4] );
     }
     else if( STARTS_WITH_CI(pszProj.c_str(), "PolyConic") )
     {
-        // skipp scale factor
+        // skip scale factor
         oSRS.SetProjCS("PolyConic");
         oSRS.SetPolyconic( padfPrjParams[5], padfPrjParams[6],
                            padfPrjParams[3], padfPrjParams[4] );
@@ -718,7 +718,7 @@ CPLErr ILWISDataset::ReadProjection( const std::string& csyFileName )
     {
         oSRS.SetLinearUnits( SRS_UL_METER, 1.0 );
     }
-    oSRS.FixupOrdering();
+
     CPLFree(pszProjection);
     oSRS.exportToWkt( &pszProjection );
 

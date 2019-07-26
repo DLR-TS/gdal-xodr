@@ -13,7 +13,7 @@
  * diminish Trent and Roberts contribution.
  ******************************************************************************
  * Copyright (c) 2006, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -71,7 +71,7 @@ class ISIS2Dataset : public RawDataset
 
     CPLString   oTempResult;
 
-    void        CleanString( CPLString &osInput );
+    static void CleanString( CPLString &osInput );
 
     const char *GetKeyword( const char *pszPath,
                             const char *pszDefault = "");
@@ -84,7 +84,10 @@ public:
     virtual ~ISIS2Dataset();
 
     virtual CPLErr GetGeoTransform( double * padfTransform ) override;
-    virtual const char *GetProjectionRef(void) override;
+    virtual const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     virtual char **GetFileList() override;
 
@@ -154,13 +157,13 @@ char **ISIS2Dataset::GetFileList()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *ISIS2Dataset::GetProjectionRef()
+const char *ISIS2Dataset::_GetProjectionRef()
 
 {
     if( !osProjection.empty() )
         return osProjection;
 
-    return GDALPamDataset::GetProjectionRef();
+    return GDALPamDataset::_GetProjectionRef();
 }
 
 /************************************************************************/
@@ -672,7 +675,7 @@ GDALDataset *ISIS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 #else
                                chByteOrder == 'M',
 #endif
-                               TRUE );
+                               RawRasterBand::OwnFP::NO );
 
         if( bNoDataSet )
             poBand->SetNoDataValue( dfNoData );

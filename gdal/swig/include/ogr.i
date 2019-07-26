@@ -39,6 +39,8 @@
 %module "Geo::OGR"
 #elif defined(SWIGCSHARP)
 %module Ogr
+#elif defined(SWIGPYTHON)
+%module (package="osgeo") ogr
 #else
 %module ogr
 #endif
@@ -193,7 +195,11 @@ typedef enum
     /** Signed 16-bit integer. Only valid for OFTInteger and OFTIntegerList. */
                                                         OFSTInt16 = 2,
     /** Single precision (32 bit) floating point. Only valid for OFTReal and OFTRealList. */
-                                                        OFSTFloat32 = 3
+                                                        OFSTFloat32 = 3,
+    /** JSON content. Only valid for OFTString.
+     * @since GDAL 2.4
+     */
+                                                        OFSTJSON = 4,
 } OGRFieldSubType;
 
 
@@ -368,6 +374,7 @@ typedef void retGetPoints;
 %constant OFSTBoolean = 1;
 %constant OFSTInt16 = 2;
 %constant OFSTFloat32 = 3;
+%constant OFSTJSON = 4;
 
 %constant OJUndefined = 0;
 %constant OJLeft = 1;
@@ -2152,6 +2159,7 @@ public:
             case OFSTBoolean:
             case OFSTInt16:
             case OFSTFloat32:
+            case OFSTJSON:
                 return TRUE;
             default:
                 CPLError(CE_Failure, CPLE_IllegalArg, "Illegal field subtype value");
@@ -2959,6 +2967,11 @@ public:
     return (OGRGeometryShadow*) OGR_G_ConvexHull(self);
   }
 
+  %newobject MakeValid;
+  OGRGeometryShadow* MakeValid() {
+    return (OGRGeometryShadow*) OGR_G_MakeValid(self);
+  }
+
   %newobject Buffer;
 #ifndef SWIGJAVA
   %feature("kwargs") Buffer;
@@ -3418,8 +3431,16 @@ OGRDriverShadow* GetDriver(int driver_number) {
     char** papszArgvModBefore = CSLInsertString(CSLDuplicate(papszArgv), 0, "dummy");
     char** papszArgvModAfter = papszArgvModBefore;
 
+    bool bReloadDrivers = ( CSLFindString(papszArgv, "GDAL_SKIP") >= 0 ||
+                            CSLFindString(papszArgv, "OGR_SKIP") >= 0 );
+
     nResArgCount =
       GDALGeneralCmdLineProcessor( CSLCount(papszArgvModBefore), &papszArgvModAfter, GDAL_OF_VECTOR | nOptions );
+
+    if( bReloadDrivers )
+    {
+        GDALAllRegister();
+    }
 
     CSLDestroy(papszArgvModBefore);
 
@@ -3444,8 +3465,16 @@ OGRDriverShadow* GetDriver(int driver_number) {
     if( papszArgv == NULL )
         return NULL;
 
+    bool bReloadDrivers = ( CSLFindString(papszArgv, "GDAL_SKIP") >= 0 ||
+                            CSLFindString(papszArgv, "OGR_SKIP") >= 0 );
+
     nResArgCount =
       GDALGeneralCmdLineProcessor( CSLCount(papszArgv), &papszArgv, GDAL_OF_VECTOR | nOptions );
+
+    if( bReloadDrivers )
+    {
+        GDALAllRegister();
+    }
 
     if( nResArgCount <= 0 )
         return NULL;

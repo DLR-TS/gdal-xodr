@@ -2,10 +2,10 @@
  *
  * Project:  E00 grid driver
  * Purpose:  GDALDataset driver for E00 grid dataset.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -111,7 +111,10 @@ class E00GRIDDataset : public GDALPamDataset
     ~E00GRIDDataset() override;
 
     CPLErr GetGeoTransform( double * ) override;
-    const char* GetProjectionRef() override;
+    const char* _GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     static GDALDataset *Open( GDALOpenInfo * );
     static int          Identify( GDALOpenInfo * );
@@ -717,7 +720,7 @@ const char* E00GRIDDataset::ReadLine()
 /*                         GetProjectionRef()                           */
 /************************************************************************/
 
-const char* E00GRIDDataset::GetProjectionRef()
+const char* E00GRIDDataset::_GetProjectionRef()
 
 {
     ReadMetadata();
@@ -850,7 +853,10 @@ void E00GRIDDataset::ReadMetadata()
                 {
                     break;
                 }
-                papszPrj = CSLAddString(papszPrj, pszLine);
+                if (!EQUAL(pszLine, "~") )
+                {
+                    papszPrj = CSLAddString(papszPrj, pszLine);
+                }
             }
 
             OGRSpatialReference oSRS;

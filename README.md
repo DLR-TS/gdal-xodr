@@ -6,12 +6,12 @@ As of OpenDRIVE version 1.4 the specified coordinate reference system, given as 
 
 ## Further To-Dos
 Geometry:
-- [ ] Specify point sampling distance for mathematical geometries as layer creation option
+- [ ] Specify point sampling distance for geometries as layer creation option
 - [ ] Create 3D geometries from polynomial OpenDRIVE elevation profile
 - [x] Add `Point` layer for road objects (e.g. signals, signs)
 - [x] Add `Polygon` layer for parking spaces
 - [ ] Add `Polygon` layer for driving lanes
-- [ ] Add additional `LineString` layer(s) to contain
+- [x] Add additional `LineString` layer(s) to contain
   - [x] driving lane boundaries
   - [x] road marks
   - [x] linear objects (e.g. guardrails, barriers)
@@ -23,7 +23,7 @@ Misc:
 
 ## Building
 ### 0 Dependencies
-The driver works only for GDAL 2.x. and does not support GDAL 1.x. It depends on the following libraries
+The driver works only for GDAL 2.x./3.x and does not support GDAL 1.x. It depends on the following libraries
 
 - [odrSpiral](https://github.com/DLR-TS/odrSpiral)
 - [xodr](https://github.com/DLR-TS/xodr)
@@ -31,7 +31,12 @@ The driver works only for GDAL 2.x. and does not support GDAL 1.x. It depends on
 - [Xerces-C++](https://xerces.apache.org/xerces-c/)
 - [GEOS](https://trac.osgeo.org/geos/); on Windows we recommend using the version distributed with [OSGeo4W](https://trac.osgeo.org/osgeo4w/)
 
-and building it is divided into
+For GDAL 3.x the following are required additionally
+
+- [PROJ >= 6](https://proj.org/download.html#current-release); on Windows [OSGeo4W](https://trac.osgeo.org/osgeo4w/) currently comes only with PROJ 5.2
+- [SQLite3](https://www.sqlite.org/index.html); on Windows we recommend using the version distributed with [OSGeo4W](https://trac.osgeo.org/osgeo4w/)
+
+Building it is divided into
 
 - building the original GDAL base library which we link our shared extension against, followed by
 - building the actual OpenDRIVE driver as shared library extension of GDAL/OGR.
@@ -81,6 +86,8 @@ generate_vcxproj.bat 15.0 64 gdal_vs2017
 ```
 Now configure your GEOS and Xerces dependencies by adding the corresponding include directory and library paths into a _new_ lokal NMake configuration file `nmake.local`. It should contain something like the following (consider `nmake.opt` as a reference):
 ```bash
+GDAL_HOME="D:\dev\gdal\gdal\build"
+
 # GEOS
 #GEOS_DIR    = D:\dev\geos\distro
 GEOS_DIR    = C:\OSGeo4W64
@@ -88,9 +95,9 @@ GEOS_CFLAGS = -I$(GEOS_DIR)\include -DHAVE_GEOS
 GEOS_LIB    = $(GEOS_DIR)\lib\geos_c.lib
 
 # Xerces
-XERCES_DIR     = D:\dev\xerces-c-3.2.1\distro
+XERCES_DIR     = D:\dev\xerces-c-3.2.2\distro
 XERCES_INCLUDE = -I$(XERCES_DIR)\include  -I$(XERCES_DIR)\include\xercesc
-!IF "$(DEBUG)" == "0"
+!IFNDEF DEBUG
 XERCES_LIB = $(XERCES_DIR)\lib\xerces-c_3.lib
 XERCES_DLL = $(XERCES_DIR)\bin\xerces-c_3_2.dll
 !ELSE
@@ -103,7 +110,7 @@ Open the generated `.vcxproj` in Visual Studio and build *the base* GDAL library
 cd <gdal>/gdal/
 nmake -f makefile.vc MSVC_VER=1910 WIN64=1
 ```
-Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together specify the desired output directory `GDAL_HOME` by adding the following in your lokal configuration file `nmake.local`
+Lean back, enjoy a freshly brewed Lapsang Souchong and after a few minutes your raw GDAL library is built. To pack all executables and the library conveniently together, make sure to specify the desired output directory `GDAL_HOME` in your lokal configuration file `nmake.local`
 ```bash
 GDAL_HOME="D:\dev\gdal\gdal\build"
 ```
@@ -138,7 +145,7 @@ ogr2ogr -f "ESRI Shapefile" CulDeSac.shp CulDeSac.xodr referenceLine
 OpenDRIVE datasets for testing can be found in the official [OpenDRIVE download section](http://opendrive.org/download.html). For advanced debug console output of those utility programs and the implemented drivers add `CPL_DEBUG=ON` to your running environment.
   				
 ## General Development Notes
-To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](http://www.gdal.org/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [FileGDB Building Notes](http://www.gdal.org/drv_filegdb.html).
+To easily add new drivers to GDAL as shared libraries GDAL provides the GDALDriverManager with its [`AutoLoadDrivers()`](https://gdal.org/doxygen/classGDALDriverManager.html#a77417ede570b33695e5b318fbbdb1968) function. The FileGDB driver serves as good orientation for shared library development in GDAL/OGR, see `RegisterOGRFileGDB()` in [`FGdbDriver.cpp`](../filegdb/FGdbDriver.cpp). Also consider the [https://gdal.org/drivers/vector/filegdb.html#building-notes).
 
 [@OrozcoIdrobo2015]: http://elib.dlr.de/103827/ "Orozco Idrobo, Ana Maria (2015). Extension of the Geospatial Data Abstraction Library (GDAL/OGR) for OpenDRIVE Support in GIS Applications for Visualisation and Data Accumulation for Driving Simulators. Master's thesis, Technical University of Munich."
 [@Scholz2017]: http://elib.dlr.de/110123/ "Scholz, Michael and Orozco Idrobo, Ana Maria (2017). Supporting the Implementation of Driving Simulator Environments Through Established GIS Approaches by Extending the Geospatial Data Abstraction Library (GDAL) with OpenDRIVE. In: Proceedings of the Driving Simulator Conference 2017 Europe VR, pp. 51-54. Driving Simulation Conference 2017, Stuttgart, Germany."

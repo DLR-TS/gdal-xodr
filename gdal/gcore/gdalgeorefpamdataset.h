@@ -4,10 +4,10 @@
  * Project:  GDAL
  * Purpose:  GDALPamDataset with internal storage for georeferencing, with
  *           priority for PAM over internal georeferencing
- * Author:   Even Rouault <even dot rouault at mines-paris dot org>
+ * Author:   Even Rouault <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -59,6 +59,8 @@ class CPL_DLL GDALGeorefPamDataset : public GDALPamDataset
     bool        m_bPAMLoaded;
     char**      m_papszMainMD;
 
+    CPL_DISALLOW_COPY_ASSIGN(GDALGeorefPamDataset)
+
   public:
     GDALGeorefPamDataset();
     ~GDALGeorefPamDataset() override;
@@ -66,10 +68,17 @@ class CPL_DLL GDALGeorefPamDataset : public GDALPamDataset
     CPLErr TryLoadXML(char **papszSiblingFiles = nullptr) override;
 
     CPLErr          GetGeoTransform( double * ) override;
-    const char     *GetProjectionRef() override;
+
+    const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     int             GetGCPCount() override;
-    const char     *GetGCPProjection() override;
+    const char     *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     const GDAL_GCP *GetGCPs() override;
 
     char      **GetMetadata( const char * pszDomain = "" ) override;

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -232,6 +232,7 @@ OGRNASLayer *OGRNASDataSource::TranslateNASSchema( GMLFeatureClass *poClass )
             pszHandle += 1;
 
             poSRS = new OGRSpatialReference();
+            poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
             for( int i = 0; apszURNNames[i*2+0] != nullptr; i++ )
             {

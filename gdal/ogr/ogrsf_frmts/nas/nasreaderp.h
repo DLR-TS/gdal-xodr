@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2008, Frank Warmerdam
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -54,7 +54,7 @@ CPL_C_END
 /************************************************************************/
 /*                              NASHandler                              */
 /************************************************************************/
-class NASHandler : public DefaultHandler
+class NASHandler final: public DefaultHandler
 {
     NASReader  *m_poReader;
 
@@ -154,7 +154,7 @@ public:
 /*                              NASReader                               */
 /************************************************************************/
 
-class NASReader : public IGMLReader
+class NASReader final: public IGMLReader
 {
 private:
     bool         m_bClassListLocked;

@@ -62,13 +62,17 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *buf, size_t len);
 int LLVMFuzzerInitialize(int* /*argc*/, char*** argv)
 {
     const char* exe_path = (*argv)[0];
-    CPLSetConfigOption("GDAL_DATA", CPLGetPath(exe_path));
+    if( CPLGetConfigOption("GDAL_DATA", nullptr) == nullptr )
+    {
+        CPLSetConfigOption("GDAL_DATA", CPLGetPath(exe_path));
+    }
     CPLSetConfigOption("CPL_TMPDIR", "/tmp");
     CPLSetConfigOption("DISABLE_OPEN_REAL_NETCDF_FILES", "YES");
     CPLSetConfigOption("GDAL_HTTP_TIMEOUT", "1");
     CPLSetConfigOption("GDAL_HTTP_CONNECTTIMEOUT", "1");
     // To avoid timeouts. See https://github.com/OSGeo/gdal/issues/502
     CPLSetConfigOption("DXF_MAX_BSPLINE_CONTROL_POINTS", "100");
+    CPLSetConfigOption("NAS_INDICATOR","NAS-Operationen;AAA-Fachschema;aaa.xsd;aaa-suite");
     return 0;
 }
 

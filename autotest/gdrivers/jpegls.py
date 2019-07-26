@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  JPEGLS Testing.
-# Author:   Even Rouault <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2010, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2010, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,20 +28,19 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 from osgeo import gdal
 
-sys.path.append('../pymod')
 
 import gdaltest
+import pytest
 
 ###############################################################################
 
 
-def jpegls_1():
+def test_jpegls_1():
 
     if gdal.GetDriverByName('JPEGLS') is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('JPEGLS', 'byte.tif', 1, 4672)
     return tst.testCreateCopy(vsimem=1)
@@ -49,24 +48,14 @@ def jpegls_1():
 ###############################################################################
 
 
-def jpegls_2():
+def test_jpegls_2():
 
     if gdal.GetDriverByName('JPEGLS') is None:
-        return 'skip'
+        pytest.skip()
 
     tst = gdaltest.GDALTest('JPEGLS', 'int16.tif', 1, 4672)
     return tst.testCreateCopy(vsimem=1)
 
 
-gdaltest_list = [
-    jpegls_1,
-    jpegls_2]
 
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('JPEGLS')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

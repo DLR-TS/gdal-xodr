@@ -9,7 +9,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2008-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -112,6 +112,35 @@ static void USGSDEMRefillBuffer( Buffer* psBuffer )
                                        1, psBuffer->max_size - psBuffer->buffer_size,
                                        psBuffer->fp));
     psBuffer->cur_index = 0;
+}
+
+/************************************************************************/
+/*                      USGSDEMGetCurrentFilePos()                      */
+/************************************************************************/
+
+static vsi_l_offset USGSDEMGetCurrentFilePos( const Buffer* psBuffer )
+{
+    return VSIFTellL(psBuffer->fp) - psBuffer->buffer_size + psBuffer->cur_index;
+}
+
+/************************************************************************/
+/*                      USGSDEMSetCurrentFilePos()                      */
+/************************************************************************/
+
+static void USGSDEMSetCurrentFilePos( Buffer* psBuffer, vsi_l_offset nNewPos )
+{
+    vsi_l_offset nCurPosFP = VSIFTellL(psBuffer->fp);
+    if( nNewPos >= nCurPosFP - psBuffer->buffer_size && nNewPos < nCurPosFP )
+    {
+        psBuffer->cur_index =
+            static_cast<int>(nNewPos - (nCurPosFP - psBuffer->buffer_size));
+    }
+    else
+    {
+        CPL_IGNORE_RET_VAL( VSIFSeekL(psBuffer->fp, nNewPos, SEEK_SET) );
+        psBuffer->buffer_size = 0;
+        psBuffer->cur_index = 0;
+    }
 }
 
 /************************************************************************/
@@ -281,7 +310,10 @@ class USGSDEMDataset : public GDALPamDataset
     static int  Identify( GDALOpenInfo * );
     static GDALDataset *Open( GDALOpenInfo * );
     CPLErr GetGeoTransform( double * padfTransform ) override;
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 };
 
 /************************************************************************/
@@ -333,13 +365,10 @@ CPLErr USGSDEMRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
 /* -------------------------------------------------------------------- */
 /*      Initialize image buffer to nodata value.                        */
 /* -------------------------------------------------------------------- */
-    for( int k = GetXSize() * GetYSize() - 1; k >= 0; k-- )
-    {
-        if( GetRasterDataType() == GDT_Int16 )
-            reinterpret_cast<GInt16 *>( pImage )[k] = USGSDEM_NODATA;
-        else
-            reinterpret_cast<float *>( pImage )[k] = USGSDEM_NODATA;
-    }
+    GDALCopyWords(&USGSDEM_NODATA, GDT_Int32, 0,
+                  pImage, GetRasterDataType(),
+                  GDALGetDataTypeSizeBytes(GetRasterDataType()),
+                  GetXSize() * GetYSize());
 
 /* -------------------------------------------------------------------- */
 /*      Seek to data.                                                   */
@@ -364,18 +393,43 @@ CPLErr USGSDEMRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
     for( int i = 0; i < GetXSize(); i++)
     {
         int bSuccess;
-        /* njunk = */ USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+        const int nRowNumber = USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+        if( nRowNumber != 1 )
+            CPLDebug("USGSDEM", "i = %d, nRowNumber = %d", i, nRowNumber);
         if( bSuccess )
-        /* njunk = */ USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+        {
+            const int nColNumber = USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+            if( nColNumber != i + 1 )
+            {
+                CPLDebug("USGSDEM", "i = %d, nColNumber = %d", i, nColNumber);
+            }
+        }
         const int nCPoints = (bSuccess) ? USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess) : 0;
-        /* njunk = */ USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+#ifdef DEBUG_VERBOSE
+        CPLDebug("USGSDEM", "i = %d, nCPoints = %d", i, nCPoints);
+#endif
 
         if( bSuccess )
+        {
+            const int nNumberOfCols = USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+            if( nNumberOfCols != 1 )
+            {
+                CPLDebug("USGSDEM", "i = %d, nNumberOfCols = %d", i, nNumberOfCols);
+            }
+        }
+
+        // x-start
+        if( bSuccess )
         /* dxStart = */ USGSDEMReadDoubleFromBuffer(&sBuffer, 24, &bSuccess);
+
         double dyStart = (bSuccess) ? USGSDEMReadDoubleFromBuffer(&sBuffer, 24, &bSuccess) : 0;
         const double dfElevOffset = (bSuccess) ? USGSDEMReadDoubleFromBuffer(&sBuffer, 24, &bSuccess) : 0;
+
+        // min z value
         if( bSuccess )
         /* djunk = */ USGSDEMReadDoubleFromBuffer(&sBuffer, 24, &bSuccess);
+
+        // max z value
         if( bSuccess )
         /* djunk = */ USGSDEMReadDoubleFromBuffer(&sBuffer, 24, &bSuccess);
         if( !bSuccess )
@@ -398,12 +452,21 @@ CPLErr USGSDEMRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
             continue;
         if( lygap > INT_MAX - nCPoints )
             lygap = INT_MAX - nCPoints;
+        if( lygap < 0 && GetYSize() > INT_MAX + lygap )
+        {
+            CPLFree(sBuffer.buffer);
+            return CE_Failure;
+        }
 
         for (int j=lygap; j < (nCPoints + lygap); j++)
         {
             const int iY = GetYSize() - j - 1;
 
             const int nElev = USGSDEMReadIntFromBuffer(&sBuffer, &bSuccess);
+#ifdef DEBUG_VERBOSE
+            CPLDebug("USGSDEM", "  j - lygap = %d, nElev = %d", j - lygap, nElev);
+#endif
+
             if( !bSuccess )
             {
                 CPLFree(sBuffer.buffer);
@@ -432,6 +495,18 @@ CPLErr USGSDEMRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
                     reinterpret_cast<float *>( pImage )[i + iY*GetXSize()]
                         = fComputedElev;
                 }
+            }
+        }
+
+        if( poGDS->nDataStartOffset == 1024 )
+        {
+            // Seek to the next 1024 byte boundary.
+            // Some files have 'junk' profile values after the valid/declared ones
+            vsi_l_offset nCurPos = USGSDEMGetCurrentFilePos(&sBuffer);
+            vsi_l_offset nNewPos = (nCurPos + 1023) / 1024 * 1024;
+            if( nNewPos > nCurPos )
+            {
+                USGSDEMSetCurrentFilePos(&sBuffer, nNewPos);
             }
         }
     }
@@ -516,7 +591,7 @@ int USGSDEMDataset::LoadFromFile(VSILFILE *InDem)
     // Read DEM into matrix
     const int nRow = ReadInt(InDem);
     const int nColumn = ReadInt(InDem);
-    const bool bNewFormat = nRow != 1 || nColumn != 1;
+    const bool bNewFormat = VSIFTellL(InDem) >= 1024 || nRow != 1 || nColumn != 1;
     if (bNewFormat)
     {
         CPL_IGNORE_RET_VAL(VSIFSeekL(InDem, 1024, 0));  // New Format
@@ -670,7 +745,6 @@ int USGSDEMDataset::LoadFromFile(VSILFILE *InDem)
             }
         }
     }
-
     else if (nCoordSystem == 2)  // state plane
     {
         if( nGUnit == 1 )
@@ -733,7 +807,10 @@ int USGSDEMDataset::LoadFromFile(VSILFILE *InDem)
         adfGeoTransform[5] = (-dydelta) / 3600.0;
     }
 
-    if (!GDALCheckDatasetDimensions(nRasterXSize, nRasterYSize))
+    // IReadBlock() not ready for more than INT_MAX pixels, and that
+    // would behave badly
+    if (!GDALCheckDatasetDimensions(nRasterXSize, nRasterYSize) ||
+        nRasterXSize > INT_MAX / nRasterYSize)
     {
         return FALSE;
     }
@@ -756,7 +833,7 @@ CPLErr USGSDEMDataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *USGSDEMDataset::GetProjectionRef()
+const char *USGSDEMDataset::_GetProjectionRef()
 
 {
     return pszProjection;

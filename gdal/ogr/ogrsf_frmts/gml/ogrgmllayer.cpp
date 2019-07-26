@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -1186,6 +1186,10 @@ OGRErr OGRGMLLayer::CreateGeomField( OGRGeomFieldDefn *poField, int bApproxOK )
 /*      Enforce XML naming semantics on element name.                   */
 /* -------------------------------------------------------------------- */
     OGRGeomFieldDefn oCleanCopy(poField);
+    if( oCleanCopy.GetSpatialRef() )
+    {
+        oCleanCopy.GetSpatialRef()->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+    }
     char *pszName = CPLStrdup(poField->GetNameRef());
     CPLCleanXMLElementName(pszName);
 

@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2001, Frank Warmerdam
- * Copyright (c) 2008-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -40,12 +40,14 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class PNMDataset : public RawDataset
+class PNMDataset final: public RawDataset
 {
     VSILFILE   *fpImage;  // Image data file.
 
     bool        bGeoTransformValid;
     double      adfGeoTransform[6];
+
+    CPL_DISALLOW_COPY_ASSIGN(PNMDataset)
 
   public:
                 PNMDataset();
@@ -249,7 +251,7 @@ GDALDataset *PNMDataset::Open( GDALOpenInfo * poOpenInfo )
         poDS->SetBand(
             1, new RawRasterBand( poDS, 1, poDS->fpImage, iIn, iPixelSize,
                                   nWidth*iPixelSize, eDataType, bMSBFirst,
-                                  TRUE ) );
+                                  RawRasterBand::OwnFP::NO ) );
         poDS->GetRasterBand(1)->SetColorInterpretation( GCI_GrayIndex );
     }
     else
@@ -264,15 +266,17 @@ GDALDataset *PNMDataset::Open( GDALOpenInfo * poOpenInfo )
         poDS->SetBand(
             1, new RawRasterBand( poDS, 1, poDS->fpImage, iIn, 3*iPixelSize,
                                   nWidth*3*iPixelSize, eDataType, bMSBFirst,
-                                  TRUE ));
+                                  RawRasterBand::OwnFP::NO ));
         poDS->SetBand(
             2, new RawRasterBand( poDS, 2, poDS->fpImage, iIn+iPixelSize,
                                   3*iPixelSize, nWidth*3*iPixelSize,
-                                  eDataType, bMSBFirst, TRUE ));
+                                  eDataType, bMSBFirst,
+                                  RawRasterBand::OwnFP::NO ));
         poDS->SetBand(
             3, new RawRasterBand( poDS, 3, poDS->fpImage, iIn+2*iPixelSize,
                                   3*iPixelSize, nWidth*3*iPixelSize,
-                                  eDataType, bMSBFirst, TRUE ));
+                                  eDataType, bMSBFirst,
+                                  RawRasterBand::OwnFP::NO ));
 
         poDS->GetRasterBand(1)->SetColorInterpretation( GCI_RedBand );
         poDS->GetRasterBand(2)->SetColorInterpretation( GCI_GreenBand );

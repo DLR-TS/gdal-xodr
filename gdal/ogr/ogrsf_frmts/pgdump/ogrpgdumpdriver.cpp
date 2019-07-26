@@ -2,10 +2,10 @@
  *
  * Project:  OpenGIS Simple Features Reference Implementation
  * Purpose:  Implements OGRPGDumpDriver class.
- * Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+ * Author:   Even Rouault, <even dot rouault at spatialys.com>
  *
  ******************************************************************************
- * Copyright (c) 2010-2011, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2011, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -97,7 +97,12 @@ void RegisterOGRPGDump()
     "  <Option name='GEOMETRY_NAME' type='string' description='Name of geometry column. Defaults to wkb_geometry for GEOM_TYPE=geometry or the_geog for GEOM_TYPE=geography'/>"
     "  <Option name='SCHEMA' type='string' description='Name of schema into which to create the new table'/>"
     "  <Option name='CREATE_SCHEMA' type='boolean' description='Whether to explicitly emit the CREATE SCHEMA statement to create the specified schema' default='YES'/>"
-    "  <Option name='SPATIAL_INDEX' type='boolean' description='Whether to create a spatial index' default='YES'/>"
+    "  <Option name='SPATIAL_INDEX' type='string-select' description='Type of spatial index to create' default='GIST'>"
+    "    <Value>NONE</Value>"
+    "    <Value>GIST</Value>"
+    "    <Value>SPGIST</Value>"
+    "    <Value>BRIN</Value>"
+    "  </Option>"
     "  <Option name='TEMPORARY' type='boolean' description='Whether to a temporary table instead of a permanent one' default='NO'/>"
     "  <Option name='UNLOGGED' type='boolean' description='Whether to create the table as a unlogged one' default='NO'/>"
     "  <Option name='WRITE_EWKT_GEOM' type='boolean' description='Whether to write EWKT geometries instead of HEX geometry' default='NO'/>"

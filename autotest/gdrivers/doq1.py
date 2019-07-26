@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test DOQ1 driver
-# Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault, <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,10 +28,8 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 from osgeo import gdal
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -39,7 +37,7 @@ import gdaltest
 # Test a fake DOQ1 dataset
 
 
-def doq1_1():
+def test_doq1_1():
 
     tst = gdaltest.GDALTest('DOQ1', 'fakedoq1.doq', 1, 1)
     gdal.PushErrorHandler('CPLQuietErrorHandler')
@@ -48,13 +46,4 @@ def doq1_1():
     return ret
 
 
-gdaltest_list = [
-    doq1_1]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('doq')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

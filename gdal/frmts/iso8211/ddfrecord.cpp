@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -268,6 +268,13 @@ int DDFRecord::ReadHeader()
 
     nReadBytes = static_cast<int>(VSIFReadL(achLeader,1,nLeaderSize,poModule->GetFP()));
     if( nReadBytes == 0 && VSIFEofL( poModule->GetFP() ) )
+    {
+        nFieldOffset = -1;
+        return FALSE;
+    }
+    // The ASRP and USRP specifications mentions that 0x5E / ^ character can be
+    // used as a padding byte so that the file size is a multiple of 8192.
+    else if( achLeader[0] == '^' )
     {
         nFieldOffset = -1;
         return FALSE;

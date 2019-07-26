@@ -71,21 +71,25 @@ even the header record is this length though it means some waste.
 /* ==================================================================== */
 /************************************************************************/
 
-class LOSLASDataset : public RawDataset
+class LOSLASDataset final: public RawDataset
 {
-  public:
     VSILFILE    *fpImage;  // image data file.
 
     int         nRecordLength;
 
     double      adfGeoTransform[6];
 
+    CPL_DISALLOW_COPY_ASSIGN(LOSLASDataset)
+
   public:
     LOSLASDataset();
     ~LOSLASDataset() override;
 
     CPLErr GetGeoTransform( double * padfTransform ) override;
-    const char *GetProjectionRef() override;
+    const char *_GetProjectionRef() override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
 
     static GDALDataset *Open( GDALOpenInfo * );
     static int          Identify( GDALOpenInfo * );
@@ -216,7 +220,8 @@ GDALDataset *LOSLASDataset::Open( GDALOpenInfo * poOpenInfo )
                                     poDS->nRecordLength + 4,
                               4, -1 * poDS->nRecordLength,
                               GDT_Float32,
-                              CPL_IS_LSB, TRUE, FALSE ) );
+                              CPL_IS_LSB,
+                              RawRasterBand::OwnFP::NO ) );
 
 /* -------------------------------------------------------------------- */
 /*      Setup georeferencing.                                           */
@@ -257,10 +262,10 @@ CPLErr LOSLASDataset::GetGeoTransform( double * padfTransform )
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *LOSLASDataset::GetProjectionRef()
+const char *LOSLASDataset::_GetProjectionRef()
 
 {
-    return SRS_WKT_WGS84;
+    return SRS_WKT_WGS84_LAT_LONG;
 }
 
 /************************************************************************/

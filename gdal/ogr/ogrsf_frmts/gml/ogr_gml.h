@@ -8,7 +8,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2010-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -49,7 +49,7 @@ typedef enum
 /*                            OGRGMLLayer                               */
 /************************************************************************/
 
-class OGRGMLLayer : public OGRLayer
+class OGRGMLLayer final: public OGRLayer
 {
     OGRFeatureDefn     *poFeatureDefn;
 
@@ -101,7 +101,7 @@ class OGRGMLLayer : public OGRLayer
 /*                           OGRGMLDataSource                           */
 /************************************************************************/
 
-class OGRGMLDataSource : public OGRDataSource
+class OGRGMLDataSource final: public OGRDataSource
 {
     OGRGMLLayer     **papoLayers;
     int                 nLayers;

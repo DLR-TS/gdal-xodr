@@ -7,7 +7,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2002, Frank Warmerdam
- * Copyright (c) 2007-2010, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2007-2010, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -226,6 +226,7 @@ MAIN_START(nArgc, papszArgv)
                     "when -t_srs is requested.\n");
         }
         poTargetSRS = new OGRSpatialReference();
+        poTargetSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         // coverity[tainted_data]
         if( poTargetSRS->SetFromUserInput( pszTargetSRS ) != CE_None )
         {

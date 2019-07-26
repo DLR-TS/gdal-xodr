@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/env pytest
 ###############################################################################
 # $Id$
 #
 # Project:  GDAL/OGR Test Suite
 # Purpose:  Test GSC driver
-# Author:   Even Rouault, <even dot rouault at mines dash paris dot org>
+# Author:   Even Rouault, <even dot rouault at spatialys.com>
 #
 ###############################################################################
-# Copyright (c) 2009, Even Rouault <even dot rouault at mines-paris dot org>
+# Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,9 +28,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
 
-sys.path.append('../pymod')
 
 import gdaltest
 
@@ -38,19 +36,10 @@ import gdaltest
 # Test a fake - and certainly incorrect - GSC dataset
 
 
-def gsc_1():
+def test_gsc_1():
 
     tst = gdaltest.GDALTest('GSC', 'fakegsc.gsc', 1, 0)
     return tst.testOpen()
 
 
-gdaltest_list = [
-    gsc_1]
 
-if __name__ == '__main__':
-
-    gdaltest.setup_run('gsc')
-
-    gdaltest.run_tests(gdaltest_list)
-
-    gdaltest.summarize()

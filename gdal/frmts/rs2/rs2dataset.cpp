@@ -6,7 +6,7 @@
  *
  ******************************************************************************
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
- * Copyright (c) 2009-2013, Even Rouault <even dot rouault at mines-paris dot org>
+ * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -84,10 +84,16 @@ class RS2Dataset final: public GDALPamDataset
     virtual ~RS2Dataset();
 
     virtual int    GetGCPCount() override;
-    virtual const char *GetGCPProjection() override;
+    virtual const char *_GetGCPProjection() override;
+    const OGRSpatialReference* GetGCPSpatialRef() const override {
+        return GetGCPSpatialRefFromOldGetGCPProjection();
+    }
     virtual const GDAL_GCP *GetGCPs() override;
 
-    virtual const char *GetProjectionRef(void) override;
+    virtual const char *_GetProjectionRef(void) override;
+    const OGRSpatialReference* GetSpatialRef() const override {
+        return GetSpatialRefFromOldGetProjectionRef();
+    }
     virtual CPLErr GetGeoTransform( double * ) override;
 
     virtual char      **GetMetadataDomainList() override;
@@ -804,9 +810,9 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 /* -------------------------------------------------------------------- */
 /*      Open each of the data files as a complex band.                  */
 /* -------------------------------------------------------------------- */
-    char *pszBeta0LUT = nullptr;
-    char *pszGammaLUT = nullptr;
-    char *pszSigma0LUT = nullptr;
+    CPLString osBeta0LUT;
+    CPLString osGammaLUT;
+    CPLString osSigma0LUT;
 
     char *pszPath = CPLStrdup(CPLGetPath( osMDFilename ));
     const int nFLen = static_cast<int>(osMDFilename.size());
@@ -839,7 +845,7 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 
                 const size_t nBufLen = nFLen + 27;
                 char *pszBuf = reinterpret_cast<char *>( CPLMalloc(nBufLen) );
-                pszBeta0LUT = VSIStrdup( pszLUTFile );
+                osBeta0LUT = pszLUTFile;
                 poDS->SetMetadataItem( "BETA_NOUGHT_LUT", pszLUTFile );
 
                 snprintf(pszBuf, nBufLen, "RADARSAT_2_CALIB:BETA0:%s",
@@ -859,7 +865,7 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 
                 const size_t nBufLen = nFLen + 27;
                 char *pszBuf = reinterpret_cast<char *>( CPLMalloc(nBufLen) );
-                pszSigma0LUT = VSIStrdup( pszLUTFile );
+                osSigma0LUT = pszLUTFile;
                 poDS->SetMetadataItem( "SIGMA_NOUGHT_LUT", pszLUTFile );
 
                 snprintf(pszBuf, nBufLen,"RADARSAT_2_CALIB:SIGMA0:%s",
@@ -879,7 +885,7 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 
                 const size_t nBufLen = nFLen + 27;
                 char *pszBuf = reinterpret_cast<char *>( CPLMalloc(nBufLen) );
-                pszGammaLUT = VSIStrdup( pszLUTFile );
+                osGammaLUT = pszLUTFile;
                 poDS->SetMetadataItem( "GAMMA_LUT", pszLUTFile );
                 snprintf(pszBuf, nBufLen,"RADARSAT_2_CALIB:GAMMA:%s",
                         osMDFilename.c_str());
@@ -941,17 +947,17 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
             const char *pszLUT = nullptr;
             switch (eCalib) {
               case Sigma0:
-                pszLUT = pszSigma0LUT;
+                pszLUT = osSigma0LUT;
                 break;
               case Beta0:
-                pszLUT = pszBeta0LUT;
+                pszLUT = osBeta0LUT;
                 break;
               case Gamma:
-                pszLUT = pszGammaLUT;
+                pszLUT = osGammaLUT;
                 break;
               default:
                 /* we should bomb gracefully... */
-                pszLUT = pszSigma0LUT;
+                pszLUT = osSigma0LUT;
             }
             RS2CalibRasterBand *poBand
                 = new RS2CalibRasterBand( poDS, CPLGetXMLValue( psNode,
@@ -1200,9 +1206,9 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
                     psUtmParams, "hemisphere", "" );
 #if 0
                 origEasting = CPLStrtod(CPLGetXMLValue(
-                    psUtmParams, "mapOriginFalseEasting", "0.0" ), NULL);
+                    psUtmParams, "mapOriginFalseEasting", "0.0" ), nullptr);
                 origNorthing = CPLStrtod(CPLGetXMLValue(
-                    psUtmParams, "mapOriginFalseNorthing", "0.0" ), NULL);
+                    psUtmParams, "mapOriginFalseNorthing", "0.0" ), nullptr);
 #endif
                 if ( STARTS_WITH_CI(pszHemisphere, "southern") )
                     bNorth = FALSE;
@@ -1307,9 +1313,9 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
             psGCP->pszId = CPLStrdup( szID );
             psGCP->pszInfo = CPLStrdup("");
             psGCP->dfGCPPixel =
-                CPLAtof(CPLGetXMLValue(psNode,"imageCoordinate.pixel","0"));
+                CPLAtof(CPLGetXMLValue(psNode,"imageCoordinate.pixel","0")) + 0.5;
             psGCP->dfGCPLine =
-                CPLAtof(CPLGetXMLValue(psNode,"imageCoordinate.line","0"));
+                CPLAtof(CPLGetXMLValue(psNode,"imageCoordinate.line","0")) + 0.5;
             psGCP->dfGCPX =
                 CPLAtof(CPLGetXMLValue(psNode,"geodeticCoordinate.longitude",""));
             psGCP->dfGCPY =
@@ -1320,9 +1326,6 @@ GDALDataset *RS2Dataset::Open( GDALOpenInfo * poOpenInfo )
     }
 
     CPLFree( pszPath );
-    if (pszBeta0LUT) CPLFree(pszBeta0LUT);
-    if (pszSigma0LUT) CPLFree(pszSigma0LUT);
-    if (pszGammaLUT) CPLFree(pszGammaLUT);
 
 /* -------------------------------------------------------------------- */
 /*      Collect RPC.                                                   */
@@ -1425,7 +1428,7 @@ int RS2Dataset::GetGCPCount()
 /*                          GetGCPProjection()                          */
 /************************************************************************/
 
-const char *RS2Dataset::GetGCPProjection()
+const char *RS2Dataset::_GetGCPProjection()
 
 {
     return pszGCPProjection;
@@ -1445,7 +1448,7 @@ const GDAL_GCP *RS2Dataset::GetGCPs()
 /*                          GetProjectionRef()                          */
 /************************************************************************/
 
-const char *RS2Dataset::GetProjectionRef()
+const char *RS2Dataset::_GetProjectionRef()
 
 {
     return pszProjection;
@@ -1474,7 +1477,7 @@ char **RS2Dataset::GetMetadataDomainList()
 {
     return BuildMetadataDomainList(GDALDataset::GetMetadataDomainList(),
                                    TRUE,
-                                   "SUBDATASETS", NULL);
+                                   "SUBDATASETS", nullptr);
 }
 
 /************************************************************************/
