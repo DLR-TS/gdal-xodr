@@ -2787,7 +2787,7 @@ static void StripIrrelevantOptions(CPLXMLNode* psCOL, int nOptions)
                 if( psPrev )
                     psPrev->psNext = psNext;
                 else if( psCOL->psChild == psIter )
-                    psCOL->psChild->psNext = psNext;
+                    psCOL->psChild = psNext;
                 psIter->psNext = nullptr;
                 CPLDestroyXMLNode(psIter);
                 psIter = psNext;
@@ -4018,4 +4018,18 @@ int GDALCanFileAcceptSidecarFile(const char* pszFilename)
     if( strncmp(pszFilename, "/vsisubfile/", strlen("/vsisubfile/")) == 0 )
         return FALSE;
     return TRUE;
+}
+
+/************************************************************************/
+/*                    GDALAdjustNoDataCloseToFloatMax()                 */
+/************************************************************************/
+
+double GDALAdjustNoDataCloseToFloatMax(double dfVal)
+{
+    const auto kMaxFloat = std::numeric_limits<float>::max();
+    if( std::fabs(dfVal - -kMaxFloat) < 1e-10 * kMaxFloat )
+        return -kMaxFloat;
+    if( std::fabs(dfVal - kMaxFloat) < 1e-10 * kMaxFloat )
+        return kMaxFloat;
+    return dfVal;
 }

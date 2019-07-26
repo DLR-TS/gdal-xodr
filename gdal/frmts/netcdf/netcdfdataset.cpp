@@ -50,6 +50,7 @@
 // Must be included after standard includes, otherwise VS2015 fails when
 // including <ctime>
 #include "netcdfdataset.h"
+#include "netcdfuffd.h"
 
 #include "cpl_conv.h"
 #include "cpl_error.h"
@@ -61,6 +62,7 @@
 #include "gdal_frmts.h"
 #include "ogr_core.h"
 #include "ogr_srs_api.h"
+
 
 CPL_CVSID("$Id$")
 
@@ -141,7 +143,8 @@ class netCDFRasterBand final: public GDALPamRasterBand
     int         *panBandZLev;
     bool        bNoDataSet;
     double      dfNoDataValue;
-    double      adfValidRange[2];
+    bool        bValidRangeValid = false;
+    double      adfValidRange[2]{0,0};
     bool        bHaveScale;
     bool        bHaveOffset;
     double      dfScale;
@@ -333,11 +336,7 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
 
     // Look for valid_range or valid_min/valid_max.
 
-    // Set valid_range to nodata, then check for actual values.
-    adfValidRange[0] = dfNoData;
-    adfValidRange[1] = dfNoData;
     // First look for valid_range.
-    bool bGotValidRange = false;
     status = nc_inq_att(cdfid, nZId, "valid_range", &atttype, &attlen);
     if( (status == NC_NOERR) && (attlen == 2) &&
         CPLFetchBool(poNCDFDS->GetOpenOptions(), "HONOUR_VALID_RANGE", true) )
@@ -346,7 +345,7 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
         status = nc_get_att_int(cdfid, nZId, "valid_range", vrange);
         if( status == NC_NOERR )
         {
-            bGotValidRange = true;
+            bValidRangeValid = true;
             adfValidRange[0] = vrange[0];
             adfValidRange[1] = vrange[1];
         }
@@ -363,7 +362,7 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
                 if( status == NC_NOERR )
                 {
                     adfValidRange[1] = vmax;
-                    bGotValidRange = true;
+                    bValidRangeValid = true;
                 }
             }
         }
@@ -395,7 +394,7 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
 
         // If we got valid_range, test for signed/unsigned range.
         // http://www.unidata.ucar.edu/software/netcdf/docs/netcdf/Attribute-Conventions.html
-        if( bGotValidRange )
+        if( bValidRangeValid )
         {
             // If we got valid_range={0,255}, treat as unsigned.
             if( adfValidRange[0] == 0 && adfValidRange[1] == 255 )
@@ -408,16 +407,14 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
                 }
 
                 // Reset valid_range.
-                adfValidRange[0] = dfNoData;
-                adfValidRange[1] = dfNoData;
+                bValidRangeValid = false;
             }
             // If we got valid_range={-128,127}, treat as signed.
             else if( adfValidRange[0] == -128 && adfValidRange[1] == 127 )
             {
                 bSignedData = true;
                 // Reset valid_range.
-                adfValidRange[0] = dfNoData;
-                adfValidRange[1] = dfNoData;
+                bValidRangeValid = false;
             }
         }
         // Else test for _Unsigned.
@@ -438,11 +435,6 @@ netCDFRasterBand::netCDFRasterBand( netCDFDataset *poNCDFDS,
             if( !bSignedData && dfNoData < 0 )
             {
                 dfNoData += 256;
-                if( !bGotValidRange )
-                {
-                    adfValidRange[0] = dfNoData;
-                    adfValidRange[1] = dfNoData;
-                }
             }
         }
 
@@ -1435,8 +1427,7 @@ void netCDFRasterBand::CheckData( void *pImage, void *pImageNC,
     }
 
     // Is valid data checking needed or requested?
-    if( adfValidRange[0] != dfNoDataValue ||
-        adfValidRange[1] != dfNoDataValue ||
+    if( bValidRangeValid ||
         bCheckIsNan )
     {
         for( size_t j = 0; j < nTmpBlockYSize; j++ )
@@ -1455,13 +1446,16 @@ void netCDFRasterBand::CheckData( void *pImage, void *pImageNC,
                     continue;
                 }
                 // Check for valid_range.
-                if( ((adfValidRange[0] != dfNoDataValue) &&
-                     (((T *)pImage)[k] < (T)adfValidRange[0]))
-                    ||
-                    ((adfValidRange[1] != dfNoDataValue) &&
-                     (((T *)pImage)[k] > (T)adfValidRange[1])) )
+                if( bValidRangeValid )
                 {
-                    ((T *)pImage)[k] = (T)dfNoDataValue;
+                    if( ((adfValidRange[0] != dfNoDataValue) &&
+                        (((T *)pImage)[k] < (T)adfValidRange[0]))
+                        ||
+                        ((adfValidRange[1] != dfNoDataValue) &&
+                        (((T *)pImage)[k] > (T)adfValidRange[1])) )
+                    {
+                        ((T *)pImage)[k] = (T)dfNoDataValue;
+                    }
                 }
             }
         }
@@ -1973,6 +1967,9 @@ netCDFDataset::~netCDFDataset()
         CPLDebug("GDAL_netCDF", "calling nc_close( %d)", cdfid);
 #endif
         int status = nc_close(cdfid);
+#ifdef ENABLE_UFFD
+        NETCDF_UFFD_UNMAP(pCtx);
+#endif
         NCDF_ERR(status);
     }
 #ifdef ENABLE_NCDUMP
@@ -3033,14 +3030,20 @@ void netCDFDataset::SetProjectionFromVar( int nVarId, bool bReadSRSOnly )
         CPLDebug("GDAL_netCDF", "set bBottomUp = %d from Y axis",
                  static_cast<int>(poDS->bBottomUp));
 
-        // Convert ]180,360] longitude values to [-180,180].
+        // Convert ]180,540] longitude values to ]-180,0].
         if( NCDFIsVarLongitude(cdfid, nVarDimXID, nullptr) &&
             CPLTestBool(CPLGetConfigOption("GDAL_NETCDF_CENTERLONG_180",
-                                           "YES")) )
+                                        "YES")) )
         {
             // If minimum longitude is > 180, subtract 360 from all.
-            if( std::min(pdfXCoord[0], pdfXCoord[xdim - 1]) > 180.0 )
+            // Add a check on the maximum X value too, since NCDFIsVarLongitude()
+            // is not very specific by default (see https://github.com/OSGeo/gdal/issues/1440)
+            if( std::min(pdfXCoord[0], pdfXCoord[xdim - 1]) > 180.0 &&
+                std::max(pdfXCoord[0], pdfXCoord[xdim - 1]) <= 540 )
             {
+                CPLDebug("GDAL_netCDF",
+                            "Offseting longitudes from ]180,540] to ]-180,180]. "
+                            "Can be disabled with GDAL_NETCDF_CENTERLONG_180=NO");
                 for( size_t i = 0; i < xdim; i++ )
                         pdfXCoord[i] -= 360;
             }
@@ -3125,6 +3128,34 @@ void netCDFDataset::SetProjectionFromVar( int nVarId, bool bReadSRSOnly )
         }
         else
         {
+            bool bWestIsLeft = (pdfXCoord[0] < pdfXCoord[xdim - 1]);
+
+            // fix longitudes if longitudes should increase from 
+            // west to east, but west > east
+            if (NCDFIsVarLongitude(cdfid, nVarDimXID, nullptr) &&
+                !bWestIsLeft)
+            {
+                size_t ndecreases = 0;
+
+                // there is lon wrap if longitudes increase 
+                // with one single decrease 
+                for( size_t i = 1; i < xdim; i++ )
+                {
+                    if (pdfXCoord[i] < pdfXCoord[i - 1])
+                        ndecreases++;
+                }
+
+                if (ndecreases == 1)
+                {
+                    CPLDebug("GDAL_netCDF", "longitude wrap detected");
+                    for( size_t i = 0; i < xdim; i++ )
+                    {
+                        if (pdfXCoord[i] > pdfXCoord[xdim - 1])
+                            pdfXCoord[i] -= 360;
+                    }
+                }
+            }
+
             nSpacingBegin = static_cast<int>(
                 poDS->rint((pdfXCoord[1] - pdfXCoord[0]) * 1000));
 
@@ -6619,8 +6650,9 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
 
         // Check for drive name in windows NETCDF:"D:\...
         if( CSLCount(papszName) == 4 &&
-            strlen(papszName[1]) == 1 &&
-            (papszName[2][0] == '/' || papszName[2][0] == '\\') )
+            ((strlen(papszName[1]) == 1 &&
+            (papszName[2][0] == '/' || papszName[2][0] == '\\')) ||
+            (STARTS_WITH(papszName[1], "/vsicurl/http"))) )
         {
             poDS->osFilename = papszName[1];
             poDS->osFilename += ':';
@@ -6677,10 +6709,12 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
     }
 
     // Try opening the dataset.
-#ifdef NCDF_DEBUG
+#if defined(NCDF_DEBUG) && defined(ENABLE_UFFD)
+    CPLDebug("GDAL_netCDF", "calling nc_open_mem(%s)", poDS->osFilename.c_str());
+#elseif defined(NCDF_DEBUG) && !defined(ENABLE_UFFD)
     CPLDebug("GDAL_netCDF", "calling nc_open(%s)", poDS->osFilename.c_str());
 #endif
-    int cdfid;
+    int cdfid = -1;
     const int nMode = ((poOpenInfo->nOpenFlags & (GDAL_OF_UPDATE | GDAL_OF_VECTOR)) ==
                 (GDAL_OF_UPDATE | GDAL_OF_VECTOR)) ? NC_WRITE : NC_NOWRITE;
     CPLString osFilenameForNCOpen(poDS->osFilename);
@@ -6692,7 +6726,25 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
         CPLFree(pszTemp);
     }
 #endif
-    if( nc_open(osFilenameForNCOpen, nMode, &cdfid) != NC_NOERR )
+    int status2;
+
+#ifdef ENABLE_UFFD
+    bool bVsiFile = !strncmp(osFilenameForNCOpen, "/vsi", strlen("/vsi"));
+    bool bReadOnly = (poOpenInfo->eAccess == GA_ReadOnly);
+    void * pVma = nullptr;
+    uint64_t nVmaSize = 0;
+    cpl_uffd_context * pCtx = nullptr;
+
+    if ( bVsiFile && bReadOnly && CPLIsUserFaultMappingSupported() )
+      pCtx = CPLCreateUserFaultMapping(osFilenameForNCOpen, &pVma, &nVmaSize);
+    if (pCtx != nullptr && pVma != nullptr && nVmaSize > 0)
+      status2 = nc_open_mem(osFilenameForNCOpen, nMode, nVmaSize, pVma, &cdfid);
+    else
+      status2 = nc_open(osFilenameForNCOpen, nMode, &cdfid);
+#else
+    status2 = nc_open(osFilenameForNCOpen, nMode, &cdfid);
+#endif
+    if( status2 != NC_NOERR )
     {
 #ifdef NCDF_DEBUG
         CPLDebug("GDAL_netCDF", "error opening");
@@ -6769,6 +6821,9 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                  "The NETCDF driver does not support update access to existing"
                  " datasets.");
         nc_close(cdfid);
+#ifdef ENABLE_UFFD
+        NETCDF_UFFD_UNMAP(pCtx);
+#endif
         CPLReleaseMutex(hNCMutex);  // Release mutex otherwise we'll deadlock
                                     // with GDALDataset own mutex.
         delete poDS;
@@ -6788,6 +6843,9 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                      poOpenInfo->pszFilename, osSubdatasetName.c_str());
 
             nc_close(cdfid);
+#ifdef ENABLE_UFFD
+            NETCDF_UFFD_UNMAP(pCtx);
+#endif
             CPLReleaseMutex(hNCMutex);  // Release mutex otherwise we'll
                                         // deadlock with GDALDataset own mutex.
             delete poDS;
@@ -6803,6 +6861,9 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
                  poOpenInfo->pszFilename);
 
         nc_close(cdfid);
+#ifdef ENABLE_UFFD
+        NETCDF_UFFD_UNMAP(pCtx);
+#endif
         CPLReleaseMutex(hNCMutex);  // Release mutex otherwise we'll deadlock
                                     // with GDALDataset own mutex.
         delete poDS;
@@ -6836,6 +6897,9 @@ GDALDataset *netCDFDataset::Open( GDALOpenInfo *poOpenInfo )
     // Create a corresponding GDALDataset.
     // Create Netcdf Subdataset if filename as NETCDF tag.
     poDS->cdfid = cdfid;
+#ifdef ENABLE_UFFD
+    poDS->pCtx = pCtx;
+#endif
     poDS->eAccess = poOpenInfo->eAccess;
     poDS->bDefineMode = false;
 
@@ -8867,6 +8931,13 @@ void GDALRegister_netCDF()
     poDriver->SetMetadataItem("ENABLE_NCDUMP", "YES");
 #endif
 
+#ifdef ENABLE_UFFD
+    if( CPLIsUserFaultMappingSupported() )
+    {
+        poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
+    }
+#endif
+
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONFIELDDATATYPES,
                               "Integer Integer64 Real String Date DateTime");
 
@@ -9310,6 +9381,8 @@ static CPLErr NCDFGetAttr1( int nCdfId, int nVarId, const char *pszAttrName,
     CPLDebug("GDAL_netCDF", "NCDFGetAttr1(%s) len=%ld type=%d", pszAttrName,
              nAttrLen, nAttrType);
 #endif
+    if( nAttrLen == 0 && nAttrType != NC_CHAR )
+        return CE_Failure;
 
     /* Allocate guaranteed minimum size (use 10 or 20 if not a string) */
     size_t nAttrValueSize = nAttrLen + 1;
@@ -9627,6 +9700,14 @@ static CPLErr NCDFPutAttr( int nCdfId, int nVarId, const char *pszAttrName,
             )
             nAttrType = nTmpAttrType;
     }
+
+#ifdef DEBUG
+    if( EQUAL(pszAttrName, "DEBUG_EMPTY_DOUBLE_ATTR" ) )
+    {
+        nAttrType = NC_DOUBLE;
+        nAttrLen = 0;
+    }
+#endif
 
     /* now write the data */
     if( nAttrType == NC_CHAR )

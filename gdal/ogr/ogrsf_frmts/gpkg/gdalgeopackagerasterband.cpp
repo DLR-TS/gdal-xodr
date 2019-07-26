@@ -31,6 +31,7 @@
 #include "gdal_alg_priv.h"
 
 #include <algorithm>
+#include <cassert>
 #include <limits>
 
 CPL_CVSID("$Id$")
@@ -147,7 +148,7 @@ GDALGPKGMBTilesLikeRasterBand::GDALGPKGMBTilesLikeRasterBand(
     m_bHasNoData(false),
     m_dfNoDataValue(0.0)
 {
-    CPLAssert( m_poTPD != nullptr ); // make GCC 7 -Wnull-dereference happy in -O2
+    assert( m_poTPD != nullptr ); // make GCC 7 -Wnull-dereference happy in -O2
     eDataType = m_poTPD->m_eDT;
     m_nDTSize = m_poTPD->m_nDTSize;
     nBlockXSize = nTileWidth;
@@ -940,6 +941,14 @@ GByte* GDALGPKGMBTilesLikePseudoDataset::ReadTile( int nRow, int nCol, GByte *pa
                  pbIsLossyFormat);
         VSIUnlink(osMemFileName);
         sqlite3_finalize(hStmt);
+    }
+    else if( rc == SQLITE_BUSY )
+    {
+        FillEmptyTile(pabyData);
+        CPLError( CE_Failure, CPLE_AppDefined, "sqlite3_step(%s) failed (SQLITE_BUSY): %s",
+                      sqlite3_sql( hStmt ), sqlite3_errmsg( IGetDB() ) );
+        sqlite3_finalize(hStmt);
+        return pabyData;
     }
     else
     {

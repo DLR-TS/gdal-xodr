@@ -145,6 +145,8 @@ static void CPLOpenSSLCleanup()
         }
         CPLFree(pahSSLMutex);
         pahSSLMutex = nullptr;
+        CRYPTO_set_id_callback(nullptr);
+        CRYPTO_set_locking_callback(nullptr);
     }
 }
 
@@ -463,6 +465,7 @@ constexpr TupleEnvVarOptionName asAssocEnvVarOptionName[] =
     { "GDAL_HTTP_LOW_SPEED_LIMIT", "LOW_SPEED_LIMIT" },
     { "GDAL_HTTP_USERPWD", "USERPWD" },
     { "GDAL_HTTP_PROXY", "PROXY" },
+    { "GDAL_HTTPS_PROXY", "HTTPS_PROXY" },
     { "GDAL_HTTP_PROXYUSERPWD", "PROXYUSERPWD" },
     { "GDAL_PROXY_AUTH", "PROXYAUTH" },
     { "GDAL_HTTP_NETRC", "NETRC" },
@@ -496,10 +499,15 @@ char** CPLHTTPGetOptionsFromEnv()
 /*                      CPLHTTPGetNewRetryDelay()                       */
 /************************************************************************/
 
-double CPLHTTPGetNewRetryDelay(int response_code, double dfOldDelay)
+double CPLHTTPGetNewRetryDelay(int response_code, double dfOldDelay,
+                               const char* pszErrBuf,
+                               const char* pszCurlError)
 {
-    if( response_code == 429 ||
-            (response_code>= 502 && response_code <= 504) )
+    if( response_code == 429 || response_code == 500 ||
+        (response_code >= 502 && response_code <= 504) ||
+        // S3 sends some client timeout errors as 400 Client Error
+        (response_code == 400 && pszErrBuf && strstr(pszErrBuf, "RequestTimeout")) ||
+        (pszCurlError && strstr(pszCurlError, "Connection timed out")) )
     {
         // Use an exponential backoff factor of 2 plus some random jitter
         // We don't care about cryptographic quality randomness, hence:
@@ -571,12 +579,17 @@ static void CPLHTTPEmitFetchDebug(const char* pszURL,
  * <li>POSTFIELDS=val, where val is a nul-terminated string to be passed to the server
  *                     with a POST request.</li>
  * <li>PROXY=val, to make requests go through a proxy server, where val is of the
- *                form proxy.server.com:port_number</li>
+ *                form proxy.server.com:port_number. This option affects both HTTP and HTTPS
+ *                URLs.</li>
+ * <li>HTTPS_PROXY=val (GDAL >= 2.4), the same meaning as PROXY, but this option is taken into account only
+ *                 for HTTPS URLs.</li>
  * <li>PROXYUSERPWD=val, where val is of the form username:password</li>
  * <li>PROXYAUTH=[BASIC/NTLM/DIGEST/ANY] to specify an proxy authentication scheme to use.</li>
  * <li>NETRC=[YES/NO] to enable or disable use of $HOME/.netrc, default YES.</li>
  * <li>CUSTOMREQUEST=val, where val is GET, PUT, POST, DELETE, etc.. (GDAL >= 1.9.0)</li>
  * <li>COOKIE=val, where val is formatted as COOKIE1=VALUE1; COOKIE2=VALUE2; ...</li>
+ * <li>COOKIEFILE=val, where val is file name to read cookies from (GDAL >= 2.4)</li>
+ * <li>COOKIEJAR=val, where val is file name to store cookies to (GDAL >= 2.4)</li>
  * <li>MAX_RETRY=val, where val is the maximum number of retry attempts if a 429, 502, 503 or
  *               504 HTTP error occurs. Default is 0. (GDAL >= 2.0)</li>
  * <li>RETRY_DELAY=val, where val is the number of seconds between retry attempts.
@@ -604,12 +617,12 @@ static void CPLHTTPEmitFetchDebug(const char* pszURL,
  *
  * Alternatively, if not defined in the papszOptions arguments, the
  * CONNECTTIMEOUT, TIMEOUT,
- * LOW_SPEED_TIME, LOW_SPEED_LIMIT, USERPWD, PROXY, PROXYUSERPWD, PROXYAUTH, NETRC,
+ * LOW_SPEED_TIME, LOW_SPEED_LIMIT, USERPWD, PROXY, HTTPS_PROXY, PROXYUSERPWD, PROXYAUTH, NETRC,
  * MAX_RETRY and RETRY_DELAY, HEADER_FILE, HTTP_VERSION, SSL_VERIFYSTATUS, USE_CAPI_STORE
  * values are searched in the configuration
  * options respectively named GDAL_HTTP_CONNECTTIMEOUT, GDAL_HTTP_TIMEOUT,
  * GDAL_HTTP_LOW_SPEED_TIME, GDAL_HTTP_LOW_SPEED_LIMIT, GDAL_HTTP_USERPWD,
- * GDAL_HTTP_PROXY, GDAL_HTTP_PROXYUSERPWD, GDAL_PROXY_AUTH,
+ * GDAL_HTTP_PROXY, GDAL_HTTPS_PROXY, GDAL_HTTP_PROXYUSERPWD, GDAL_PROXY_AUTH,
  * GDAL_HTTP_NETRC, GDAL_HTTP_MAX_RETRY, GDAL_HTTP_RETRY_DELAY,
  * GDAL_HTTP_HEADER_FILE, GDAL_HTTP_VERSION, GDAL_HTTP_SSL_VERIFYSTATUS,
  * GDAL_HTTP_USE_CAPI_STORE
@@ -649,6 +662,12 @@ CPLHTTPResult *CPLHTTPFetchEx( const char *pszURL, CSLConstList papszOptions,
         {
             osURL += "&CUSTOMREQUEST=";
             osURL += pszCustomRequest;
+        }
+        const char* pszUserPwd = CSLFetchNameValue( papszOptions, "USERPWD" );
+        if( pszUserPwd != nullptr )
+        {
+            osURL += "&USERPWD=";
+            osURL += pszUserPwd;
         }
         const char* pszPost = CSLFetchNameValue( papszOptions, "POSTFIELDS" );
         if( pszPost != nullptr ) // Hack: We append post content to filename.
@@ -793,10 +812,8 @@ CPLHTTPResult *CPLHTTPFetchEx( const char *pszURL, CSLConstList papszOptions,
     CPLHTTPResult *psResult =
         static_cast<CPLHTTPResult *>(CPLCalloc(1, sizeof(CPLHTTPResult)));
 
-    curl_easy_setopt(http_handle, CURLOPT_URL, pszURL );
-
     struct curl_slist* headers= reinterpret_cast<struct curl_slist*>(
-                            CPLHTTPSetOptions(http_handle, papszOptions));
+                            CPLHTTPSetOptions(http_handle, pszURL, papszOptions));
 
     // Set Headers.
     const char *pszHeaders = CSLFetchNameValue( papszOptions, "HEADERS" );
@@ -889,12 +906,9 @@ CPLHTTPResult *CPLHTTPFetchEx( const char *pszURL, CSLConstList papszOptions,
     double dfRetryDelaySecs = CPLAtof(pszRetryDelay);
     int nMaxRetries = atoi(pszMaxRetries);
     int nRetryCount = 0;
-    bool bRequestRetry;
 
-    do
+    while(true)
     {
-        bRequestRetry = false;
-
 /* -------------------------------------------------------------------- */
 /*      Execute the request, waiting for results.                       */
 /* -------------------------------------------------------------------- */
@@ -910,6 +924,40 @@ CPLHTTPResult *CPLHTTPFetchEx( const char *pszURL, CSLConstList papszOptions,
                            &(psResult->pszContentType) );
         if( psResult->pszContentType != nullptr )
             psResult->pszContentType = CPLStrdup(psResult->pszContentType);
+
+        long response_code = 0;
+        curl_easy_getinfo(http_handle, CURLINFO_RESPONSE_CODE,
+                            &response_code);
+        if( response_code != 200 )
+        {
+            const double dfNewRetryDelay = CPLHTTPGetNewRetryDelay(
+                    static_cast<int>(response_code),
+                    dfRetryDelaySecs,
+                    reinterpret_cast<const char*>(psResult->pabyData),
+                    szCurlErrBuf);
+            if( dfNewRetryDelay > 0 && nRetryCount < nMaxRetries )
+            {
+                CPLError(CE_Warning, CPLE_AppDefined,
+                            "HTTP error code: %d - %s. "
+                            "Retrying again in %.1f secs",
+                            static_cast<int>(response_code), pszURL,
+                            dfRetryDelaySecs);
+                CPLSleep(dfRetryDelaySecs);
+                dfRetryDelaySecs = dfNewRetryDelay;
+                nRetryCount++;
+
+                CPLFree(psResult->pszContentType);
+                psResult->pszContentType = nullptr;
+                CSLDestroy(psResult->papszHeaders);
+                psResult->papszHeaders = nullptr;
+                CPLFree(psResult->pabyData);
+                psResult->pabyData = nullptr;
+                psResult->nDataLen = 0;
+                psResult->nDataAlloc = 0;
+
+                continue;
+            }
+        }
 
 /* -------------------------------------------------------------------- */
 /*      Have we encountered some sort of error?                         */
@@ -956,51 +1004,17 @@ CPLHTTPResult *CPLHTTPFetchEx( const char *pszURL, CSLConstList papszOptions,
         }
         else
         {
-            // HTTP errors do not trigger curl errors. But we need to
-            // propagate them to the caller though.
-            long response_code = 0;
-            curl_easy_getinfo(http_handle, CURLINFO_RESPONSE_CODE,
-                              &response_code);
-
             if( response_code >= 400 && response_code < 600 )
             {
-                const double dfNewRetryDelay = CPLHTTPGetNewRetryDelay(
-                    static_cast<int>(response_code),
-                    dfRetryDelaySecs);
-                if( dfNewRetryDelay > 0 && nRetryCount < nMaxRetries )
-                {
-                    CPLError(CE_Warning, CPLE_AppDefined,
-                             "HTTP error code: %d - %s. "
-                             "Retrying again in %.1f secs",
-                             static_cast<int>(response_code), pszURL,
-                             dfRetryDelaySecs);
-                    CPLSleep(dfRetryDelaySecs);
-                    dfRetryDelaySecs = dfNewRetryDelay;
-                    nRetryCount++;
-
-                    CPLFree(psResult->pszContentType);
-                    psResult->pszContentType = nullptr;
-                    CSLDestroy(psResult->papszHeaders);
-                    psResult->papszHeaders = nullptr;
-                    CPLFree(psResult->pabyData);
-                    psResult->pabyData = nullptr;
-                    psResult->nDataLen = 0;
-                    psResult->nDataAlloc = 0;
-
-                    bRequestRetry = true;
-                }
-                else
-                {
-                    psResult->pszErrBuf =
-                        CPLStrdup(CPLSPrintf("HTTP error code : %d",
-                                             static_cast<int>(response_code)));
-                    CPLError(CE_Failure, CPLE_AppDefined,
-                             "%s", psResult->pszErrBuf);
-                }
+                psResult->pszErrBuf =
+                    CPLStrdup(CPLSPrintf("HTTP error code : %d",
+                                            static_cast<int>(response_code)));
+                CPLError(CE_Failure, CPLE_AppDefined,
+                            "%s", psResult->pszErrBuf);
             }
         }
+        break;
     }
-    while( bRequestRetry );
 
     if( !pszPersistent )
         curl_easy_cleanup( http_handle );
@@ -1201,10 +1215,9 @@ CPLHTTPResult **CPLHTTPMultiFetch( const char * const * papszURL,
 
         const char* pszURL = papszURL[i];
         CURL* http_handle = curl_easy_init();
-        curl_easy_setopt(http_handle, CURLOPT_URL, pszURL );
 
         aHeaders[i] = reinterpret_cast<struct curl_slist*>(
-                            CPLHTTPSetOptions(http_handle, papszOptions));
+                            CPLHTTPSetOptions(http_handle, pszURL, papszOptions));
 
         // Set Headers.
         const char *pszHeaders = CSLFetchNameValue( papszOptions, "HEADERS" );
@@ -1401,11 +1414,14 @@ static const char* CPLFindWin32CurlCaBundleCrt()
 // see https://curl.haxx.se/libcurl/c/curl_easy_setopt.html
 // caution: if we remove that assumption, we'll needto use CURLOPT_COPYPOSTFIELDS
 
-void* CPLHTTPSetOptions(void *pcurl, const char * const* papszOptions)
+void *CPLHTTPSetOptions(void *pcurl, const char* pszURL,
+                       const char * const* papszOptions)
 {
     CheckCurlFeatures();
 
     CURL *http_handle = reinterpret_cast<CURL *>(pcurl);
+
+    curl_easy_setopt(http_handle, CURLOPT_URL, pszURL);
 
     if( CPLTestBool(CPLGetConfigOption("CPL_CURL_VERBOSE", "NO")) )
         curl_easy_setopt(http_handle, CURLOPT_VERBOSE, 1);
@@ -1564,6 +1580,12 @@ void* CPLHTTPSetOptions(void *pcurl, const char * const* papszOptions)
         pszProxy = CPLGetConfigOption("GDAL_HTTP_PROXY", nullptr);
     if( pszProxy )
         curl_easy_setopt(http_handle, CURLOPT_PROXY, pszProxy);
+
+    const char* pszHttpsProxy = CSLFetchNameValue( papszOptions, "HTTPS_PROXY" );
+    if ( pszHttpsProxy == nullptr )
+        pszHttpsProxy = CPLGetConfigOption("GDAL_HTTPS_PROXY", nullptr);
+    if ( pszHttpsProxy && (STARTS_WITH(pszURL, "https")) )
+        curl_easy_setopt(http_handle, CURLOPT_PROXY, pszHttpsProxy);
 
     const char* pszProxyUserPwd =
         CSLFetchNameValue( papszOptions, "PROXYUSERPWD" );
@@ -1754,6 +1776,19 @@ void* CPLHTTPSetOptions(void *pcurl, const char * const* papszOptions)
         pszCookie = CPLGetConfigOption("GDAL_HTTP_COOKIE", nullptr);
     if( pszCookie != nullptr )
         curl_easy_setopt(http_handle, CURLOPT_COOKIE, pszCookie);
+        
+    const char* pszCookieFile = CSLFetchNameValue(papszOptions, "COOKIEFILE");
+    if( pszCookieFile == nullptr )
+        pszCookieFile = CPLGetConfigOption("GDAL_HTTP_COOKIEFILE", nullptr);
+    if( pszCookieFile != nullptr )
+        curl_easy_setopt(http_handle, CURLOPT_COOKIEFILE, pszCookieFile);
+
+    const char* pszCookieJar = CSLFetchNameValue(papszOptions, "COOKIEJAR");
+    if( pszCookieJar == nullptr )
+        pszCookieJar = CPLGetConfigOption("GDAL_HTTP_COOKIEJAR", nullptr);
+    if( pszCookieJar != nullptr )
+        curl_easy_setopt(http_handle, CURLOPT_COOKIEJAR, pszCookieJar);
+
 
     struct curl_slist* headers = nullptr;
     const char *pszHeaderFile = CSLFetchNameValue( papszOptions, "HEADER_FILE" );

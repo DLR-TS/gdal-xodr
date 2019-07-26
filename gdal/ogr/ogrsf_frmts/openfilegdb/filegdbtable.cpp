@@ -1373,7 +1373,8 @@ int FileGDBDoubleDateToOGRDate(double dfVal, OGRField* psField)
 {
     // 25569: Number of days between 1899/12/30 00:00:00 and 1970/01/01 00:00:00
     double dfSeconds = (dfVal - 25569.0) * 3600.0 * 24.0;
-    if( dfSeconds < static_cast<double>(std::numeric_limits<GIntBig>::min())+1000 ||
+    if( CPLIsNan(dfSeconds) ||
+        dfSeconds < static_cast<double>(std::numeric_limits<GIntBig>::min())+1000 ||
         dfSeconds > static_cast<double>(std::numeric_limits<GIntBig>::max())-1000 )
     {
         CPLError(CE_Failure, CPLE_NotSupported,
@@ -3103,9 +3104,8 @@ OGRGeometry* FileGDBOGRGeometryConverterImpl::GetAsGeometry(const OGRField* psFi
                 }
                 delete[] papoRings;
                 papoRings = nullptr;
-                const char* papszOptions[] = { "METHOD=ONLY_CCW", nullptr };
                 poRet = OGRGeometryFactory::organizePolygons(
-                    (OGRGeometry**) papoPolygons, nParts, nullptr, papszOptions );
+                    (OGRGeometry**) papoPolygons, nParts, nullptr, nullptr );
                 delete[] papoPolygons;
             }
 #ifdef ASSUME_INNER_RINGS_IMMEDIATELY_AFTER_OUTER_RING

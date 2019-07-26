@@ -60,7 +60,7 @@
 
 class ENVIRasterBand;
 
-class ENVIDataset : public RawDataset
+class ENVIDataset final: public RawDataset
 {
     friend class ENVIRasterBand;
 
@@ -76,13 +76,16 @@ class ENVIDataset : public RawDataset
 
     char       *pszProjection;
 
-    CPLStringList m_aosHeader;
+    CPLStringList m_aosHeader{};
 
-    CPLString   osStaFilename;
+    CPLString   osStaFilename{};
+
+    std::vector<GDAL_GCP> m_asGCPs{};
 
     bool        ReadHeader( VSILFILE * );
     bool        ProcessMapinfo( const char * );
     void        ProcessRPCinfo( const char *, int, int);
+    void        ProcessGeoPoints( const char* );
     void        ProcessStatsFile();
     static int         byteSwapInt(int);
     static float       byteSwapFloat(float);
@@ -101,6 +104,8 @@ class ENVIDataset : public RawDataset
 
     enum Interleave { BSQ, BIL, BIP } interleave;
     static int GetEnviType(GDALDataType eType);
+
+    CPL_DISALLOW_COPY_ASSIGN(ENVIDataset)
 
   public:
     ENVIDataset();
@@ -123,7 +128,11 @@ class ENVIDataset : public RawDataset
     CPLErr SetGCPs( int nGCPCount, const GDAL_GCP *pasGCPList,
                     const char *pszGCPProjection ) override;
 
+    int    GetGCPCount() override;
+    const GDAL_GCP *GetGCPs() override;
+
     static GDALDataset *Open( GDALOpenInfo * );
+    static GDALDataset *Open( GDALOpenInfo *, bool bFileSizeCheck );
     static GDALDataset *Create( const char *pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType, char ** papszOptions );
@@ -135,14 +144,15 @@ class ENVIDataset : public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ENVIRasterBand : public RawRasterBand
+class ENVIRasterBand final: public RawRasterBand
 {
+    CPL_DISALLOW_COPY_ASSIGN(ENVIRasterBand)
+
   public:
-    ENVIRasterBand( GDALDataset *poDSIn, int nBandIn, void *fpRawIn,
+    ENVIRasterBand( GDALDataset *poDSIn, int nBandIn, VSILFILE *fpRawIn,
                     vsi_l_offset nImgOffsetIn, int nPixelOffsetIn,
                     int nLineOffsetIn, GDALDataType eDataTypeIn,
-                    int bNativeOrderIn, int bIsVSILIn = FALSE,
-                    int bOwnsFPIn = FALSE );
+                    int bNativeOrderIn );
     ~ENVIRasterBand() override {}
 
     void SetDescription( const char * ) override;

@@ -40,6 +40,7 @@
 #include <cstring>
 #include <algorithm>
 #include <limits>
+#include <string>
 
 #include "cpl_conv.h"
 #include "cpl_csv.h"
@@ -1742,7 +1743,7 @@ OGRErr OGRSpatialReference::morphToESRI()
         if( (poProjCS = GetAttrNode( "PROJCS" )) != nullptr )
             poProjCSNodeChild = poProjCS->GetChild(0);
 
-        if( bHasEquivalentMerc2SP )
+        if( poProjCS && bHasEquivalentMerc2SP )
         {
             const int iScaleFactorChild =
                 FindProjParm( SRS_PP_SCALE_FACTOR, poProjCS );
@@ -1884,17 +1885,20 @@ OGRErr OGRSpatialReference::morphToESRI()
           }
         }
 
+        // pszProjection might be deleted in DeleteParamBasedOnPrjName,
+        // so make and use a copy.
+        const std::string osProjection(pszProjection);
         DeleteParamBasedOnPrjName(
-            this, pszProjection,
+            this, osProjection.c_str(),
             apszDeleteParametersBasedOnProjection);
         AddParamBasedOnPrjName(
-            this, pszProjection,
+            this, osProjection.c_str(),
             apszAddParametersBasedOnProjection);
         RemapPValuesBasedOnProjCSAndPName(
-            this, pszProjection,
+            this, osProjection.c_str(),
             apszParamValueMapping);
         RemapPNamesBasedOnProjCSAndPName(
-            this, pszProjection,
+            this, osProjection.c_str(),
             apszParamNameMapping,
             true /* to ESRI */ );
       }

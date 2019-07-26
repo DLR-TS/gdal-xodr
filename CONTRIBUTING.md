@@ -21,14 +21,15 @@ gdalinfo --version
 Run autotest suite:
 ```
 cd ../autotest
-python run_all.py
+pip install -r requirements.txt
+pytest
 ```
 
 Git workflows with GDAL
 =======================
 
 This is not a git tutorial or reference manual by any means. This just collects
-a few best practice for git usage for GDAL developement.
+a few best practice for git usage for GDAL development.
 
 Commit message
 --------------
@@ -49,7 +50,7 @@ Fork OSGeo/gdal from github UI, and then
 ```
 git clone https://github.com/OSGeo/gdal
 cd gdal
-git remote add my_user_name git@github.com/my_user_name/gdal.git
+git remote add my_user_name https://github.com/my_user_name/gdal.git
 ```
 
 Updating your local master against upstream master
@@ -82,8 +83,16 @@ git fetch origin
 git rebase origin/master
 
 # At end of your work, make sure history is reasonable by folding non
-# significant commits into a consistant set
-git rebase -i master (use fixup for example to merge several commits together)
+# significant commits into a consistent set
+git rebase -i master (use 'fixup' for example to merge several commits together,
+and 'reword' to modify commit messages)
+
+# or alternatively, in case there is a big number of commits and marking
+# all them as 'fixup' is tedious
+git fetch origin
+git rebase origin/master
+git reset --soft origin/master
+git commit -a -m "Put here the synthetic commit message"
 
 # push your branch
 git push my_user_name my_new_feature_branch
@@ -92,7 +101,7 @@ From GitHub UI, issue a pull request
 
 If the pull request discussion or Travis-CI/AppVeyor checks require changes,
 commit locally and push. To get a reasonable history, you may need to
-```git rebase -i master```, in whish case you will have to force-push your
+```git rebase -i master```, in which case you will have to force-push your
 branch with ```git push -f my_user_name my_new_feature_branch```
 
 
@@ -103,9 +112,12 @@ Backporting bugfixes from master to a stable branch
 git checkout master
 With git log, identify the sha1sum of the commit you want to backport
 git checkout 2.2 (if you want to backport to 2.2)
+git pull origin 2.2
+(git checkout -b branh_name: if you intend to submit the backport as a pull request)
 git cherry-pick the_sha1_sum
+git push ...
 ```
-If changes are needed, do them and git commit -a --amend
+If changes are needed, do them and ```git commit -a --amend```
 
 
 Things you should NOT do

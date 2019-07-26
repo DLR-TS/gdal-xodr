@@ -29,7 +29,6 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import math
 import os
 import sys
 
@@ -149,6 +148,7 @@ class mosaic_info(object):
         self.bands = fhInputTile.RasterCount
         self.band_type = fhInputTile.GetRasterBand(1).DataType
         self.projection = fhInputTile.GetProjection()
+        self.nodata = fhInputTile.GetRasterBand(1).GetNoDataValue()
 
         dec = AffineTransformDecorator(fhInputTile.GetGeoTransform())
         self.scaleX = dec.scaleX
@@ -204,11 +204,17 @@ class mosaic_info(object):
 
         # merge tiles
 
-        resultSizeX = int(math.ceil(((maxx - minx) / self.scaleX)))
-        resultSizeY = int(math.ceil(((miny - maxy) / self.scaleY)))
+        resultSizeX = int((maxx - minx) / self.scaleX + 0.5)
+        resultSizeY = int((miny - maxy) / self.scaleY + 0.5)
 
         resultDS = self.TempDriver.Create("TEMP", resultSizeX, resultSizeY, self.bands, self.band_type, [])
         resultDS.SetGeoTransform([minx, self.scaleX, 0, maxy, 0, self.scaleY])
+
+        for bandNr in range(1, self.bands + 1):
+            t_band = resultDS.GetRasterBand(bandNr)
+            if self.nodata is not None:
+                t_band.Fill(self.nodata)
+                t_band.SetNoDataValue(self.nodata)
 
         for feature in features:
             featureName = feature.GetField(0)
@@ -229,18 +235,18 @@ class mosaic_info(object):
                 tgw_lry = min(dec.lry, miny)
 
             # Compute source window in pixel coordinates.
-            sw_xoff = int((tgw_ulx - dec.ulx) / dec.scaleX)
-            sw_yoff = int((tgw_uly - dec.uly) / dec.scaleY)
-            sw_xsize = int((tgw_lrx - dec.ulx) / dec.scaleX + 0.5) - sw_xoff
-            sw_ysize = int((tgw_lry - dec.uly) / dec.scaleY + 0.5) - sw_yoff
+            sw_xoff = int((tgw_ulx - dec.ulx) / dec.scaleX + 0.5)
+            sw_yoff = int((tgw_uly - dec.uly) / dec.scaleY + 0.5)
+            sw_xsize = min(sourceDS.RasterXSize, int((tgw_lrx - dec.ulx) / dec.scaleX + 0.5)) - sw_xoff
+            sw_ysize = min(sourceDS.RasterYSize, int((tgw_lry - dec.uly) / dec.scaleY + 0.5)) - sw_yoff
             if sw_xsize <= 0 or sw_ysize <= 0:
                 continue
 
             # Compute target window in pixel coordinates
-            tw_xoff = int((tgw_ulx - minx) / self.scaleX)
-            tw_yoff = int((tgw_uly - maxy) / self.scaleY)
-            tw_xsize = int((tgw_lrx - minx) / self.scaleX + 0.5) - tw_xoff
-            tw_ysize = int((tgw_lry - maxy) / self.scaleY + 0.5) - tw_yoff
+            tw_xoff = int((tgw_ulx - minx) / self.scaleX + 0.5)
+            tw_yoff = int((tgw_uly - maxy) / self.scaleY + 0.5)
+            tw_xsize = min(resultDS.RasterXSize, int((tgw_lrx - minx) / self.scaleX + 0.5)) - tw_xoff
+            tw_ysize = min(resultDS.RasterYSize, int((tgw_lry - maxy) / self.scaleY + 0.5)) - tw_yoff
             if tw_xsize <= 0 or tw_ysize <= 0:
                 continue
 
@@ -455,6 +461,12 @@ def createPyramidTile(levelMosaicInfo, offsetX, offsetY, width, height, tileName
             t_band.SetRasterColorTable(levelMosaicInfo.ct)
         t_band.SetRasterColorInterpretation(levelMosaicInfo.ci[band - 1])
 
+    if levelMosaicInfo.nodata is not None:
+        for band in range(1, bands + 1):
+            t_band = t_fh.GetRasterBand(band)
+            t_band.Fill(levelMosaicInfo.nodata)
+            t_band.SetNoDataValue(levelMosaicInfo.nodata)
+
     res = gdal.ReprojectImage(s_fh, t_fh, None, None, ResamplingMethod)
     if res != 0:
         print("Reprojection failed for %s, error %d" % (tileName, res))
@@ -521,8 +533,10 @@ def createTile(minfo, offsetX, offsetY, width, height, tilename, OGRDS):
         t_band = t_fh.GetRasterBand(band)
         if minfo.ct is not None:
             t_band.SetRasterColorTable(minfo.ct)
+        if minfo.nodata is not None:
+            t_band.Fill(minfo.nodata)
+            t_band.SetNoDataValue(minfo.nodata)
 
-#        data = s_band.ReadRaster( offsetX,offsetY,width,height,width,height, t_band.DataType )
         data = s_band.ReadRaster(0, 0, readX, readY, readX, readY, t_band.DataType)
         t_band.WriteRaster(0, 0, readX, readY, data, readX, readY, t_band.DataType)
 
@@ -660,20 +674,20 @@ def getTileName(minfo, ti, xIndex, yIndex, level=-1):
     xIndex_str = ("%0" + str(countDigits) + "i") % (xIndex,)
 
     if UseDirForEachRow:
-        format = getTargetDir(level) + str(yIndex) + os.sep + parts[0] + "_" + yIndex_str + "_" + xIndex_str
+        frmt = getTargetDir(level) + str(yIndex) + os.sep + parts[0] + "_" + yIndex_str + "_" + xIndex_str
         # See if there was a switch in the row, if so then create new dir for row.
         if LastRowIndx < yIndex:
             LastRowIndx = yIndex
             if not os.path.exists(getTargetDir(level) + str(yIndex)):
                 os.mkdir(getTargetDir(level) + str(yIndex))
     else:
-        format = getTargetDir(level) + parts[0] + "_" + yIndex_str + "_" + xIndex_str
+        frmt = getTargetDir(level) + parts[0] + "_" + yIndex_str + "_" + xIndex_str
     # Check for the extension that should be used.
     if Extension is None:
-        format = format + parts[1]
+        frmt += parts[1]
     else:
-        format = format + "." + Extension
-    return format
+        frmt += "." + Extension
+    return frmt
 
 
 def UsageFormat():

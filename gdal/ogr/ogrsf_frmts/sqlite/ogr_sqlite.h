@@ -697,6 +697,7 @@ class OGRSQLiteBaseDataSource : public GDALPamDataset
 {
   protected:
     char               *m_pszFilename;
+    bool                m_bCallUndeclareFileNotToOpen = false;
 
     sqlite3             *hDB;
     int                 bUpdate;
@@ -948,9 +949,6 @@ class RL2RasterBand final: public GDALPamRasterBand
 
 CPLString OGRSQLiteFieldDefnToSQliteFieldDefn( OGRFieldDefn* poFieldDefn,
                                                int bSQLiteDialectInternalUse );
-
-int OGRSQLITEStringToDateTimeField( OGRFeature* poFeature, int iField,
-                                    const char* pszValue );
 
 typedef void (*pfnNotifyFileOpenedType)(void* pfnUserData, const char* pszFilename, VSILFILE* fp);
 sqlite3_vfs* OGRSQLiteCreateVFS(pfnNotifyFileOpenedType pfn, void* pfnUserData);

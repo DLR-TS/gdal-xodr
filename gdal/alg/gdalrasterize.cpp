@@ -89,8 +89,8 @@ void gvBurnScanline( void *pCBData, int nY, int nXStart, int nXEnd,
 
             unsigned char *pabyInsert =
                 psInfo->pabyChunkBuf
-                + iBand * psInfo->nXSize * psInfo->nYSize
-                + nY * psInfo->nXSize + nXStart;
+                + static_cast<GSpacing>(iBand) * psInfo->nXSize * psInfo->nYSize
+                + static_cast<GSpacing>(nY) * psInfo->nXSize + nXStart;
 
             if( psInfo->eMergeAlg == GRMA_Add ) {
                 int nPixels = nXEnd - nXStart + 1;
@@ -113,8 +113,8 @@ void gvBurnScanline( void *pCBData, int nY, int nXStart, int nXEnd,
 
             double *padfInsert =
                 (reinterpret_cast<double *>(psInfo->pabyChunkBuf))
-                + iBand * psInfo->nXSize * psInfo->nYSize
-                + nY * psInfo->nXSize + nXStart;
+                + static_cast<GSpacing>(iBand) * psInfo->nXSize * psInfo->nYSize
+                + static_cast<GSpacing>(nY) * psInfo->nXSize + nXStart;
 
             if( psInfo->eMergeAlg == GRMA_Add ) {
                 while( nPixels-- > 0 )
@@ -147,8 +147,8 @@ void gvBurnPoint( void *pCBData, int nY, int nX, double dfVariant )
         for( int iBand = 0; iBand < psInfo->nBands; iBand++ )
         {
             unsigned char *pbyInsert = psInfo->pabyChunkBuf
-                                      + iBand * psInfo->nXSize * psInfo->nYSize
-                                      + nY * psInfo->nXSize + nX;
+                                      + static_cast<GSpacing>(iBand) * psInfo->nXSize * psInfo->nYSize
+                                      + static_cast<GSpacing>(nY) * psInfo->nXSize + nX;
             double dfVal;
             if( psInfo->eMergeAlg == GRMA_Add ) {
                 dfVal = *pbyInsert + ( psInfo->padfBurnValue[iBand] +
@@ -172,8 +172,8 @@ void gvBurnPoint( void *pCBData, int nY, int nX, double dfVariant )
         for( int iBand = 0; iBand < psInfo->nBands; iBand++ )
         {
             double *pdfInsert = reinterpret_cast<double *>(psInfo->pabyChunkBuf)
-                                + iBand * psInfo->nXSize * psInfo->nYSize
-                                + nY * psInfo->nXSize + nX;
+                                + static_cast<GSpacing>(iBand) * psInfo->nXSize * psInfo->nYSize
+                                + static_cast<GSpacing>(nY) * psInfo->nXSize + nX;
 
             if( psInfo->eMergeAlg == GRMA_Add ) {
                 *pdfInsert += ( psInfo->padfBurnValue[iBand] +
@@ -721,7 +721,7 @@ CPLErr GDALRasterizeGeometries( GDALDatasetH hDS,
     if( eOptim == GRO_Auto )
     {
         eOptim = GRO_Raster;
-        // TODO make more tests with various inputs/outputs to ajust the parameters
+        // TODO make more tests with various inputs/outputs to adjust the parameters
         if( nYBlockSize > 1 && nGeomCount > 10000 && (poBand->GetXSize() * static_cast<long long>(poBand->GetYSize()) / nGeomCount > 50) )
         {
             eOptim = GRO_Vector;

@@ -109,19 +109,30 @@ CXX_ANALYZE_FLAGS=/analyze
 CXX_ANALYZE_FLAGS=
 !ENDIF
 
+# Set DEBUG=1 to create a debug build
+!IFNDEF DEBUG
+DEBUG=0
+!ENDIF
+
 # Force PDB output for DEBUG mode
-!IFDEF DEBUG
+!IF "$(DEBUG)" == "1"
 WITH_PDB=1
+!ELSE IF "$(DEBUG)" != "0"
+!ERROR DEBUG should be set to 0 or 1
+!ENDIF
+
+!IFNDEF GDAL_PDB
+GDAL_PDB = $(GDAL_ROOT)\gdal$(VERSION).pdb
 !ENDIF
 
 !IFDEF WITH_PDB
-CXX_PDB_FLAGS=/Zi /Fd$(GDAL_ROOT)\gdal$(VERSION).pdb
+CXX_PDB_FLAGS=/Zi /Fd$(GDAL_PDB)
 !ELSE
 CXX_PDB_FLAGS=
 !ENDIF
 
 !IFNDEF OPTFLAGS
-!IFNDEF DEBUG
+!IF "$(DEBUG)" == "0"
 OPTFLAGS= $(CXX_ANALYZE_FLAGS) $(CXX_PDB_FLAGS) /nologo /MP /MD /EHsc /Ox /FC /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /DNDEBUG
 !ELSE
 OPTFLAGS= $(CXX_ANALYZE_FLAGS) $(CXX_PDB_FLAGS) /nologo /MP /MDd /EHsc /FC /D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /DDEBUG
@@ -134,7 +145,7 @@ OPTFLAGS= $(CXX_ANALYZE_FLAGS) $(CXX_PDB_FLAGS) /nologo /MP /MDd /EHsc /FC /D_CR
 !IFNDEF WARNFLAGS
 # 4127: conditional expression is constant
 # 4251: 'identifier' : class 'type' needs to have dll-interface to be used by clients of class 'type2'
-# 4275: non – DLL-interface classkey 'identifier' used as base for DLL-interface classkey 'identifier'
+# 4275: non DLL-interface classkey 'identifier' used as base for DLL-interface classkey 'identifier'
 # 4786: ??????????
 # 4100: 'identifier' : unreferenced formal parameter
 # 4245: 'conversion' : conversion from 'type1' to 'type2', signed/unsigned mismatch
@@ -167,7 +178,7 @@ SOFTWARNFLAGS= /wd4244 /wd4702 /wd4701 /wd4013 /wd4706 /wd4057 /wd4210 /wd4305
 !ENDIF
 
 # Linker debug options
-!IFDEF DEBUG
+!IF "$(DEBUG)" == "1"
 LDEBUG= /debug
 !ELSEIFDEF WITH_PDB
 # Ensures that PDB is included in release DLL if so requested
@@ -193,7 +204,7 @@ STDCALL=YES
 # Version number embedded in DLL name. 
 # If GDAL version is X.Y.Z, VERSION = X * 100 + Y
 !IFNDEF VERSION
-VERSION =	203
+VERSION =	204
 !ENDIF
 
 # Comment the following out if you want PAM supported disabled
@@ -202,8 +213,7 @@ VERSION =	203
 PAM_SETTING=-DPAM_ENABLED
 !ENDIF
 
-# Uncomment the following to link OGR utilities against main GDAL DLL
-# instead of statically linking against OGR libraries.
+# Set DLLBUILD=0 to create a static lib instead of a shared lib (.DLL)
 !IFNDEF DLLBUILD
 DLLBUILD=1
 !ENDIF
@@ -252,6 +262,12 @@ ODBC_SUPPORTED = 1
 #SQLNCLI_DIR = C:\Program Files (x86)\Microsoft SQL Server\$(SQLNCLI_VERSION)0\SDK
 #SQLNCLI_LIB = "$(SQLNCLI_DIR)\Lib\x86\sqlncli$(SQLNCLI_VERSION).lib"
 #SQLNCLI_INCLUDE = "-I$(SQLNCLI_DIR)\Include" -DSQLNCLI_VERSION=$(SQLNCLI_VERSION) -DMSSQL_BCP_SUPPORTED=1
+
+# Uncomment out the following to enable plugin with Microsoft ODBC Driver 17 for SQL Server support for MSSQL Bulk Copy.
+#MSODBCSQL_VERSION = 17
+#MSODBCSQL_DIR = C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\$(MSODBCSQL_VERSION)0\SDK
+#MSODBCSQL_LIB = "$(MSODBCSQL_DIR)\Lib\x86\msodbcsql$(SQLNCLI_VERSION).lib"
+#MSODBCSQL_INCLUDE = "-I$(MSODBCSQL_DIR)\Include" -DMSODBCSQL_VERSION=$(MSODBCSQL_VERSION) -DMSSQL_BCP_SUPPORTED=1
 
 # Comment out the following to disable JPEG support.
 
@@ -624,18 +640,11 @@ OCI_INCLUDE =	-I$(ORACLE_HOME)\oci\include
 #ZLIB_INC = -IC:\projects\zlib
 #ZLIB_LIB = C:\projects\lib\Release\zlib.lib
 
-# Uncomment for PDF support
-# Uncomment POPPLER_BASE_STREAM_HAS_TWO_ARGS = YES for Poppler >= 0.16.0
-# Uncomment POPPLER_0_20_OR_LATER = YES for Poppler >= 0.20.0
-# Uncomment POPPLER_0_23_OR_LATER = YES for Poppler >= 0.23.0
-# Uncomment POPPLER_0_58_OR_LATER = YES for Poppler >= 0.58.0
+# Uncomment for PDF support, and update version numbers (poppler 0.23 or later required)
 #POPPLER_ENABLED = YES
 #POPPLER_CFLAGS = -Ie:/kde/include -Ie:/kde/include/poppler
-#POPPLER_HAS_OPTCONTENT = YES
-#POPPLER_BASE_STREAM_HAS_TWO_ARGS = YES
-#POPPLER_0_20_OR_LATER = YES
-#POPPLER_0_23_OR_LATER = YES
-#POPPLER_0_58_OR_LATER = YES
+#POPPLER_MAJOR_VERSION = 0
+#POPPLER_MINOR_VERSION = 69
 #POPPLER_LIBS = e:/kde/lib/poppler.lib e:/kde/lib/freetype.lib e:/kde/lib/liblcms-1.lib advapi32.lib gdi32.lib
 
 # Uncomment for PDF support
@@ -768,6 +777,17 @@ ADD_LIBS	=
 # bindings. 
 #HAVE_NUMPY=1
 
+# Set HAVE_LERC=0 to disable LERC support
+!IFNDEF HAVE_LERC
+HAVE_LERC=1
+!ENDIF
+
+# Comment out the following if you want to build JPEGLS with CHARLS support
+#CHARLS_INC=-IE:\work\GIS\gdal\supportlibs\charls\include\
+#CHARLS_LIB=e:\work\GIS\gdal\supportlibs\charls\bin\Release\x86\CharLS.lib
+# Comment out for API 2.x:
+#CHARLS_FLAGS = -DCHARLS_2
+
 ########### END OF STUFF THAT NORMALLY NEEDS TO BE UPDATED ##################
 
 
@@ -810,7 +830,7 @@ INSTALL	=	xcopy /y /r /d /f /I
 
 CPLLIB	=    $(GDAL_ROOT)/port/cpl.lib
 
-!IFDEF DLLBUILD
+!IF "$(DLLBUILD)" == "1"
 GDALLIB	=    $(GDAL_ROOT)/gdal_i.lib
 !ELSE
 GDALLIB	=    $(GDAL_ROOT)/gdal.lib
@@ -962,5 +982,5 @@ EXTERNAL_LIBS =	$(OGDILIB) $(XERCES_LIB) $(EXPAT_LIB) $(OCI_LIB) $(PG_LIB) \
 	$(ODBCLIB) $(JASPER_LIB) $(PNG_LIB) $(ZLIB_LIB) $(ADD_LIBS) $(OPENJPEG_LIB) \
 	$(MRSID_LIDAR_LIB) $(LIBKML_LIBS) $(SOSI_LIBS) $(PDF_LIB_LINK) $(LZMA_LIBS) $(ZSTD_LIBS) \
 	$(LIBICONV_LIBRARY) $(WEBP_LIBS) $(FGDB_LIB_LINK) $(FREEXL_LIBS) $(GTA_LIBS) \
-	$(INGRES_LIB) $(LIBXML2_LIB) $(PCRE_LIB) $(MONGODB_LIB_LINK) $(CRYPTOPP_LIB) $(OPENSSL_LIB) ws2_32.lib \
+	$(INGRES_LIB) $(LIBXML2_LIB) $(PCRE_LIB) $(MONGODB_LIB_LINK) $(CRYPTOPP_LIB) $(OPENSSL_LIB) $(CHARLS_LIB) ws2_32.lib \
     kernel32.lib psapi.lib

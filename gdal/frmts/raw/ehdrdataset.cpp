@@ -77,7 +77,7 @@ EHdrRasterBand::EHdrRasterBand( GDALDataset *poDSIn,
                                 GDALDataType eDataTypeIn, int bNativeOrderIn,
                                 int nBitsIn) :
   RawRasterBand(poDSIn, nBandIn, fpRawIn, nImgOffsetIn, nPixelOffsetIn,
-                nLineOffsetIn, eDataTypeIn, bNativeOrderIn, TRUE),
+                nLineOffsetIn, eDataTypeIn, bNativeOrderIn, RawRasterBand::OwnFP::NO),
   nBits(nBitsIn),
   nStartBit(0),
   nPixelOffsetBits(0),
@@ -446,10 +446,10 @@ const char *EHdrDataset::GetKeyValue( const char *pszKey,
     for( int i = 0; papszHDR[i] != nullptr; i++ )
     {
         if( EQUALN(pszKey,papszHDR[i],strlen(pszKey)) &&
-            isspace((unsigned char)papszHDR[i][strlen(pszKey)]) )
+            isspace(static_cast<unsigned char>(papszHDR[i][strlen(pszKey)])) )
         {
             const char *pszValue = papszHDR[i] + strlen(pszKey);
-            while( isspace((unsigned char)*pszValue) )
+            while( isspace(static_cast<unsigned char>(*pszValue)) )
                 pszValue++;
 
             return pszValue;
@@ -965,6 +965,12 @@ char **EHdrDataset::GetFileList()
 GDALDataset *EHdrDataset::Open( GDALOpenInfo * poOpenInfo )
 
 {
+    return Open(poOpenInfo, true);
+}
+
+GDALDataset *EHdrDataset::Open( GDALOpenInfo * poOpenInfo, bool bFileSizeCheck )
+
+{
     // Assume the caller is pointing to the binary (i.e. .bil) file.
     if( poOpenInfo->nHeaderBytes < 2 || poOpenInfo->fpL == nullptr )
         return nullptr;
@@ -1314,7 +1320,8 @@ GDALDataset *EHdrDataset::Open( GDALOpenInfo * poOpenInfo )
         nBandOffset = static_cast<vsi_l_offset>(nItemSize) * nCols;
     }
 
-    if( nBits >= 8 && !RAWDatasetCheckMemoryUsage(
+    if( nBits >= 8 && bFileSizeCheck &&
+        !RAWDatasetCheckMemoryUsage(
                         poDS->nRasterXSize, poDS->nRasterYSize, nBands,
                         nItemSize,
                         nPixelOffset, nLineOffset, nSkipBytes, nBandOffset,
@@ -1793,8 +1800,8 @@ GDALDataset *EHdrDataset::Create( const char * pszFilename,
     if( !bOK )
         return nullptr;
 
-    return
-        reinterpret_cast<GDALDataset *>(GDALOpen(pszFilename, GA_Update));
+    GDALOpenInfo oOpenInfo( pszFilename, GA_Update );
+    return Open(&oOpenInfo, false);
 }
 
 /************************************************************************/

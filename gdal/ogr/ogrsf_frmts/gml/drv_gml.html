@@ -212,7 +212,7 @@ resolved using a temporary SQLite DB so to identify any corresponding
 gml:id relation. At the end of this SQL-based process, a resolved file
 will be generated exactly as in the <b>NONE</b> case but without their limits.
 The main advantages in using an external (temporary) DBMS so to resolve
-gml:xlink and gml:id relations are the followings:<ul>
+gml:xlink and gml:id relations are the following:<ul>
 	<li>no memory size constraints. The <b>NONE</b> method stores the whole
 	   GML node-tree in-memory; and this practically means that no GML
 	   file bigger than 1 GB can be processed at all using a 32-bit
@@ -379,8 +379,8 @@ string. This is the historic behaviour. However this will prevent such fields to
 be declared as not-nullable if the application schema declared them as mandatory.
 So this option can be set to NO to have both empty strings being report as such,
 and mandatory fields being reported as not nullable.</li>
-<li> <b>GML_ATTRIBUTES_TO_OGR_FIELDS=YES/NO</b>: (GDAL &gt;=2.0) Whether GM
-Lattributes should be reported as OGR fields. Note that this option has only an
+<li> <b>GML_ATTRIBUTES_TO_OGR_FIELDS=YES/NO</b>: (GDAL &gt;=2.0) Whether GML
+attributes should be reported as OGR fields. Note that this option has only an
 effect the first time a GML file is opened (before the .gfs file is created),
 and if it has no valid associated .xsd. Defaults to NO.</li>
 <li> <b>INVERT_AXIS_ORDER_IF_LAT_LONG=YES/NO</b>: (GDAL &gt;=2.0) Whether to

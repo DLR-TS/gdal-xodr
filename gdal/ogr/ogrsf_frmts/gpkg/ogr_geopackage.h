@@ -98,7 +98,6 @@ class GDALGeoPackageDataset final : public OGRSQLiteBaseDataSource, public GDALG
     GUInt32             m_nUserVersion;
     OGRGeoPackageTableLayer** m_papoLayers;
     int                 m_nLayers;
-    bool                m_bUtf8;
     void                CheckUnknownExtensions(bool bCheckRasterTable = false);
 #ifdef ENABLE_GPKG_OGR_CONTENTS
     bool                m_bHasGPKGOGRContents;
@@ -192,6 +191,7 @@ class GDALGeoPackageDataset final : public OGRSQLiteBaseDataSource, public GDALG
 
         int                     FindLayerIndex(const char* pszLayerName);
 
+        bool                    HasGriddedCoverageAncillaryTable();
         bool                    CreateTileGriddedTable(char** papszOptions);
 
         void                    CreateOGREmptyTableIfNeeded();
@@ -205,7 +205,7 @@ class GDALGeoPackageDataset final : public OGRSQLiteBaseDataSource, public GDALG
         bool                    m_bMapTableToExtensionsBuilt;
         std::map< CPLString, std::vector<GPKGExtensionDesc> > m_oMapTableToExtensions;
         const std::map< CPLString, std::vector<GPKGExtensionDesc> > &
-                                        GetExtensions();
+                                        GetUnknownExtensionsTableSpecific();
 
         bool                    m_bMapTableToContentsBuilt;
         std::map< CPLString, GPKGContentsDesc > m_oMapTableToContents;
@@ -273,12 +273,13 @@ class GDALGeoPackageDataset final : public OGRSQLiteBaseDataSource, public GDALG
         int                 GetSrsId( const OGRSpatialReference& oSRS );
         const char*         GetSrsName( const OGRSpatialReference& oSRS );
         OGRSpatialReference* GetSpatialRef( int iSrsId );
-        bool                GetUTF8() { return m_bUtf8; }
         OGRErr              CreateExtensionsTableIfNecessary();
         bool                HasExtensionsTable();
         OGRErr              CreateGDALAspatialExtension();
-        bool                HasDataColumnsTable();
         void                SetMetadataDirty() { m_bMetadataDirty = true; }
+
+        bool                    HasDataColumnsTable();
+        bool                    HasDataColumnConstraintsTable();
 
         const char*         GetGeometryTypeString(OGRwkbGeometryType eType);
 
@@ -451,6 +452,8 @@ class OGRGeoPackageTableLayer final : public OGRGeoPackageLayer
     OGRErr              ReadTableDefinition();
     void                InitView();
 
+    bool                DoSpecialProcessingForColumnCreation(OGRFieldDefn* poField);
+
     public:
                         OGRGeoPackageTableLayer( GDALGeoPackageDataset *poDS,
                                                  const char * pszTableName );
@@ -514,6 +517,8 @@ class OGRGeoPackageTableLayer final : public OGRGeoPackageLayer
     void                CreateSpatialIndexIfNecessary();
     bool                CreateSpatialIndex(const char* pszTableName = nullptr);
     bool                DropSpatialIndex(bool bCalledFromSQLFunction = false);
+    CPLString           ReturnSQLCreateSpatialIndexTriggers(const char* pszTableName);
+    CPLString           ReturnSQLDropSpatialIndexTriggers();
 
     virtual char **     GetMetadata( const char *pszDomain = nullptr ) override;
     virtual const char *GetMetadataItem( const char * pszName,
@@ -549,7 +554,7 @@ class OGRGeoPackageTableLayer final : public OGRGeoPackageLayer
     void                SetOGRFeatureCountTriggersEnabled(bool b)
                                     { m_bOGRFeatureCountTriggersEnabled = b; }
 
-    void                DisableFeatureCount( bool bInMemoryOnly = false );
+    void                DisableFeatureCount();
 #endif
 
     /************************************************************************/
@@ -567,6 +572,7 @@ class OGRGeoPackageTableLayer final : public OGRGeoPackageLayer
     OGRErr              FeatureBindUpdateParameters( OGRFeature *poFeature, sqlite3_stmt *poStmt );
     OGRErr              FeatureBindInsertParameters( OGRFeature *poFeature, sqlite3_stmt *poStmt, bool bAddFID, bool bBindUnsetFields );
     OGRErr              FeatureBindParameters( OGRFeature *poFeature, sqlite3_stmt *poStmt, int *pnColCount, bool bAddFID, bool bBindUnsetFields );
+    void                UpdateContentsToNullExtent();
 
     void                CheckUnknownExtensions();
     bool                CreateGeometryExtensionIfNecessary(const OGRGeometry* poGeom);

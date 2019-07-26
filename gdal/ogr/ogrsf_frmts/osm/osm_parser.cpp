@@ -2724,7 +2724,7 @@ OSMContext* OSM_Open( const char* pszFilename,
         psCtxt->nMembersAllocated = 2000;
         psCtxt->pasMembers = (OSMMember*) VSI_MALLOC_VERBOSE(sizeof(OSMMember) * psCtxt->nMembersAllocated);
 
-        psCtxt->nNodeRefsAllocated = 2000;
+        psCtxt->nNodeRefsAllocated = 10000;
         psCtxt->panNodeRefs = (GIntBig*) VSI_MALLOC_VERBOSE(sizeof(GIntBig) * psCtxt->nNodeRefsAllocated);
 
         if( psCtxt->pszStrBuf == nullptr ||
@@ -2756,7 +2756,7 @@ OSMContext* OSM_Open( const char* pszFilename,
                 CPLGetConfigOption("GDAL_NUM_THREADS", "ALL_CPUS");
     int nNumCPUs = CPLGetNumCPUs();
     if( pszNumThreads && !EQUAL(pszNumThreads, "ALL_CPUS") )
-        nNumCPUs = std::min(2 * nNumCPUs, atoi(pszNumThreads));
+        nNumCPUs = std::max(0, std::min(2 * nNumCPUs, atoi(pszNumThreads)));
     if( nNumCPUs > 1 )
     {
         psCtxt->poWTP = new CPLWorkerThreadPool();

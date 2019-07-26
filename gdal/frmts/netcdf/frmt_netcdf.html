@@ -216,7 +216,7 @@ or,
 
 <h2>Open options</h2>
 
-The followin open options are available:
+The following open options are available:
 <ul>
 <li> <b>HONOUR_VALID_RANGE</b>=YES/NO: (GDAL &gt; 2.2) Whether to set to nodata pixel values
 outside of the validity range indicated by valid_min, valid_max or valid_range
@@ -337,6 +337,11 @@ The driver has undergone significant changes in GDAL 1.9.0, see NEWS file and <a
 <ul>
 <li><b>GDAL_NETCDF_BOTTOMUP=[YES/NO]</b> : Set the y-axis order for import, overriding the order detected by the driver. This option is usually not needed unless a specific dataset is causing problems (which should be reported in GDAL trac).</li>
 </ul>
+
+<h2>VSI Virtual File System API support</h2>
+
+Since GDAL 2.4, and with Linux kernel &gt;=4.3 and libnetcdf &gt;=4.5,
+read operations on /vsi file systems are supported.<p>
 
 <h2>Driver building</h2>
 

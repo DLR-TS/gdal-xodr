@@ -7,7 +7,7 @@
 # Howard Butler hobu.inc@gmail.com
 
 
-gdal_version = '2.3.0'
+gdal_version = '2.4.2'
 
 import sys
 import os
@@ -91,9 +91,10 @@ try:
     else:
         #  print ('numpy include', get_numpy_include())
         if get_numpy_include() == '.':
-            print("numpy headers were not found!  Array support will not be enabled")
+            print("WARNING: numpy headers were not found!  Array support will not be enabled")
             HAVE_NUMPY = False
 except ImportError:
+    print('WARNING: numpy not available!  Array support will not be enabled')
     pass
 
 fixer_names = [
@@ -363,7 +364,7 @@ if HAVE_NUMPY:
 
 packages = ["osgeo", ]
 
-readme = str(open('README.txt', 'rb').read())
+readme = str(open('README.rst', 'rb').read())
 
 name = 'GDAL'
 version = gdal_version
@@ -407,6 +408,7 @@ setup_kwargs = dict(
     maintainer=maintainer,
     maintainer_email=maintainer_email,
     long_description=readme,
+    long_description_content_type='text/x-rst',
     description=description,
     license=license_type,
     classifiers=classifiers,

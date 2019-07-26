@@ -400,8 +400,8 @@ CPLErr XYZRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
         if( poGDS->nDataLineNum != static_cast<GIntBig>(nBlockYOff + 1) * nBlockXSize )
         {
             CPLError(CE_Failure, CPLE_AssertionFailed,
-                     "The file has not the same number of values per "
-                     "line as initialy thought. It must be somehow corrupted");
+                     "The file does not have the same number of values per "
+                     "line as initially thought. It must be somehow corrupted");
             return CE_Failure;
         }
     }
@@ -526,6 +526,11 @@ int XYZDataset::IdentifyEx( GDALOpenInfo * poOpenInfo,
     nCommentLineCount = 0;
 
     CPLString osFilename(poOpenInfo->pszFilename);
+    if( EQUAL(CPLGetExtension(osFilename), "GRA") )
+    {
+        // IGNFHeightASCIIGRID .GRA
+        return FALSE;
+    }
 
     GDALOpenInfo* poOpenInfoToDelete = nullptr;
     /*  GZipped .xyz files are common, so automagically open them */
@@ -548,7 +553,7 @@ int XYZDataset::IdentifyEx( GDALOpenInfo * poOpenInfo,
     }
 
 /* -------------------------------------------------------------------- */
-/*      Chech that it looks roughly as a XYZ dataset                    */
+/*      Check that it looks roughly as an XYZ dataset                   */
 /* -------------------------------------------------------------------- */
     const char* pszData
         = reinterpret_cast<const char *>( poOpenInfo->pabyHeader );
@@ -619,20 +624,21 @@ int XYZDataset::IdentifyEx( GDALOpenInfo * poOpenInfo,
         char** papszTokens = CSLTokenizeString2( osHeaderLine, " ,\t;",
                                                  CSLT_HONOURSTRINGS );
         int nTokens = CSLCount(papszTokens);
-        for( i = 0; i < nTokens; i++ )
+        for( int iToken = 0; iToken < nTokens; iToken++ )
         {
-            if (EQUAL(papszTokens[i], "x") ||
-                STARTS_WITH_CI(papszTokens[i], "lon") ||
-                STARTS_WITH_CI(papszTokens[i], "east"))
-                nXIndex = i;
-            else if (EQUAL(papszTokens[i], "y") ||
-                     STARTS_WITH_CI(papszTokens[i], "lat") ||
-                     STARTS_WITH_CI(papszTokens[i], "north"))
-                nYIndex = i;
-            else if (EQUAL(papszTokens[i], "z") ||
-                     STARTS_WITH_CI(papszTokens[i], "alt") ||
-                     EQUAL(papszTokens[i], "height"))
-                nZIndex = i;
+            const char* pszToken = papszTokens[iToken];
+            if (EQUAL(pszToken, "x") ||
+                STARTS_WITH_CI(pszToken, "lon") ||
+                STARTS_WITH_CI(pszToken, "east"))
+                nXIndex = iToken;
+            else if (EQUAL(pszToken, "y") ||
+                     STARTS_WITH_CI(pszToken, "lat") ||
+                     STARTS_WITH_CI(pszToken, "north"))
+                nYIndex = iToken;
+            else if (EQUAL(pszToken, "z") ||
+                     STARTS_WITH_CI(pszToken, "alt") ||
+                     EQUAL(pszToken, "height"))
+                nZIndex = iToken;
         }
         CSLDestroy(papszTokens);
         if( nXIndex >= 0 && nYIndex >= 0 && nZIndex >= 0)

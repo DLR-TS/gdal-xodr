@@ -27,6 +27,8 @@
  * DEALINGS IN THE SOFTWARE.
  ****************************************************************************/
 
+#include <wchar.h>
+
 #include "cpl_odbc.h"
 #include "cpl_vsi.h"
 #include "cpl_string.h"
@@ -157,13 +159,8 @@ int CPLODBCDriverInstaller::RemoveDriver( const char* pszDriverName,
 /************************************************************************/
 
 /** Constructor */
-CPLODBCSession::CPLODBCSession() :
-    m_hEnv(nullptr),
-    m_hDBC(nullptr),
-    m_bInTransaction(FALSE),
-    m_bAutoCommit(TRUE)
+CPLODBCSession::CPLODBCSession()
 {
-    m_szLastError[0] = '\0';
 }
 
 /************************************************************************/
@@ -330,22 +327,52 @@ int CPLODBCSession::RollbackTransaction()
 
 /** Test if a return code indicates failure, return TRUE if that
  * is the case. Also update error text.
+ *
+ * ODBC error messages are reported in the following format:
+ * [SQLState]ErrorMessage(NativeErrorCode)
+ *
+ * Multiple error messages are delimeted by ",".
  */
 int CPLODBCSession::Failed( int nRetCode, HSTMT hStmt )
 
 {
-    m_szLastError[0] = '\0';
+    m_osLastError.clear();
 
     if( nRetCode == SQL_SUCCESS || nRetCode == SQL_SUCCESS_WITH_INFO )
         return FALSE;
 
-    SQLCHAR achSQLState[SQL_MAX_MESSAGE_LENGTH] = {};
-    SQLINTEGER nNativeError = 0;
-    SQLSMALLINT nTextLength = 0;
-    SQLError( m_hEnv, m_hDBC, hStmt, achSQLState, &nNativeError,
-              reinterpret_cast<SQLCHAR *>(m_szLastError), sizeof(m_szLastError)-1,
-              &nTextLength );
-    m_szLastError[nTextLength] = '\0';
+    SQLRETURN nDiagRetCode = SQL_SUCCESS;
+    for(SQLSMALLINT nRecNum = 1; nDiagRetCode == SQL_SUCCESS; ++nRecNum)
+    {
+        SQLCHAR achSQLState[5 + 1] = {};
+        SQLCHAR* pachCurErrMsg = static_cast<SQLCHAR *>(CPLMalloc((SQL_MAX_MESSAGE_LENGTH + 1) * sizeof(SQLCHAR)));
+        SQLSMALLINT nTextLength = 0;
+        SQLINTEGER nNativeError = 0;
+
+        nDiagRetCode = SQLGetDiagRec( SQL_HANDLE_STMT, hStmt, nRecNum,
+                achSQLState, &nNativeError,
+                reinterpret_cast<SQLCHAR *>(pachCurErrMsg),
+                SQL_MAX_MESSAGE_LENGTH, &nTextLength );
+        if (nDiagRetCode == SQL_SUCCESS ||
+            nDiagRetCode == SQL_SUCCESS_WITH_INFO)
+        {
+            if (nTextLength >= SQL_MAX_MESSAGE_LENGTH)
+            {
+                // the buffer wasn't enough, retry
+                SQLSMALLINT nTextLength2 = 0;
+                pachCurErrMsg = static_cast<SQLCHAR *>(CPLRealloc(pachCurErrMsg, (nTextLength + 1) * sizeof(SQLCHAR)));
+                nDiagRetCode = SQLGetDiagRec(SQL_HANDLE_STMT, hStmt, nRecNum,
+                    achSQLState, &nNativeError,
+                    reinterpret_cast<SQLCHAR *>(pachCurErrMsg),
+                    nTextLength, &nTextLength2);
+            }               
+            pachCurErrMsg[nTextLength] = '\0';
+            m_osLastError += CPLString().Printf("%s[%5s]%s(" CPL_FRMT_GIB ")",
+                    (m_osLastError.empty() ? "" : ", "), achSQLState,
+                    pachCurErrMsg, static_cast<GIntBig>(nNativeError));
+        }
+        CPLFree(pachCurErrMsg);
+    }
 
     if( nRetCode == SQL_ERROR && m_bInTransaction )
         RollbackTransaction();
@@ -453,7 +480,7 @@ int CPLODBCSession::EstablishSession( const char *pszDSN,
 const char *CPLODBCSession::GetLastError()
 
 {
-    return m_szLastError;
+    return m_osLastError.c_str();
 }
 
 /************************************************************************/
@@ -468,21 +495,7 @@ const char *CPLODBCSession::GetLastError()
 
 /** Constructor */
 CPLODBCStatement::CPLODBCStatement( CPLODBCSession *poSession ) :
-    m_poSession(poSession),
-    m_hStmt(nullptr),
-    m_nColCount(0),
-    m_papszColNames(nullptr),
-    m_panColType(nullptr),
-    m_papszColTypeNames(nullptr),
-    m_panColSize(nullptr),
-    m_panColPrecision(nullptr),
-    m_panColNullable(nullptr),
-    m_papszColColumnDef(nullptr),
-    m_papszColValues(nullptr),
-    m_panColValueLengths(nullptr),
-    m_pszStatement(nullptr),
-    m_nStatementMax(0),
-    m_nStatementLen(0)
+    m_poSession(poSession)
 {
 
     if( Failed(SQLAllocStmt(poSession->GetConnection(), &m_hStmt)) )
@@ -922,7 +935,7 @@ int CPLODBCStatement::Fetch( int nOrientation, int nOffset )
 
         if( Failed( nRetCode ) )
         {
-            if( nRetCode == SQL_NO_DATA )
+            if( nRetCode != SQL_NO_DATA )
             {
                 CPLError( CE_Failure, CPLE_AppDefined, "%s",
                           m_poSession->GetLastError() );
@@ -1030,7 +1043,24 @@ int CPLODBCStatement::Fetch( int nOrientation, int nOffset )
         if( nFetchType == SQL_C_WCHAR && m_papszColValues[iCol] != nullptr
             && m_panColValueLengths[iCol] > 0 )
         {
+#if WCHAR_MAX == 0xFFFFu
             wchar_t *pwszSrc = reinterpret_cast<wchar_t*>(m_papszColValues[iCol]);
+#else
+            unsigned int i = 0;
+            GUInt16 *panColValue =
+                reinterpret_cast<GUInt16 *>(m_papszColValues[iCol]);
+            wchar_t *pwszSrc =
+                static_cast<wchar_t *>(CPLMalloc((m_panColValueLengths[iCol] / 2 + 1)
+                                                 * sizeof(wchar_t)));
+
+            while( panColValue[i] != 0 ) {
+                pwszSrc[i] = static_cast<wchar_t>(panColValue[i]);
+                i += 1;
+            }
+            pwszSrc[i] = L'\0';
+
+            CPLFree( panColValue );
+#endif
 
             m_papszColValues[iCol] =
                 CPLRecodeFromWChar( pwszSrc, CPL_ENC_UCS2, CPL_ENC_UTF8 );

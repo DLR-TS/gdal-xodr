@@ -1,4 +1,8 @@
 
+branches:
+  except:
+    - /(cherry-pick-)?backport-\d+-to-/
+
 environment:
   matrix:
   - APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
@@ -105,11 +109,9 @@ install:
       $env:NMAKE_LOCAL+="LIBKML_LIBS=`$(SDK_LIB)\libkmlbase.lib `$(SDK_LIB)\libkmlconvenience.lib `$(SDK_LIB)\libkmldom.lib `$(SDK_LIB)\libkmlengine.lib `$(SDK_LIB)\libkmlregionator.lib `$(SDK_LIB)\libkmlxsd.lib `$(SDK_LIB)\expat.lib `$(SDK_LIB)\zdll.lib`n"
       $env:NMAKE_LOCAL+="POPPLER_ENABLED = YES`n"
       $env:NMAKE_LOCAL+="POPPLER_CFLAGS = -I`$(SDK_INC) -I`$(SDK_INC)\poppler`n"
-      $env:NMAKE_LOCAL+="POPPLER_HAS_OPTCONTENT = YES`n"
-      $env:NMAKE_LOCAL+="POPPLER_0_20_OR_LATER = YES`n"
-      $env:NMAKE_LOCAL+="POPPLER_0_23_OR_LATER = YES`n"
-      $env:NMAKE_LOCAL+="POPPLER_BASE_STREAM_HAS_TWO_ARGS = YES`n"
-      $env:NMAKE_LOCAL+="POPPLER_LIBS = `$(SDK_LIB)\poppler.lib `$(SDK_LIB)\freetype2411.lib advapi32.lib gdi32.lib`n"
+      $env:NMAKE_LOCAL+="POPPLER_MAJOR_VERSION = 0`n"
+      $env:NMAKE_LOCAL+="POPPLER_MINOR_VERSION = 30`n"
+      $env:NMAKE_LOCAL+="POPPLER_LIBS = `$(SDK_LIB)\poppler.lib `$(SDK_LIB)\freetype.lib `$(SDK_LIB)\harfbuzz.lib advapi32.lib gdi32.lib`n"
       $env:NMAKE_LOCAL+="OPENJPEG_ENABLED = YES`n"
       $env:NMAKE_LOCAL+="OPENJPEG_CFLAGS = -I`$(SDK_INC)\openjpeg-2.1`n"
       $env:NMAKE_LOCAL+="OPENJPEG_LIB = `$(SDK_LIB)\openjp2.lib`n"
@@ -135,6 +137,9 @@ install:
       cd $env:APPVEYOR_BUILD_FOLDER\gdal\swig\python
       exec { python setup.py build }
       exec { python setup.py install }
+      cd $env:APPVEYOR_BUILD_FOLDER\gdal\swig\csharp
+      exec { nmake /f makefile.vc interface}
+      exec { nmake /f makefile.vc all $env:WIN64_ARG}
       cd $env:APPVEYOR_BUILD_FOLDER\autotest\cpp
       exec { nmake /f makefile.vc MSVC_VER=$env:MSVC_VER $env:WIN64_ARG }
 
@@ -152,7 +157,10 @@ test_script:
       cd $env:APPVEYOR_BUILD_FOLDER\autotest\cpp
       exec { nmake /f makefile.vc check MSVC_VER=$env:MSVC_VER $env:WIN64_ARG }
       cd $env:APPVEYOR_BUILD_FOLDER\autotest
-      exec { python run_all.py }
+      exec { pip install -Ur requirements.txt }
+      exec { pytest -vv }
+      cd $env:APPVEYOR_BUILD_FOLDER\gdal\swig\csharp
+      exec { nmake /f makefile.vc test}
 
 deploy: off
 

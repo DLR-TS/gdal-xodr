@@ -971,7 +971,7 @@ class GDALPDFStreamPoppler : public GDALPDFStream
 
 GDALPDFObjectPoppler::~GDALPDFObjectPoppler()
 {
-#ifndef POPPLER_0_58_OR_LATER
+#if !(POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 58)
     m_po->free();
 #endif
     if (m_bDestroy)
@@ -1055,9 +1055,19 @@ const CPLString& GDALPDFObjectPoppler::GetString()
 {
     if (GetType() == PDFObjectType_String)
     {
+#if POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 58
+        // At least available since poppler 0.41
+        const GooString* gooString = m_po->getString();
+#else
         GooString* gooString = m_po->getString();
+#endif
+#if (POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 72)
+        return (osStr = GDALPDFGetUTF8StringFromBytes(reinterpret_cast<const GByte*>(gooString->c_str()),
+                                                      static_cast<int>(gooString->getLength())));
+#else
         return (osStr = GDALPDFGetUTF8StringFromBytes(reinterpret_cast<const GByte*>(gooString->getCString()),
                                                       static_cast<int>(gooString->getLength())));
+#endif
     }
     else
         return (osStr = "");
@@ -1184,8 +1194,8 @@ GDALPDFObject* GDALPDFDictionaryPoppler::Get(const char* pszKey)
     if (oIter != m_map.end())
         return oIter->second;
 
-#ifdef POPPLER_0_58_OR_LATER
-    Object o = m_poDict->lookupNF(((char*)pszKey));
+#if POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 58
+    auto&& o(m_poDict->lookupNF(((char*)pszKey)));
     if (!o.isNull())
     {
         int nRefNum = 0;
@@ -1194,7 +1204,7 @@ GDALPDFObject* GDALPDFDictionaryPoppler::Get(const char* pszKey)
         {
             nRefNum = o.getRefNum();
             nRefGen = o.getRefGen();
-            Object o2 = m_poDict->lookup((char*)pszKey);
+            Object o2(m_poDict->lookup((char*)pszKey));
             if( !o2.isNull() )
             {
                 GDALPDFObjectPoppler* poObj = new GDALPDFObjectPoppler(new Object(std::move(o2)), TRUE);
@@ -1205,7 +1215,7 @@ GDALPDFObject* GDALPDFDictionaryPoppler::Get(const char* pszKey)
         }
         else
         {
-            GDALPDFObjectPoppler* poObj = new GDALPDFObjectPoppler(new Object(std::move(o)), TRUE);
+            GDALPDFObjectPoppler* poObj = new GDALPDFObjectPoppler(new Object(std::move(o.copy())), TRUE);
             poObj->SetRefNumAndGen(nRefNum, nRefGen);
             m_map[pszKey] = poObj;
             return poObj;
@@ -1318,8 +1328,8 @@ GDALPDFObject* GDALPDFArrayPoppler::Get(int nIndex)
     if (m_v[nIndex] != nullptr)
         return m_v[nIndex];
 
-#ifdef POPPLER_0_58_OR_LATER
-    Object o = m_poArray->getNF(nIndex);
+#if POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 58
+    auto&& o(m_poArray->getNF(nIndex));
     if( !o.isNull() )
     {
         int nRefNum = 0;
@@ -1328,7 +1338,7 @@ GDALPDFObject* GDALPDFArrayPoppler::Get(int nIndex)
         {
             nRefNum = o.getRefNum();
             nRefGen = o.getRefGen();
-            Object o2 = m_poArray->get(nIndex);
+            Object o2(m_poArray->get(nIndex));
             if( !o2.isNull() )
             {
                 GDALPDFObjectPoppler* poObj = new GDALPDFObjectPoppler(new Object(std::move(o2)), TRUE);
@@ -1339,7 +1349,7 @@ GDALPDFObject* GDALPDFArrayPoppler::Get(int nIndex)
         }
         else
         {
-            GDALPDFObjectPoppler* poObj = new GDALPDFObjectPoppler(new Object(std::move(o)), TRUE);
+            GDALPDFObjectPoppler* poObj = new GDALPDFObjectPoppler(new Object(std::move(o.copy())), TRUE);
             poObj->SetRefNumAndGen(nRefNum, nRefGen);
             m_v[nIndex] = poObj;
             return poObj;
@@ -1406,8 +1416,6 @@ int GDALPDFStreamPoppler::GetLength()
 
 char* GDALPDFStreamPoppler::GetBytes()
 {
-    /* fillGooString() available in poppler >= 0.16.0 */
-#ifdef POPPLER_BASE_STREAM_HAS_TWO_ARGS
     GooString* gstr = new GooString();
     m_poStream->fillGooString(gstr);
 
@@ -1417,7 +1425,12 @@ char* GDALPDFStreamPoppler::GetBytes()
         char* pszContent = (char*) VSIMalloc(m_nLength + 1);
         if (pszContent)
         {
-            memcpy(pszContent, gstr->getCString(), m_nLength);
+#if (POPPLER_MAJOR_VERSION >= 1 || POPPLER_MINOR_VERSION >= 72)
+            const char* srcStr = gstr->c_str();
+#else
+            const char* srcStr = gstr->getCString();
+#endif
+            memcpy(pszContent, srcStr, m_nLength);
             pszContent[m_nLength] = '\0';
         }
         delete gstr;
@@ -1428,41 +1441,6 @@ char* GDALPDFStreamPoppler::GetBytes()
         delete gstr;
         return nullptr;
     }
-#else
-    int i;
-    int nLengthAlloc = 0;
-    char* pszContent = nullptr;
-    if( m_nLength >= 0 )
-    {
-        pszContent = (char*) VSIMalloc(m_nLength + 1);
-        if (!pszContent)
-            return nullptr;
-        nLengthAlloc = m_nLength;
-    }
-    m_poStream->reset();
-    for(i = 0; ; ++i )
-    {
-        int nVal = m_poStream->getChar();
-        if (nVal == EOF)
-            break;
-        if( i >= nLengthAlloc )
-        {
-            nLengthAlloc = 32 + nLengthAlloc + nLengthAlloc / 3;
-            char* pszContentNew = (char*) VSIRealloc(pszContent, nLengthAlloc + 1);
-            if( pszContentNew == nullptr )
-            {
-                CPLFree(pszContent);
-                m_nLength = 0;
-                return nullptr;
-            }
-            pszContent = pszContentNew;
-        }
-        pszContent[i] = (GByte)nVal;
-    }
-    m_nLength = i;
-    pszContent[i] = '\0';
-    return pszContent;
-#endif
 }
 
 #endif // HAVE_POPPLER
@@ -2046,7 +2024,7 @@ GDALPDFObjectType GDALPDFObjectPdfium::GetType()
 {
     switch(m_po->GetType())
     {
-        case PDFOBJ_nullptr:                     return PDFObjectType_Null;
+        case PDFOBJ_NULL:                     return PDFObjectType_Null;
         case PDFOBJ_BOOLEAN:                  return PDFObjectType_Bool;
         case PDFOBJ_NUMBER:
           return (reinterpret_cast<CPDF_Number*>(m_po))->IsInteger()
@@ -2057,6 +2035,9 @@ GDALPDFObjectType GDALPDFObjectPdfium::GetType()
         case PDFOBJ_ARRAY:                    return PDFObjectType_Array;
         case PDFOBJ_DICTIONARY:               return PDFObjectType_Dictionary;
         case PDFOBJ_STREAM:                   return PDFObjectType_Dictionary;
+        case PDFOBJ_REFERENCE:
+            // unresolved reference
+            return PDFObjectType_Unknown;
         default:
           CPLAssert(false);
           return PDFObjectType_Unknown;

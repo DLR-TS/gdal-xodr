@@ -378,6 +378,7 @@
 #define TIFFGetFieldDefaulted gdal_TIFFGetFieldDefaulted
 #define _TIFFGetFields gdal__TIFFGetFields
 #define TIFFGetMapFileProc gdal_TIFFGetMapFileProc
+#define _TIFFGetMaxColorChannels gdal__TIFFGetMaxColorChannels
 #define _TIFFgetMode gdal__TIFFgetMode
 #define TIFFGetMode gdal_TIFFGetMode
 #define TIFFGetReadProc gdal_TIFFGetReadProc
@@ -684,6 +685,18 @@
 #define TIFFXYZToRGB gdal_TIFFXYZToRGB
 #define TIFFYCbCrtoRGB gdal_TIFFYCbCrtoRGB
 #define TIFFYCbCrToRGBInit gdal_TIFFYCbCrToRGBInit
+#define TWebPCleanup gdal_TWebPCleanup
+#define TWebPDatasetWriter gdal_TWebPDatasetWriter
+#define TWebPDecode gdal_TWebPDecode
+#define TWebPEncode gdal_TWebPEncode
+#define TWebPFixupTags gdal_TWebPFixupTags
+#define TWebPPostEncode gdal_TWebPPostEncode
+#define TWebPPreDecode gdal_TWebPPreDecode
+#define TWebPPreEncode gdal_TWebPPreEncode
+#define TWebPSetupDecode gdal_TWebPSetupDecode
+#define TWebPSetupEncode gdal_TWebPSetupEncode
+#define TWebPVGetField gdal_TWebPVGetField
+#define TWebPVSetField gdal_TWebPVSetField
 #define unixErrorHandler gdal_unixErrorHandler
 #define unixWarningHandler gdal_unixWarningHandler
 #define uv_decode gdal_uv_decode
@@ -744,6 +757,7 @@
 #define predictFields gdal_predictFields
 #define photoNames gdal_photoNames
 #define orientNames gdal_orientNames
+#define TWebPFields gdal_TWebPFields
 #define zipFields gdal_zipFields
 #define ZSTDFields gdal_ZSTDFields
 #define _TIFFBuiltinCODECS gdal__TIFFBuiltinCODECS

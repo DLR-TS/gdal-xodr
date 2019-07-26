@@ -119,14 +119,12 @@ class PDS4RawRasterBand final: public RawRasterBand
 
     public:
                  PDS4RawRasterBand( GDALDataset *l_poDS, int l_nBand,
-                                     void * l_fpRaw,
+                                     VSILFILE * l_fpRaw,
                                      vsi_l_offset l_nImgOffset,
                                      int l_nPixelOffset,
                                      int l_nLineOffset,
                                      GDALDataType l_eDataType,
-                                     int l_bNativeOrder,
-                                     int l_bIsVSIL = FALSE,
-                                     int l_bOwnsFP = FALSE );
+                                     int l_bNativeOrder );
         virtual ~PDS4RawRasterBand() {}
 
         virtual CPLErr          IWriteBlock( int, int, void * ) override;
@@ -387,16 +385,15 @@ CPLErr PDS4WrapperRasterBand::IRasterIO( GDALRWFlag eRWFlag,
 /************************************************************************/
 
 PDS4RawRasterBand::PDS4RawRasterBand( GDALDataset *l_poDS, int l_nBand,
-                                        void * l_fpRaw,
+                                        VSILFILE * l_fpRaw,
                                         vsi_l_offset l_nImgOffset,
                                         int l_nPixelOffset,
                                         int l_nLineOffset,
                                         GDALDataType l_eDataType,
-                                        int l_bNativeOrder,
-                                        int l_bIsVSIL, int l_bOwnsFP )
+                                        int l_bNativeOrder )
     : RawRasterBand(l_poDS, l_nBand, l_fpRaw, l_nImgOffset, l_nPixelOffset,
                     l_nLineOffset,
-                    l_eDataType, l_bNativeOrder, l_bIsVSIL, l_bOwnsFP),
+                    l_eDataType, l_bNativeOrder, RawRasterBand::OwnFP::NO),
     m_bHasOffset(false),
     m_bHasScale(false),
     m_bHasNoData(false),
@@ -1305,6 +1302,11 @@ void PDS4Dataset::ReadGeoreferencing(CPLXMLNode* psProduct)
                  "Planar.Map_Projection not found");
     }
 
+    if( oSRS.IsProjected() )
+    {
+        oSRS.SetLinearUnits("Metre", 1.0);
+    }
+
     CPLXMLNode* psGeodeticModel = CPLGetXMLNode(psSR, "Geodetic_Model");
     if( psGeodeticModel != nullptr )
     {
@@ -1411,12 +1413,14 @@ void PDS4Dataset::ReadGeoreferencing(CPLXMLNode* psProduct)
             double dfYRes = GetResolutionValue(psCR, "pixel_resolution_y");
             double dfULX = GetLinearValue(psGT, "upperleft_corner_x");
             double dfULY = GetLinearValue(psGT, "upperleft_corner_y");
-            // Correcting from pixel center convention to pixel corner
-            // convention
-            m_adfGeoTransform[0] = dfULX - 0.5 * dfXRes;
+
+            // The PDS4 specification is not really clear about the
+            // origin convention, but it appears from https://github.com/OSGeo/gdal/issues/735
+            // that it matches GDAL top-left corner of top-left pixel
+            m_adfGeoTransform[0] = dfULX;
             m_adfGeoTransform[1] = dfXRes;
             m_adfGeoTransform[2] = 0.0;
-            m_adfGeoTransform[3] = dfULY + 0.5 * dfYRes;
+            m_adfGeoTransform[3] = dfULY;
             m_adfGeoTransform[4] = 0.0;
             m_adfGeoTransform[5] = -dfYRes;
             m_bGotTransform = true;
@@ -1894,11 +1898,11 @@ GDALDataset* PDS4Dataset::Open(GDALOpenInfo* poOpenInfo)
                     (bBottomToTop ) ? -nLineOffset : nLineOffset,
                     eDT,
 #ifdef CPL_LSB
-                    bLSBOrder,
+                    bLSBOrder
 #else
-                    !bLSBOrder,
+                    !bLSBOrder
 #endif
-                    true);
+                );
                 if( bNoDataSet )
                 {
                     poBand->SetNoDataValue(dfNoData);
@@ -2007,20 +2011,20 @@ void PDS4Dataset::WriteGeoreferencing(CPLXMLNode* psCart)
         osPrefix.assign(psCart->pszValue, pszColon - psCart->pszValue + 1);
 
     // upper left
-    adfX[0] = m_adfGeoTransform[0] + m_adfGeoTransform[1] / 2;
-    adfY[0] = m_adfGeoTransform[3] - m_adfGeoTransform[5] / 2;
+    adfX[0] = m_adfGeoTransform[0];
+    adfY[0] = m_adfGeoTransform[3];
 
     // upper right
-    adfX[1] = m_adfGeoTransform[0] + m_adfGeoTransform[1] * nRasterXSize - m_adfGeoTransform[1] / 2;
-    adfY[1] = m_adfGeoTransform[3] - m_adfGeoTransform[5] / 2;
+    adfX[1] = m_adfGeoTransform[0] + m_adfGeoTransform[1] * nRasterXSize ;
+    adfY[1] = m_adfGeoTransform[3];
 
     // lower left
-    adfX[2] = m_adfGeoTransform[0] + m_adfGeoTransform[1] / 2;
-    adfY[2] = m_adfGeoTransform[3] + m_adfGeoTransform[5] * nRasterYSize + m_adfGeoTransform[5] / 2;
+    adfX[2] = m_adfGeoTransform[0];
+    adfY[2] = m_adfGeoTransform[3] + m_adfGeoTransform[5] * nRasterYSize;
 
     // lower right
-    adfX[3] = m_adfGeoTransform[0] + m_adfGeoTransform[1] * nRasterXSize - m_adfGeoTransform[1] / 2;
-    adfY[3] = m_adfGeoTransform[3] + m_adfGeoTransform[5] * nRasterYSize + m_adfGeoTransform[5] / 2;
+    adfX[3] = m_adfGeoTransform[0] + m_adfGeoTransform[1] * nRasterXSize;
+    adfY[3] = m_adfGeoTransform[3] + m_adfGeoTransform[5] * nRasterYSize;
 
     if( !oSRS.IsGeographic() )
     {
@@ -2385,9 +2389,9 @@ void PDS4Dataset::WriteGeoreferencing(CPLXMLNode* psCart)
     const double dfFalseNorthing =
         oSRS.GetNormProjParm(SRS_PP_FALSE_NORTHING, 0.0);
     const double dfULX = -dfFalseEasting +
-            m_adfGeoTransform[0] + 0.5 * m_adfGeoTransform[1];
+            m_adfGeoTransform[0];
     const double dfULY = -dfFalseNorthing + 
-            m_adfGeoTransform[3] + 0.5 * m_adfGeoTransform[5];
+            m_adfGeoTransform[3];
     if( oSRS.IsGeographic() )
     {
         CPLAddXMLAttributeAndValue(
@@ -3398,11 +3402,11 @@ GDALDataset *PDS4Dataset::Create(const char *pszFilename,
                                         nLineOffset,
                                         eType,
 #ifdef CPL_LSB
-                                        TRUE,
+                                        TRUE
 #else
-                                        FALSE, // force LSB order
+                                        FALSE // force LSB order
 #endif
-                                        true);
+            );
             poDS->SetBand(i+1, poBand);
         }
     }

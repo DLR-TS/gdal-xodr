@@ -924,16 +924,20 @@ static CPLErr Init_Raster(ILImage &image, GDALMRFDataset *ds, CPLXMLNode *defima
         image.pagesize.x > INT_MAX / image.pagesize.y ||
         image.pagesize.x * image.pagesize.y > INT_MAX / image.pagesize.z ||
         image.pagesize.x * image.pagesize.y * image.pagesize.z > INT_MAX / image.pagesize.c ||
-        image.pagesize.x * image.pagesize.y * image.pagesize.z* image.pagesize.c  > INT_MAX / (GDALGetDataTypeSize(image.dt) / 8) )
+        image.pagesize.x * image.pagesize.y * image.pagesize.z* image.pagesize.c  > INT_MAX / GDALGetDataTypeSizeBytes(image.dt) )
     {
         CPLError(CE_Failure, CPLE_AppDefined, "MRF page size too big");
         return CE_Failure;
     }
-    image.pageSizeBytes = (GDALGetDataTypeSize(image.dt) / 8) *
+    image.pageSizeBytes = GDALGetDataTypeSizeBytes(image.dt) *
         image.pagesize.x * image.pagesize.y * image.pagesize.z * image.pagesize.c;
 
     // Calculate the page count, including the total for the level
     image.pagecount = pcount(image.size, image.pagesize);
+    if( image.pagecount.l < 0 )
+    {
+        return CE_Failure;
+    }
 
     // Data File Name and base offset
     image.datfname = getFname(defimage, "DataFile", ds->GetFname(), ILComp_Ext[image.comp]);
@@ -1676,7 +1680,7 @@ GDALDataset *GDALMRFDataset::CreateCopy(const char *pszFilename,
 
 // Prepares the data so it is suitable for Zen JPEG encoding, based on input mask
 // If bFBO is set, only the values of the first band are set non-zero when needed
-template<typename T> void ZenFilter(T* buffer, GByte *mask, int nPixels, int nBands, bool bFBO) {
+template<typename T> static void ZenFilter(T* buffer, GByte *mask, int nPixels, int nBands, bool bFBO) {
     for (int i = 0; i < nPixels; i++) {
         if (mask[i] == 0) { // enforce zero values
             for (int b = 0; b < nBands; b++)

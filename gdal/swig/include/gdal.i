@@ -34,6 +34,8 @@
 %module "Geo::GDAL"
 #elif defined(SWIGCSHARP)
 %module Gdal
+#elif defined(SWIGPYTHON)
+%module (package="osgeo") gdal
 #else
 %module gdal
 #endif
@@ -904,10 +906,18 @@ GDALDriverShadow *IdentifyDriverEx( const char* utf8_path,
     char** papszArgvModBefore = CSLInsertString(CSLDuplicate(papszArgv), 0, "dummy");
     char** papszArgvModAfter = papszArgvModBefore;
 
+    bool bReloadDrivers = ( CSLFindString(papszArgv, "GDAL_SKIP") >= 0 ||
+                            CSLFindString(papszArgv, "OGR_SKIP") >= 0 );
+
     nResArgCount =
       GDALGeneralCmdLineProcessor( CSLCount(papszArgvModBefore), &papszArgvModAfter, nOptions );
 
     CSLDestroy(papszArgvModBefore);
+
+    if( bReloadDrivers )
+    {
+        GDALAllRegister();
+    }
 
     if( nResArgCount <= 0 )
     {
@@ -930,8 +940,16 @@ GDALDriverShadow *IdentifyDriverEx( const char* utf8_path,
     if( papszArgv == NULL )
         return NULL;
 
+    bool bReloadDrivers = ( CSLFindString(papszArgv, "GDAL_SKIP") >= 0 ||
+                            CSLFindString(papszArgv, "OGR_SKIP") >= 0 );
+
     nResArgCount =
       GDALGeneralCmdLineProcessor( CSLCount(papszArgv), &papszArgv, nOptions );
+
+    if( bReloadDrivers )
+    {
+        GDALAllRegister();
+    }
 
     if( nResArgCount <= 0 )
         return NULL;
@@ -971,6 +989,73 @@ __version__ = _gdal.VersionInfo("RELEASE_NAME")
 %}
 
 %apply (const char* utf8_path) {(const char* dest)};
+
+#ifdef SWIGPYTHON
+%{
+
+#include <vector>
+
+class ErrorStruct
+{
+  public:
+    CPLErr type;
+    CPLErrorNum no;
+    char* msg;
+
+    ErrorStruct() = delete;
+    ErrorStruct(CPLErr eErrIn, CPLErrorNum noIn, const char* msgIn) :
+        type(eErrIn), no(noIn), msg(msgIn ? CPLStrdup(msgIn) : nullptr) {}
+    ErrorStruct(const ErrorStruct& other):
+        type(other.type), no(other.no),
+        msg(other.msg ? CPLStrdup(other.msg) : nullptr) {}
+    ~ErrorStruct() { CPLFree(msg); }
+};
+
+static void CPL_STDCALL StackingErrorHandler( CPLErr eErr, CPLErrorNum no,
+                                           const char* msg )
+{
+    std::vector<ErrorStruct>* paoErrors =
+        static_cast<std::vector<ErrorStruct> *>(
+            CPLGetErrorHandlerUserData());
+    paoErrors->emplace_back(eErr, no, msg);
+}
+
+static void PushStackingErrorHandler(std::vector<ErrorStruct>* paoErrors)
+{
+    CPLPushErrorHandlerEx(StackingErrorHandler, paoErrors);
+}
+
+static void PopStackingErrorHandler(std::vector<ErrorStruct>* paoErrors, bool bSuccess)
+{
+    CPLPopErrorHandler();
+
+    // If the operation was successful, do not emit regular CPLError()
+    // that would be caught by the PythonBindingErrorHandler and turned into
+    // Python exceptions. Just emit them with the previous error handler
+    if( bSuccess )
+    {
+        for( size_t iError = 0; iError < paoErrors->size(); ++iError )
+        {
+            pfnPreviousHandler( (*paoErrors)[iError].type,
+                    (*paoErrors)[iError].no,
+                    (*paoErrors)[iError].msg );
+        }
+
+        CPLErrorReset();
+    }
+    else
+    {
+        for( size_t iError = 0; iError < paoErrors->size(); ++iError )
+        {
+            CPLError( (*paoErrors)[iError].type,
+                    (*paoErrors)[iError].no,
+                    "%s",
+                    (*paoErrors)[iError].msg );
+        }
+    }
+}
+%}
+#endif
 
 //************************************************************************
 // gdal.Info()
@@ -1040,9 +1125,22 @@ GDALDatasetShadow* wrapper_GDALTranslate( const char* dest,
         }
         GDALTranslateOptionsSetProgress(translateOptions, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALTranslate(dest, dataset, translateOptions, &usageError);
     if( bFreeOptions )
         GDALTranslateOptionsFree(translateOptions);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1073,6 +1171,7 @@ struct GDALWarpAppOptions {
 /* Note: we must use 2 distinct names due to different ownership of the result */
 
 %inline %{
+
 int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
                             int object_list_count, GDALDatasetShadow** poObjects,
                             GDALWarpAppOptions* warpAppOptions,
@@ -1090,9 +1189,22 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
         }
         GDALWarpAppOptionsSetProgress(warpAppOptions, callback, callback_data);
     }
-    int bRet = (GDALWarp(NULL, dstDS, object_list_count, poObjects, warpAppOptions, &usageError) != NULL);
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    bool bRet = (GDALWarp(NULL, dstDS, object_list_count, poObjects, warpAppOptions, &usageError) != NULL);
     if( bFreeOptions )
         GDALWarpAppOptionsFree(warpAppOptions);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, bRet);
+    }
+#endif
     return bRet;
 }
 %}
@@ -1121,9 +1233,22 @@ GDALDatasetShadow* wrapper_GDALWarpDestName( const char* dest,
         }
         GDALWarpAppOptionsSetProgress(warpAppOptions, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALWarp(dest, NULL, object_list_count, poObjects, warpAppOptions, &usageError);
     if( bFreeOptions )
         GDALWarpAppOptionsFree(warpAppOptions);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1171,9 +1296,22 @@ int wrapper_GDALVectorTranslateDestDS( GDALDatasetShadow* dstDS,
         }
         GDALVectorTranslateOptionsSetProgress(options, callback, callback_data);
     }
-    int bRet = (GDALVectorTranslate(NULL, dstDS, 1, &srcDS, options, &usageError) != NULL);
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    bool bRet = (GDALVectorTranslate(NULL, dstDS, 1, &srcDS, options, &usageError) != NULL);
     if( bFreeOptions )
         GDALVectorTranslateOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, bRet);
+    }
+#endif
     return bRet;
 }
 %}
@@ -1201,9 +1339,22 @@ GDALDatasetShadow* wrapper_GDALVectorTranslateDestName( const char* dest,
         }
         GDALVectorTranslateOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALVectorTranslate(dest, NULL, 1, &srcDS, options, &usageError);
     if( bFreeOptions )
         GDALVectorTranslateOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1255,9 +1406,22 @@ GDALDatasetShadow* wrapper_GDALDEMProcessing( const char* dest,
         }
         GDALDEMProcessingOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALDEMProcessing(dest, dataset, pszProcessing, pszColorFilename, options, &usageError);
     if( bFreeOptions )
         GDALDEMProcessingOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1304,9 +1468,22 @@ int wrapper_GDALNearblackDestDS( GDALDatasetShadow* dstDS,
         }
         GDALNearblackOptionsSetProgress(options, callback, callback_data);
     }
-    int bRet = (GDALNearblack(NULL, dstDS, srcDS, options, &usageError) != NULL);
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    bool bRet = (GDALNearblack(NULL, dstDS, srcDS, options, &usageError) != NULL);
     if( bFreeOptions )
         GDALNearblackOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, bRet);
+    }
+#endif
     return bRet;
 }
 %}
@@ -1334,9 +1511,22 @@ GDALDatasetShadow* wrapper_GDALNearblackDestName( const char* dest,
         }
         GDALNearblackOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALNearblack(dest, NULL, srcDS, options, &usageError);
     if( bFreeOptions )
         GDALNearblackOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1385,9 +1575,22 @@ GDALDatasetShadow* wrapper_GDALGrid( const char* dest,
         }
         GDALGridOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALGrid(dest, dataset, options, &usageError);
     if( bFreeOptions )
         GDALGridOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1434,9 +1637,22 @@ int wrapper_GDALRasterizeDestDS( GDALDatasetShadow* dstDS,
         }
         GDALRasterizeOptionsSetProgress(options, callback, callback_data);
     }
-    int bRet = (GDALRasterize(NULL, dstDS, srcDS, options, &usageError) != NULL);
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    bool bRet = (GDALRasterize(NULL, dstDS, srcDS, options, &usageError) != NULL);
     if( bFreeOptions )
         GDALRasterizeOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, bRet);
+    }
+#endif
     return bRet;
 }
 %}
@@ -1464,9 +1680,22 @@ GDALDatasetShadow* wrapper_GDALRasterizeDestName( const char* dest,
         }
         GDALRasterizeOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALRasterize(dest, NULL, srcDS, options, &usageError);
     if( bFreeOptions )
         GDALRasterizeOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1516,9 +1745,22 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_objects( const char* dest,
         }
         GDALBuildVRTOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALBuildVRT(dest, object_list_count, poObjects, NULL, options, &usageError);
     if( bFreeOptions )
         GDALBuildVRTOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}
@@ -1550,9 +1792,22 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_names( const char* dest,
         }
         GDALBuildVRTOptionsSetProgress(options, callback, callback_data);
     }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( bUseExceptions )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
     GDALDatasetH hDSRet = GDALBuildVRT(dest, CSLCount(source_filenames), NULL, source_filenames, options, &usageError);
     if( bFreeOptions )
         GDALBuildVRTOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( bUseExceptions )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
     return hDSRet;
 }
 %}

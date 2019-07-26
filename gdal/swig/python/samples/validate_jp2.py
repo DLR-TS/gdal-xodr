@@ -87,9 +87,9 @@ def find_message(ar):
 
 
 def find_element_with_name(ar, element_name, name, attribute_name='name'):
-    type = ar[XML_TYPE_IDX]
+    typ = ar[XML_TYPE_IDX]
     value = ar[XML_VALUE_IDX]
-    if type == gdal.CXT_Element and value == element_name and get_attribute_val(ar, attribute_name) == name:
+    if typ == gdal.CXT_Element and value == element_name and get_attribute_val(ar, attribute_name) == name:
         return ar
     for child_idx in range(XML_FIRST_CHILD_IDX, len(ar)):
         child = ar[child_idx]
@@ -230,11 +230,11 @@ class ErrorReport(object):
 
 
 def find_remaining_bytes(error_report, ar, parent_node_name=None):
-    type = ar[XML_TYPE_IDX]
+    typ = ar[XML_TYPE_IDX]
     value = ar[XML_VALUE_IDX]
-    if type == gdal.CXT_Element and value == 'JP2Box':
+    if typ == gdal.CXT_Element and value == 'JP2Box':
         parent_node_name = get_attribute_val(ar, 'name')
-    if type == gdal.CXT_Element and value == 'RemainingBytes':
+    if typ == gdal.CXT_Element and value == 'RemainingBytes':
         error_report.EmitError('GENERAL', 'Remaining bytes in JP2 box %s: %s' % (parent_node_name, get_element_val(ar)))
 
     for child_idx in range(XML_FIRST_CHILD_IDX, len(ar)):
@@ -244,9 +244,9 @@ def find_remaining_bytes(error_report, ar, parent_node_name=None):
 
 # Report codestream errors
 def find_errors(error_report, ar, parent_node=None):
-    type = ar[XML_TYPE_IDX]
+    typ = ar[XML_TYPE_IDX]
     value = ar[XML_VALUE_IDX]
-    if type == gdal.CXT_Element and value == 'Error':
+    if typ == gdal.CXT_Element and value == 'Error':
         parent_node_name = ''
         if parent_node is not None:
             parent_node_name = get_attribute_val(parent_node, 'name')
@@ -431,7 +431,7 @@ def validate(filename, oidoc, inspire_tg, expected_gmljp2, ogc_schemas_location,
         gmljp2_found = gmljp2 is not None
         if expected_gmljp2 and not gmljp2_found:
             error_report.EmitError('GMLJP2', 'No GMLJP2 box found whereas it was expected')
-        if gmljp2_found and inspire_tg and gmljp2.find('gmljp2:GMLJP2CoverageCollection') >= 0:
+        if gmljp2_found and inspire_tg and 'gmljp2:GMLJP2CoverageCollection' in gmljp2:
             error_report.EmitError('INSPIRE_TG', 'GMLJP2 v2 box found, but Inspire TG require GMLJP2 v1', conformance_class='A.8.6')
         if gmljp2_found and ogc_schemas_location != 'disabled':
             if ogc_schemas_location is not None:
@@ -481,7 +481,7 @@ def validate(filename, oidoc, inspire_tg, expected_gmljp2, ogc_schemas_location,
             JPXCLFound = False
 
             if expected_ftyp_branding is None:
-                if gmljp2_found and gmljp2.find('gmljp2:GMLJP2CoverageCollection') >= 0:
+                if gmljp2_found and 'gmljp2:GMLJP2CoverageCollection' in gmljp2:
                     expected_ftyp_branding = 'jpx '
                 else:
                     expected_ftyp_branding = 'jp2 '

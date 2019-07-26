@@ -30,6 +30,7 @@
 #include "cpl_port.h"
 #include "gdalpansharpen.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -161,12 +162,7 @@ GDALPansharpenOptions* GDALClonePansharpenOptions(
  *
  * The object is ready to be used after Initialize() has been called.
  */
-GDALPansharpenOperation::GDALPansharpenOperation() :
-    psOptions(nullptr),
-    bPositiveWeights(TRUE),
-    poThreadPool(nullptr),
-    nKernelRadius(0)
-{}
+GDALPansharpenOperation::GDALPansharpenOperation() = default;
 
 /************************************************************************/
 /*                       ~GDALPansharpenOperation()                     */
@@ -258,7 +254,7 @@ GDALPansharpenOperation::Initialize( const GDALPansharpenOptions* psOptionsIn )
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "Invalid value panOutPansharpenedBands[%d] = %d",
-                     psOptionsIn->panOutPansharpenedBands[i], i);
+                     i, psOptionsIn->panOutPansharpenedBands[i]);
             return CE_Failure;
         }
     }
@@ -378,7 +374,7 @@ GDALPansharpenOperation::Initialize( const GDALPansharpenOptions* psOptionsIn )
             if( EQUAL(pszNumThreads, "ALL_CPUS") )
                 nThreads = CPLGetNumCPUs();
             else
-                nThreads = atoi(pszNumThreads);
+                nThreads = std::max(0, std::min(128, atoi(pszNumThreads)));
         }
     }
     if( nThreads > 1 )
@@ -554,7 +550,7 @@ void GDALPansharpenOperation::WeightedBrovey3(
 /* Could possibly be used too on 32bit, but we would need to check at runtime */
 #if defined(__x86_64) || defined(_M_X64)
 
-#include <gdalsse_priv.h>
+#include "gdalsse_priv.h"
 
 template<class T, int NINPUT, int NOUTPUT>
 int GDALPansharpenOperation::WeightedBroveyPositiveWeightsInternal(

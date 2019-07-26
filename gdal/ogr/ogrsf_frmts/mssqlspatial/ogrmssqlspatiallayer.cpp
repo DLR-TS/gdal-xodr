@@ -36,26 +36,6 @@ CPL_CVSID("$Id$")
 OGRMSSQLSpatialLayer::OGRMSSQLSpatialLayer()
 
 {
-    poDS = nullptr;
-
-    poFeatureDefn = nullptr;
-    nGeomColumnType = -1;
-    pszGeomColumn = nullptr;
-    pszFIDColumn = nullptr;
-    bIsIdentityFid = FALSE;
-    panFieldOrdinals = nullptr;
-
-    poStmt = nullptr;
-
-    iNextShapeId = 0;
-
-    poSRS = nullptr;
-    nSRSId = -1; // we haven't even queried the database for it yet.
-    nLayerStatus = MSSQLLAYERSTATUS_ORIGINAL;
-
-    nGeomColumnIndex = -1;
-    nFIDColumnIndex = -1;
-    nRawColumns = 0;
 }
 
 /************************************************************************/
@@ -103,6 +83,8 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                                     CPLODBCStatement *poStmtIn )
 
 {
+    bool bShowFidColumn = CPLTestBool(CPLGetConfigOption("MSSQLSPATIAL_SHOW_FID_COLUMN", "NO"));
+
     poFeatureDefn = new OGRFeatureDefn( pszLayerName );
     nRawColumns = poStmtIn->GetColCount();
 
@@ -121,7 +103,10 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                 nGeomColumnType = MSSQLCOLTYPE_GEOMETRY;
                 pszGeomColumn = CPLStrdup( poStmtIn->GetColName(iCol) );
                 if (poFeatureDefn->GetGeomFieldCount() == 1)
+                {
                     poFeatureDefn->GetGeomFieldDefn(0)->SetNullable( poStmtIn->GetColNullable(iCol) );
+                    poFeatureDefn->GetGeomFieldDefn(0)->SetName(pszGeomColumn);
+                }
                 nGeomColumnIndex = iCol;
                 continue;
             }
@@ -130,7 +115,10 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                 nGeomColumnType = MSSQLCOLTYPE_GEOGRAPHY;
                 pszGeomColumn = CPLStrdup( poStmtIn->GetColName(iCol) );
                 if (poFeatureDefn->GetGeomFieldCount() == 1)
+                {
                     poFeatureDefn->GetGeomFieldDefn(0)->SetNullable( poStmtIn->GetColNullable(iCol) );
+                    poFeatureDefn->GetGeomFieldDefn(0)->SetName(pszGeomColumn);
+                }
                 nGeomColumnIndex = iCol;
                 continue;
             }
@@ -140,7 +128,10 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
             if( EQUAL(poStmtIn->GetColName(iCol),pszGeomColumn) )
             {
                 if (poFeatureDefn->GetGeomFieldCount() == 1)
+                {
                     poFeatureDefn->GetGeomFieldDefn(0)->SetNullable( poStmtIn->GetColNullable(iCol) );
+                    poFeatureDefn->GetGeomFieldDefn(0)->SetName(pszGeomColumn);
+                }
                 nGeomColumnIndex = iCol;
                 continue;
             }
@@ -181,7 +172,9 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                         bIsIdentityFid = TRUE;
 
                     nFIDColumnIndex = iCol;
-                    continue;
+
+                    if (!bShowFidColumn)
+                        continue;
                 }
             }
         }
@@ -192,7 +185,9 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                 pszFIDColumn = CPLStrdup( poStmtIn->GetColName(iCol) );
                 bIsIdentityFid = TRUE;
                 nFIDColumnIndex = iCol;
-                continue;
+
+                if (!bShowFidColumn)
+                    continue;
             }
             else if (EQUAL(poStmtIn->GetColTypeName( iCol ), "bigint identity"))
             {
@@ -200,7 +195,9 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                 bIsIdentityFid = TRUE;
                 SetMetadataItem(OLMD_FID64, "YES");
                 nFIDColumnIndex = iCol;
-                continue;
+
+                if (!bShowFidColumn)
+                    continue;
             }
         }
 

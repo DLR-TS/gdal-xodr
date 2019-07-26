@@ -1140,7 +1140,7 @@ OGRGeometry* OGRMVTLayer::ParseGeometry(unsigned int nGeomType,
 
 void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry*& poGeom)
 {
-    OGRwkbGeometryType eInGeomType = poGeom->getGeometryType();
+    OGRwkbGeometryType eInGeomType = wkbFlatten(poGeom->getGeometryType());
     const OGRwkbGeometryType eLayerGeomType = GetGeomType();
     if( eLayerGeomType == wkbUnknown )
     {
@@ -1170,7 +1170,7 @@ void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry*& poGeom)
         }
         for( auto&& poSubGeom: poGC )
         {
-            if( poSubGeom->getGeometryType() == ePartGeom )
+            if( wkbFlatten(poSubGeom->getGeometryType()) == ePartGeom )
             {
                 if( poTargetSingleGeom != nullptr )
                 {
@@ -1195,7 +1195,7 @@ void OGRMVTLayer::SanitizeClippedGeometry(OGRGeometry*& poGeom)
         {
             delete poGC;
         }
-        eInGeomType = poGeom->getGeometryType();
+        eInGeomType = wkbFlatten(poGeom->getGeometryType());
     }
 
     // Wrap single into multi if requested by the layer geometry type
@@ -1324,9 +1324,6 @@ OGRFeature* OGRMVTLayer::GetNextRawFeature()
                         ParseGeometry(nGeomType, pabyDataGeometryEnd);
                     if( poGeom )
                     {
-                        poGeom->assignSpatialReference(GetSpatialRef());
-                        poFeature->SetGeometryDirectly(poGeom);
-
                         // Clip geometry to tile extent if requested
                         if( m_poDS->m_bClip && OGRGeometryFactory::haveGEOS() )
                         {
@@ -1359,6 +1356,8 @@ OGRFeature* OGRMVTLayer::GetNextRawFeature()
                                         poClipped->assignSpatialReference(
                                             GetSpatialRef());
                                         poFeature->SetGeometryDirectly(poClipped);
+                                        delete poGeom;
+                                        poGeom = nullptr;
                                     }
                                 }
                             }
@@ -1366,6 +1365,12 @@ OGRFeature* OGRMVTLayer::GetNextRawFeature()
                             {
                                 bOK = false;
                             }
+                        }
+
+                        if( poGeom )
+                        {
+                            poGeom->assignSpatialReference(GetSpatialRef());
+                            poFeature->SetGeometryDirectly(poGeom);
                         }
                     }
 
@@ -1995,6 +2000,11 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
     if( poOpenInfo->pabyHeader[0] == 0x1F &&
         poOpenInfo->pabyHeader[1] == 0x8B )
     {
+        // Prevent recursion
+        if( STARTS_WITH(poOpenInfo->pszFilename, "/vsigzip/") )
+        {
+            return FALSE;
+        }
         CPLConfigOptionSetter oSetter(
             "CPL_VSIL_GZIP_WRITE_PROPERTIES", "NO", false);
         GDALOpenInfo oOpenInfo( (CPLString("/vsigzip/") +
@@ -2042,8 +2052,14 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
         while( pabyData < pabyLayerEnd )
         {
             READ_VARUINT32(pabyData, pabyLayerEnd, nKey);
-            if( nKey == MAKE_KEY(knLAYER_NAME, WT_DATA) )
+            auto nFieldNumber = GET_FIELDNUMBER(nKey);
+            auto nWireType = GET_WIRETYPE(nKey);
+            if( nFieldNumber == knLAYER_NAME )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for layer_name field");
+                }
                 char* pszLayerName = nullptr;
                 unsigned int nTextSize = 0;
                 READ_TEXT_WITH_SIZE(pabyData, pabyLayerEnd, pszLayerName,
@@ -2058,8 +2074,12 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 CPLFree(pszLayerName);
                 bLayerNameFound = true;
             }
-            else if( nKey == MAKE_KEY(knLAYER_FEATURES, WT_DATA) )
+            else if( nFieldNumber == knLAYER_FEATURES )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for layer_features field");
+                }
                 unsigned int nFeatureLength = 0;
                 unsigned int nGeomType = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nFeatureLength);
@@ -2077,8 +2097,15 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 while( pabyData < pabyDataFeatureEnd )
                 {
                     READ_VARUINT32(pabyData, pabyDataFeatureEnd, nKey);
-                    if( nKey == MAKE_KEY(knFEATURE_TYPE, WT_VARINT) )
+                    nFieldNumber = GET_FIELDNUMBER(nKey);
+                    nWireType = GET_WIRETYPE(nKey);
+                    if( nFieldNumber == knFEATURE_TYPE)
                     {
+                        if( nWireType != WT_VARINT )
+                        {
+                            CPLDebug("MVT", "Invalid wire type for feature_type field");
+                            return FALSE;
+                        }
                         READ_VARUINT32(pabyData, pabyDataFeatureEnd, nGeomType);
                         if( nGeomType > knGEOM_TYPE_POLYGON )
                         {
@@ -2086,8 +2113,13 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                             return FALSE;
                         }
                     }
-                    else if( nKey == MAKE_KEY(knFEATURE_TAGS, WT_DATA) )
+                    else if( nFieldNumber == knFEATURE_TAGS )
                     {
+                        if( nWireType != WT_DATA )
+                        {
+                            CPLDebug("MVT", "Invalid wire type for feature_tags field");
+                            return FALSE;
+                        }
                         unsigned int nTagsSize = 0;
                         READ_VARUINT32(pabyData, pabyDataFeatureEnd, nTagsSize);
                         if( nTagsSize == 0 || nTagsSize >
@@ -2113,6 +2145,11 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                                 return FALSE;
                             }
                         }
+                    }
+                    else if( nFieldNumber == knFEATURE_GEOMETRY && nWireType != WT_DATA )
+                    {
+                        CPLDebug("MVT", "Invalid wire type for feature_geometry field");
+                        return FALSE;
                     }
                     else if( nKey == MAKE_KEY(knFEATURE_GEOMETRY, WT_DATA) &&
                             nGeomType >= 1 && nGeomType <= 3 )
@@ -2237,8 +2274,13 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
 
                 pabyData = pabyDataFeatureEnd;
             }
-            else if( nKey == MAKE_KEY(knLAYER_KEYS, WT_DATA) )
+            else if( nFieldNumber == knLAYER_KEYS )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for keys field");
+                    return FALSE;
+                }
                 char* pszKey = nullptr;
                 unsigned int nTextSize = 0;
                 READ_TEXT_WITH_SIZE(pabyData, pabyLayerEnd, pszKey, nTextSize);
@@ -2251,8 +2293,13 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 CPLFree(pszKey);
                 bKeyFound = true;
             }
-            else if( nKey == MAKE_KEY(knLAYER_VALUES, WT_DATA) )
+            else if( nFieldNumber == knLAYER_VALUES )
             {
+                if( nWireType != WT_DATA )
+                {
+                    CPLDebug("MVT", "Invalid wire type for values field");
+                    return FALSE;
+                }
                 unsigned int nValueLength = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nValueLength);
                 if( nValueLength == 0 ||
@@ -2263,18 +2310,32 @@ static int OGRMVTDriverIdentify( GDALOpenInfo* poOpenInfo )
                 }
                 pabyData += nValueLength;
             }
+            else if( GET_FIELDNUMBER(nKey) == knLAYER_EXTENT &&
+                     GET_WIRETYPE(nKey) != WT_VARINT )
+            {
+                CPLDebug("MVT", "Invalid wire type for extent field");
+                return FALSE;
+            }
+#if 0
+            // The check on extent is too fragile. Values of 65536 can be found
             else if( nKey == MAKE_KEY(knLAYER_EXTENT, WT_VARINT) )
             {
                 unsigned int nExtent = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nExtent);
-                if( nExtent < 128 || nExtent > 16384 )
+                if( nExtent < 128 || nExtent > 16834 )
                 {
                     CPLDebug("MVT", "Invalid extent: %u", nExtent);
                     return FALSE;
                 }
             }
-            else if( nKey == MAKE_KEY(knLAYER_VERSION, WT_VARINT) )
+#endif
+            else if( nFieldNumber == knLAYER_VERSION )
             {
+                if( nWireType != WT_VARINT )
+                {
+                    CPLDebug("MVT", "Invalid wire type for version field");
+                    return FALSE;
+                }
                 unsigned int nVersion = 0;
                 READ_VARUINT32(pabyData, pabyLayerEnd, nVersion);
                 if( nVersion != 1 && nVersion != 2 )
@@ -3626,12 +3687,12 @@ bool OGRMVTWriterDataset::EncodeRepairedOuterRing(
     }
 
     OGRPolygon* poPoly = nullptr;
-    if( poFixedGeom->getGeometryType() == wkbMultiPolygon )
+    if( wkbFlatten(poFixedGeom->getGeometryType()) == wkbMultiPolygon )
     {
         OGRMultiPolygon* poMP = poFixedGeom.get()->toMultiPolygon();
         poPoly = poMP->getGeometryRef(0)->toPolygon();
     }
-    else if( poFixedGeom->getGeometryType() == wkbPolygon )
+    else if( wkbFlatten(poFixedGeom->getGeometryType()) == wkbPolygon )
     {
         poPoly = poFixedGeom.get()->toPolygon();
     }
@@ -3863,7 +3924,7 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
                     if( !poSimplified.get() || poSimplified->IsEmpty() )
                         return false;
 
-                    if( poSimplified->getGeometryType() == wkbPolygon )
+                    if( wkbFlatten(poSimplified->getGeometryType()) == wkbPolygon )
                     {
                         OGRPolygon* poSimplifiedPoly =
                             poSimplified.get()->toPolygon();
@@ -3874,7 +3935,7 @@ bool OGRMVTWriterDataset::EncodePolygon(MVTTileLayerFeature *poGPBFeature,
                                             nLastX, nLastY, dfArea);
                     }
 #ifdef likely_not_possible
-                    else if( poSimplified->getGeometryType() == wkbMultiPolygon )
+                    else if( wkbFlatten(poSimplified->getGeometryType()) == wkbMultiPolygon )
                     {
                         OGRMultiPolygon* poMP = poSimplified.get()->toMultiPolygon();
                         bool bRet = true;
@@ -3977,7 +4038,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         return OGRERR_NONE;
     }
 
-    OGRwkbGeometryType eGeomToEncodeType = poIntersection->getGeometryType();
+    OGRwkbGeometryType eGeomToEncodeType = wkbFlatten(poIntersection->getGeometryType());
 
     // Simplify contour if requested by user
     OGRGeometry* poGeomToEncode = poIntersection;
@@ -3994,7 +4055,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
         if( poGeomSimplified.get() )
         {
             poGeomToEncode = poGeomSimplified.get();
-            eGeomToEncodeType = poGeomSimplified->getGeometryType();
+            eGeomToEncodeType = wkbFlatten(poGeomSimplified->getGeometryType());
         }
     }
 
@@ -4026,7 +4087,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
             int nLastY = 0;
             for( auto&& poSubGeom: poGC )
             {
-                if( poSubGeom->getGeometryType() == wkbPoint )
+                if( wkbFlatten(poSubGeom->getGeometryType()) == wkbPoint )
                 {
                     OGRPoint* poPoint = poSubGeom->toPoint();
                     int nX, nY;
@@ -4081,7 +4142,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
             int nLastY = 0;
             for( auto&& poSubGeom: poGC )
             {
-                if( poSubGeom->getGeometryType() == wkbLineString )
+                if( wkbFlatten(poSubGeom->getGeometryType()) == wkbLineString )
                 {
                     OGRLineString* poLS = poSubGeom->toLineString();
                     OGRLineString oOutLS;
@@ -4118,7 +4179,7 @@ OGRErr OGRMVTWriterDataset::PreGenerateForTileReal(
             int nLastY = 0;
             for( auto&& poSubGeom: poGC )
             {
-                if( poSubGeom->getGeometryType() == wkbPolygon )
+                if( wkbFlatten(poSubGeom->getGeometryType()) == wkbPolygon )
                 {
                     OGRPolygon* poPoly = poSubGeom->toPolygon();
                     double dfPartArea = 0.0;
@@ -5855,7 +5916,7 @@ OGRLayer* OGRMVTWriterDataset::ICreateLayer( const char* pszLayerName,
         m_oMapLayerNameToDesc[poLayer->m_osTargetName] = osDescription;
 
     m_apoLayers.push_back( std::unique_ptr<OGRMVTWriterLayer>(poLayer) );
-    return poLayer;
+    return m_apoLayers.back().get();
 }
 
 /************************************************************************/
@@ -5921,18 +5982,23 @@ GDALDataset* OGRMVTWriterDataset::Create( const char * pszFilename,
     poDS->m_pMyVFS = OGRSQLiteCreateVFS(nullptr, poDS);
     sqlite3_vfs_register(poDS->m_pMyVFS, 0);
 
+    CPLString osTempDBDefault = CPLString(pszFilename) + ".temp.db";
+    if( STARTS_WITH(osTempDBDefault, "/vsizip/") )
+    {
+        osTempDBDefault = CPLString(pszFilename + strlen("/vsizip/")) + ".temp.db";
+    }
     CPLString osTempDB =
         CSLFetchNameValueDef(papszOptions, "TEMPORARY_DB",
-            (CPLString(pszFilename) + ".temp.db").c_str());
+                             osTempDBDefault.c_str());
     if( !bReuseTempFile )
         VSIUnlink(osTempDB);
 
     sqlite3* hDB = nullptr;
-    sqlite3_open_v2(osTempDB, &hDB,
+    CPL_IGNORE_RET_VAL(sqlite3_open_v2(osTempDB, &hDB,
                     SQLITE_OPEN_READWRITE |
                     (bReuseTempFile ? 0 : SQLITE_OPEN_CREATE) |
                     SQLITE_OPEN_NOMUTEX,
-                    poDS->m_pMyVFS->zName);
+                    poDS->m_pMyVFS->zName));
     if( hDB == nullptr )
     {
         CPLError(CE_Failure, CPLE_FileIO, "Cannot create %s",
@@ -6066,10 +6132,10 @@ GDALDataset* OGRMVTWriterDataset::Create( const char * pszFilename,
 
     if( bMBTILES )
     {
-        sqlite3_open_v2(pszFilename, &poDS->m_hDBMBTILES,
+        CPL_IGNORE_RET_VAL(sqlite3_open_v2(pszFilename, &poDS->m_hDBMBTILES,
                         SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
                         SQLITE_OPEN_NOMUTEX,
-                        poDS->m_pMyVFS->zName);
+                        poDS->m_pMyVFS->zName));
         if( poDS->m_hDBMBTILES == nullptr )
         {
             CPLError(CE_Failure, CPLE_FileIO, "Cannot create %s",

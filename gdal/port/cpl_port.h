@@ -123,7 +123,7 @@
 #endif
 
 /* Needed for std=c11 on Solaris to have strcasecmp() */
-#if defined(GDAL_COMPILATION) && defined(__sun__) && __STDC_VERSION__ >= 201112L && _XOPEN_SOURCE < 600
+#if defined(GDAL_COMPILATION) && defined(__sun__) && (__STDC_VERSION__ + 0) >= 201112L && (_XOPEN_SOURCE + 0) < 600
 #ifdef _XOPEN_SOURCE
 #undef _XOPEN_SOURCE
 #endif
@@ -186,10 +186,12 @@
 #  if !(__cplusplus >= 201103L || (defined(_MSC_VER) && _MSC_VER >= 1900))
 #    error Must have C++11 or newer.
 #  endif
-#  if __cplusplus >= 201402L
+#  if __cplusplus >= 201402L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201402L)
 #    define HAVE_CXX14 1
 #  endif
-/* TODO(schwehr): What is the correct test for C++ 17? */
+#  if __cplusplus >= 201703L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+#    define HAVE_CXX17 1
+#  endif
 #endif  /* __cplusplus */
 
 /*---------------------------------------------------------------------

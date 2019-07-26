@@ -36,7 +36,7 @@ CPL_CVSID("$Id$")
 /************************************************************************/
 
 OGRMSSQLSpatialDataSource::OGRMSSQLSpatialDataSource() :
-    bDSUpdate(FALSE)
+    bDSUpdate(false)
 {
     pszName = nullptr;
     pszCatalog = nullptr;
@@ -47,10 +47,13 @@ OGRMSSQLSpatialDataSource::OGRMSSQLSpatialDataSource() :
     panSRID = nullptr;
     papoSRS = nullptr;
 
+    poLayerInCopyMode = nullptr;
+
     nGeometryFormat = MSSQLGEOMETRY_NATIVE;
     pszConnection = nullptr;
 
     bUseGeometryColumns = CPLTestBool(CPLGetConfigOption("MSSQLSPATIAL_USE_GEOMETRY_COLUMNS", "YES"));
+    bAlwaysOutputFid = CPLTestBool(CPLGetConfigOption("MSSQLSPATIAL_ALWAYS_OUTPUT_FID", "NO"));
     bListAllTables = CPLTestBool(CPLGetConfigOption("MSSQLSPATIAL_LIST_ALL_TABLES", "NO"));
 
     const char* nBCPSizeParam = CPLGetConfigOption("MSSQLSPATIAL_BCP_SIZE", nullptr);
@@ -63,6 +66,7 @@ OGRMSSQLSpatialDataSource::OGRMSSQLSpatialDataSource() :
 #else
     bUseCopy = FALSE;
 #endif
+    CPLDebug( "MSSQLSpatial", "Use COPY/BCP: %d", bUseCopy );
 }
 
 /************************************************************************/
@@ -177,6 +181,8 @@ OGRErr OGRMSSQLSpatialDataSource::DeleteLayer( int iLayer )
     if( iLayer < 0 || iLayer >= nLayers )
         return OGRERR_FAILURE;
 
+    EndCopy();
+
 /* -------------------------------------------------------------------- */
 /*      Blow away our OGR structures related to the layer.  This is     */
 /*      pretty dangerous if anything has a reference to this layer!     */
@@ -243,6 +249,8 @@ OGRLayer * OGRMSSQLSpatialDataSource::ICreateLayer( const char * pszLayerName,
     const char          *pszGeomColumn = nullptr;
     int                 nCoordDimension = 3;
     char                *pszFIDColumnName = nullptr;
+
+    EndCopy();
 
     /* determine the dimension */
     if( eType == wkbFlatten(eType) )
@@ -522,7 +530,7 @@ OGRLayer * OGRMSSQLSpatialDataSource::ICreateLayer( const char * pszLayerName,
 int OGRMSSQLSpatialDataSource::OpenTable( const char *pszSchemaName, const char *pszTableName,
                                           const char *pszGeomCol, int nCoordDimension,
                                           int nSRID, const char *pszSRText, OGRwkbGeometryType eType,
-                                          CPL_UNUSED int bUpdate )
+                                          bool bUpdate )
 {
 /* -------------------------------------------------------------------- */
 /*      Create the layer object.                                        */
@@ -534,6 +542,7 @@ int OGRMSSQLSpatialDataSource::OpenTable( const char *pszSchemaName, const char 
         delete poLayer;
         return FALSE;
     }
+    poLayer->SetUpdate(bUpdate);
 
     if (bUseCopy)
         poLayer->SetUseCopy(nBCPSize);
@@ -588,7 +597,7 @@ int OGRMSSQLSpatialDataSource::ParseValue(char** pszValue, char* pszSource, cons
 /*                                Open()                                */
 /************************************************************************/
 
-int OGRMSSQLSpatialDataSource::Open( const char * pszNewName, int bUpdate,
+int OGRMSSQLSpatialDataSource::Open( const char * pszNewName, bool bUpdate,
                              int bTestOpen )
 
 {
@@ -746,6 +755,10 @@ int OGRMSSQLSpatialDataSource::Open( const char * pszNewName, int bUpdate,
         pszDriver = CPLStrdup("{SQL Server Native Client 11.0}");
 #elif SQLNCLI_VERSION == 10
         pszDriver = CPLStrdup("{SQL Server Native Client 10.0}");
+#elif MSODBCSQL_VERSION == 13
+        pszDriver = CPLStrdup("{ODBC Driver 13 for SQL Server}");
+#elif MSODBCSQL_VERSION == 17
+        pszDriver = CPLStrdup("{ODBC Driver 17 for SQL Server}");
 #else
         pszDriver = CPLStrdup("{SQL Server}");
 #endif
@@ -933,7 +946,7 @@ int OGRMSSQLSpatialDataSource::Open( const char * pszNewName, int bUpdate,
         if (papszSRIds != nullptr)
             nSRId = atoi(papszSRIds[iTable]);
         else
-            nSRId = -1;
+            nSRId = 0;
 
         if (papszCoordDimensions != nullptr)
             nCoordDimension = atoi(papszCoordDimensions[iTable]);
@@ -945,6 +958,7 @@ int OGRMSSQLSpatialDataSource::Open( const char * pszNewName, int bUpdate,
         else
             eType = wkbUnknown;
 
+        CPLAssert(papszGeomColumnNames && papszGeomColumnNames[iTable]);
         if( strlen(papszGeomColumnNames[iTable]) > 0 )
             OpenTable( papszSchemaNames[iTable], papszTableNames[iTable], papszGeomColumnNames[iTable],
                     nCoordDimension, nSRId, papszSRTexts? papszSRTexts[iTable] : nullptr, eType, bUpdate );
@@ -1188,6 +1202,8 @@ OGRSpatialReference *OGRMSSQLSpatialDataSource::FetchSRS( int nId )
         if( panSRID[i] == nId )
             return papoSRS[i];
     }
+
+    EndCopy();
 
     OGRSpatialReference *poSRS = nullptr;
 
@@ -1519,4 +1535,34 @@ OGRErr OGRMSSQLSpatialDataSource::RollbackTransaction()
     }
 
     return OGRERR_NONE;
+}
+
+/************************************************************************/
+/*                             StartCopy()                              */
+/************************************************************************/
+
+void OGRMSSQLSpatialDataSource::StartCopy(OGRMSSQLSpatialTableLayer *poMSSQLSpatialLayer)
+{
+    if (poLayerInCopyMode == poMSSQLSpatialLayer)
+        return;
+    EndCopy();
+    poLayerInCopyMode = poMSSQLSpatialLayer;
+    poLayerInCopyMode->StartCopy();
+}
+
+/************************************************************************/
+/*                              EndCopy()                               */
+/************************************************************************/
+
+OGRErr OGRMSSQLSpatialDataSource::EndCopy()
+{
+    if (poLayerInCopyMode != nullptr)
+    {
+        OGRErr result = poLayerInCopyMode->EndCopy();
+        poLayerInCopyMode = nullptr;
+
+        return result;
+    }
+    else
+        return OGRERR_NONE;
 }
