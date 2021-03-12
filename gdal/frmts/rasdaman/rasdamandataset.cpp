@@ -102,7 +102,7 @@ typedef std::map<Subset, r_Ref<r_GMarray> > ArrayCache;
 class RasdamanRasterBand;
 static CPLString getQuery(const char *templateString, const char* x_lo, const char* x_hi, const char* y_lo, const char* y_hi);
 
-class RasdamanDataset : public GDALPamDataset
+class RasdamanDataset final: public GDALPamDataset
 {
   friend class RasdamanRasterBand;
 
@@ -240,7 +240,7 @@ r_Ref<r_GMarray>& RasdamanDataset::request_array(const Subset& subset, int& offs
       offsetX = subset.x_lo() - existing.x_lo();
       offsetY = subset.y_lo() - existing.y_lo();
 
-      CPLDebug("rasdaman", "Found matching tile (%d, %d, %d, %d) for requested tile (%d, %d, %d, %d). Offests are (%d, %d).",
+      CPLDebug("rasdaman", "Found matching tile (%d, %d, %d, %d) for requested tile (%d, %d, %d, %d). Offsets are (%d, %d).",
             existing.x_lo(), existing.x_hi(), existing.y_lo(), existing.y_hi(),
             subset.x_lo(), subset.x_hi(), subset.y_lo(), subset.y_hi(),
             offsetX, offsetY);
@@ -295,7 +295,7 @@ void RasdamanDataset::clear_array_cache() {
 /* ==================================================================== */
 /************************************************************************/
 
-class RasdamanRasterBand : public GDALPamRasterBand
+class RasdamanRasterBand final: public GDALPamRasterBand
 {
   friend class RasdamanDataset;
 
@@ -709,7 +709,7 @@ void GDALRegister_RASDAMAN()
   poDriver->SetDescription( "RASDAMAN" );
   poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
   poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "RASDAMAN" );
-  poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_rasdaman.html" );
+  poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/rasdaman.html" );
 
   poDriver->pfnOpen = RasdamanDataset::Open;
 

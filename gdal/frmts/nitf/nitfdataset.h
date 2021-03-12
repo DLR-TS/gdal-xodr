@@ -88,9 +88,9 @@ class NITFDataset final: public GDALPamDataset
 
 #ifdef ESRI_BUILD
     void         InitializeNITFDESMetadata();
-    void         InitializeNITFDESs();
     void         InitializeNITFTREs();
 #endif
+    void         InitializeNITFDESs();
     void         InitializeNITFMetadata();
     void         InitializeCGMMetadata();
     void         InitializeTextMetadata();
@@ -236,7 +236,7 @@ class NITFRasterBand final: public GDALPamRasterBand
 /* then to the underlying band if no value exist in PAM. The setters aren't */
 /* overridden, so they go to PAM */
 
-class NITFProxyPamRasterBand: public GDALPamRasterBand
+class NITFProxyPamRasterBand CPL_NON_FINAL: public GDALPamRasterBand
 {
     private:
         std::map<CPLString, char**> oMDMap;
@@ -339,7 +339,7 @@ class NITFProxyPamRasterBand: public GDALPamRasterBand
 /* to make sure they keep the proper pointer to their "natural" dataset */
 /* This trick is no longer necessary with the NITFWrapperRasterBand */
 /* We just override the few specific methods where we want that */
-/* the NITFWrapperRasterBand behaviour differs from the JPEG/JPEG2000 one */
+/* the NITFWrapperRasterBand behavior differs from the JPEG/JPEG2000 one */
 
 class NITFWrapperRasterBand final: public NITFProxyPamRasterBand
 {

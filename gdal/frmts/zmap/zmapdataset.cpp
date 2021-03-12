@@ -43,7 +43,7 @@ CPL_CVSID("$Id$")
 
 class ZMapRasterBand;
 
-class ZMapDataset : public GDALPamDataset
+class ZMapDataset final: public GDALPamDataset
 {
     friend class ZMapRasterBand;
 
@@ -75,7 +75,7 @@ class ZMapDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ZMapRasterBand : public GDALPamRasterBand
+class ZMapRasterBand final: public GDALPamRasterBand
 {
     friend class ZMapDataset;
 
@@ -281,6 +281,9 @@ GDALDataset *ZMapDataset::Open( GDALOpenInfo * poOpenInfo )
     if (!Identify(poOpenInfo) || poOpenInfo->fpL == nullptr )
         return nullptr;
 
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("ZMAP") )
+        return nullptr;
+
 /* -------------------------------------------------------------------- */
 /*      Confirm the requested access is supported.                      */
 /* -------------------------------------------------------------------- */
@@ -306,6 +309,7 @@ GDALDataset *ZMapDataset::Open( GDALOpenInfo * poOpenInfo )
         else
             break;
     }
+    // cppcheck-suppress knownConditionTrueFalse
     if (pszLine == nullptr)
     {
         VSIFCloseL(poOpenInfo->fpL);
@@ -534,6 +538,9 @@ GDALDataset* ZMapDataset::CreateCopy( const char * pszFilename,
                                       GDALProgressFunc pfnProgress,
                                       void * pProgressData )
 {
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("ZMAP") )
+        return nullptr;
+
 /* -------------------------------------------------------------------- */
 /*      Some some rudimentary checks                                    */
 /* -------------------------------------------------------------------- */
@@ -723,7 +730,7 @@ void GDALRegister_ZMap()
     poDriver->SetDescription( "ZMap" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "ZMap Plus Grid" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#ZMap" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/zmap.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "dat" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

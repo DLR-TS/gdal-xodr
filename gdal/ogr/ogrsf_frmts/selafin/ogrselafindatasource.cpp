@@ -32,6 +32,7 @@
 #include "cpl_vsi.h"
 #include "io_selafin.h"
 
+#include <algorithm>
 #include <ctime>
 
 CPL_CVSID("$Id$")
@@ -65,8 +66,6 @@ void Range::setRange(const char *pszStr) {
     }
     const char *pszc=pszStr;
     char *psze = nullptr;
-    int nMin = 0;
-    int nMax = 0;
     SelafinTypeDef eType;
     while (*pszc!=0 && *pszc!=']') {
         pszc++;
@@ -77,9 +76,9 @@ void Range::setRange(const char *pszStr) {
             eType=ELEMENTS;
             pszc++;
         } else eType=ALL;
-        if (*pszc==':') {
-            nMin=0;
-        } else {
+
+        int nMin = 0;
+        if (*pszc!=':') {
             nMin=(int)strtol(pszc,&psze,10);
             if (*psze!=':' && *psze!=',' && *psze!=']') {
                 CPLError( CE_Warning, CPLE_IllegalArg, "Invalid range specified\n");
@@ -89,11 +88,10 @@ void Range::setRange(const char *pszStr) {
             }
             pszc=psze;
         }
+        int nMax = -1;
         if (*pszc==':') {
             ++pszc;
-            if (*pszc==',' || *pszc==']') {
-                nMax=-1;
-            } else {
+            if (*pszc != ',' && *pszc !=']') {
                 nMax=(int)strtol(pszc,&psze,10);
                 if (*psze!=',' && *psze!=']') {
                     CPLError( CE_Warning, CPLE_IllegalArg, "Invalid range specified\n");
@@ -282,7 +280,6 @@ int OGRSelafinDataSource::Open( const char * pszFilename, int bUpdateIn,
     /* For writable /vsizip/, do nothing more */
     if (bCreate && STARTS_WITH(pszName, "/vsizip/")) return TRUE;
     CPLString osFilename(pszName);
-    CPLString osBaseFilename = CPLGetFilename(pszName);
     // Determine what sort of object this is.
     VSIStatBufL sStatBuf;
     if (VSIStatExL( osFilename, &sStatBuf, VSI_STAT_NATURE_FLAG ) != 0) return FALSE;
@@ -425,7 +422,7 @@ int OGRSelafinDataSource::OpenTable(const char * pszFilename) {
         SelafinTypeDef eType=(j==0)?POINTS:ELEMENTS;
         for (int i=0;i<poHeader->nSteps;++i) {
             if (poRange.contains(eType,i)) {
-                char szTemp[30];
+                char szTemp[30] = {};
                 double dfTime = 0.0;
                 if( VSIFSeekL(fp, poHeader->getPosition(i)+4, SEEK_SET)!=0 ||
                     Selafin::read_float(fp, dfTime)==0 )
@@ -436,8 +433,8 @@ int OGRSelafinDataSource::OpenTable(const char * pszFilename) {
                 if (poHeader->panStartDate==nullptr) snprintf(szTemp,29,"%d",i); else {
                     struct tm sDate;
                     memset(&sDate, 0, sizeof(sDate));
-                    sDate.tm_year=poHeader->panStartDate[0]-1900;
-                    sDate.tm_mon=poHeader->panStartDate[1]-1;
+                    sDate.tm_year=std::max(poHeader->panStartDate[0], 0) - 1900;
+                    sDate.tm_mon=std::max(poHeader->panStartDate[1], 1) - 1;
                     sDate.tm_mday=poHeader->panStartDate[2];
                     sDate.tm_hour=poHeader->panStartDate[3];
                     sDate.tm_min=poHeader->panStartDate[4];
@@ -570,9 +567,8 @@ OGRErr OGRSelafinDataSource::DeleteLayer( int iLayer ) {
         }
         for (int j=0;j<poHeader->nVar;++j)
         {
-            int nTemp = 0;
             if (VSIFSeekL(poHeader->fp,poHeader->getPosition(i+1)+12,SEEK_SET)!=0 ||
-                (nTemp=Selafin::read_floatarray(poHeader->fp,&dfValues,poHeader->nFileSize)) !=poHeader->nPoints ||
+                Selafin::read_floatarray(poHeader->fp,&dfValues,poHeader->nFileSize) !=poHeader->nPoints ||
                 VSIFSeekL(poHeader->fp,poHeader->getPosition(i)+12,SEEK_SET)!=0 ||
                 Selafin::write_floatarray(poHeader->fp,dfValues,poHeader->nPoints)==0) {
                 CPLError( CE_Failure, CPLE_FileIO, "Could not update Selafin file %s.\n",pszName);

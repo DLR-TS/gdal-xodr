@@ -29,11 +29,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-try:
-    from BaseHTTPServer import BaseHTTPRequestHandler
-except ImportError:
-    from http.server import BaseHTTPRequestHandler
-
+from http.server import BaseHTTPRequestHandler
 import os
 
 import pytest
@@ -61,7 +57,7 @@ def ogr_wfs_init():
     gdaltest.deegree_wfs = None
     gdaltest.ionic_wfs = None
 
-    gml_ds = ogr.Open('data/ionic_wfs.gml')
+    gml_ds = ogr.Open('data/gml/ionic_wfs.gml')
     if gml_ds is None:
         gdaltest.wfs_drv = None
         if gdal.GetLastErrorMsg().find('Xerces') != -1:
@@ -431,7 +427,7 @@ class WFSHTTPHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header('Content-type', 'application/xml')
                     self.end_headers()
-                    f = open('data/get_capabilities.xml', 'rb')
+                    f = open('data/wfs/get_capabilities.xml', 'rb')
                     content = f.read()
                     f.close()
                     self.wfile.write(content)
@@ -441,7 +437,7 @@ class WFSHTTPHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header('Content-type', 'application/xml')
                     self.end_headers()
-                    f = open('data/describe_feature_type.xml', 'rb')
+                    f = open('data/wfs/describe_feature_type.xml', 'rb')
                     content = f.read()
                     f.close()
                     self.wfile.write(content)
@@ -451,7 +447,7 @@ class WFSHTTPHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header('Content-type', 'application/xml')
                     self.end_headers()
-                    f = open('data/get_feature.xml', 'rb')
+                    f = open('data/wfs/get_feature.xml', 'rb')
                     content = f.read()
                     f.close()
                     self.wfile.write(content)
@@ -683,7 +679,7 @@ def test_ogr_wfs_ionic_sql():
 
 def test_ogr_wfs_xmldescriptionfile():
 
-    ds = ogr.Open('data/testwfs.xml')
+    ds = ogr.Open('data/wfs/testwfs.xml')
     lyr = ds.GetLayer(0)
     feature_defn = lyr.GetLayerDefn()
     index = feature_defn.GetFieldIndex('name')
@@ -756,15 +752,15 @@ def test_ogr_wfs_xmldescriptionfile_to_be_updated():
 
 def test_ogr_wfs_getcapabilitiesfile():
 
-    ds = ogr.Open('data/getcapabilities_wfs.xml')
+    ds = ogr.Open('data/wfs/getcapabilities_wfs.xml')
 
     if ds is None:
-        gdal.Unlink('data/getcapabilities_wfs.gfs')
+        gdal.Unlink('data/wfs/getcapabilities_wfs.gfs')
         pytest.fail()
 
     ds = None
 
-    gdal.Unlink('data/getcapabilities_wfs.gfs')
+    gdal.Unlink('data/wfs/getcapabilities_wfs.gfs')
 
 ###############################################################################
 # Test opening a datastore which only support GML 3.2.1 output
@@ -1673,7 +1669,7 @@ xsi:schemaLocation="http://foo /vsimem/wfs_endpoint?SERVICE=WFS&amp;VERSION=1.1.
 
     f = lyr.GetNextFeature()
     if f.gml_id != 'my_layer.1' or f.boolean != 1 or f.str != 'str' or f.short != 1 or \
-       f.int != 123456789 or f.float != 1.2 or f.double != 1.23 or f.dt != '2015-04-17T12:34:56Z' or \
+       f.int != 123456789 or f.float != 1.2 or f.double != 1.23 or f.dt != '2015/04/17 12:34:56+00' or \
        f.GetGeometryRef().ExportToWkt() != 'POINT (2 49)':
         f.DumpReadable()
         pytest.fail()
@@ -1796,7 +1792,7 @@ def test_ogr_wfs_vsimem_wfs110_one_layer_getextent_optimized(with_and_without_st
     expected_extent = (-20037508.342789248, 20037508.342789248, -20037508.342789154, 20037508.342789147)
     got_extent = lyr.GetExtent()
     for i in range(4):
-        assert abs(expected_extent[i] - got_extent[i]) <= 1e-5
+        assert expected_extent[i] == pytest.approx(got_extent[i], abs=1e-5)
 
     
 ###############################################################################
@@ -1987,7 +1983,7 @@ def test_ogr_wfs_vsimem_wfs110_one_layer_filter(with_and_without_streaming):
     ds = ogr.Open('WFS:/vsimem/wfs_endpoint')
     lyr = ds.GetLayer(0)
 
-    gdal.FileFromMemBuffer('/vsimem/wfs_endpoint?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=my_layer&FILTER=%3CFilter%20xmlns%3D%22http:%2F%2Fwww.opengis.net%2Fogc%22%20xmlns:gml%3D%22http:%2F%2Fwww.opengis.net%2Fgml%22%3E%3COr%3E%3COr%3E%3COr%3E%3COr%3E%3COr%3E%3COr%3E%3COr%3E%3CAnd%3E%3CAnd%3E%3CPropertyIsEqualTo%3E%3CPropertyName%3Estr%3C%2FPropertyName%3E%3CLiteral%3Estr%3C%2FLiteral%3E%3C%2FPropertyIsEqualTo%3E%3CPropertyIsEqualTo%3E%3CPropertyName%3Eshort%3C%2FPropertyName%3E%3CLiteral%3E1%3C%2FLiteral%3E%3C%2FPropertyIsEqualTo%3E%3C%2FAnd%3E%3CPropertyIsEqualTo%3E%3CPropertyName%3Efloat%3C%2FPropertyName%3E%3CLiteral%3E1.2%3C%2FLiteral%3E%3C%2FPropertyIsEqualTo%3E%3C%2FAnd%3E%3CPropertyIsLike%20wildCard%3D%27%2A%27%20singleChar%3D%27_%27%20escapeChar%3D%27%21%27%3E%3CPropertyName%3Estr%3C%2FPropertyName%3E%3CLiteral%3Est%2A%3C%2FLiteral%3E%3C%2FPropertyIsLike%3E%3C%2FOr%3E%3CNot%3E%3CPropertyIsNull%3E%3CPropertyName%3Eboolean%3C%2FPropertyName%3E%3C%2FPropertyIsNull%3E%3C%2FNot%3E%3C%2FOr%3E%3CPropertyIsGreaterThan%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E1%3C%2FLiteral%3E%3C%2FPropertyIsGreaterThan%3E%3C%2FOr%3E%3CPropertyIsGreaterThanOrEqualTo%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E1%3C%2FLiteral%3E%3C%2FPropertyIsGreaterThanOrEqualTo%3E%3C%2FOr%3E%3CPropertyIsNotEqualTo%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E2%3C%2FLiteral%3E%3C%2FPropertyIsNotEqualTo%3E%3C%2FOr%3E%3CPropertyIsLessThan%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E2000000000%3C%2FLiteral%3E%3C%2FPropertyIsLessThan%3E%3C%2FOr%3E%3CPropertyIsLessThanOrEqualTo%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E2000000000%3C%2FLiteral%3E%3C%2FPropertyIsLessThanOrEqualTo%3E%3C%2FOr%3E%3C%2FFilter%3E',
+    gdal.FileFromMemBuffer('/vsimem/wfs_endpoint?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=my_layer&FILTER=%3CFilter%20xmlns%3D%22http:%2F%2Fwww.opengis.net%2Fogc%22%20xmlns:gml%3D%22http:%2F%2Fwww.opengis.net%2Fgml%22%3E%3COr%3E%3COr%3E%3COr%3E%3CAnd%3E%3CPropertyIsEqualTo%3E%3CPropertyName%3Estr%3C%2FPropertyName%3E%3CLiteral%3Estr%3C%2FLiteral%3E%3C%2FPropertyIsEqualTo%3E%3CPropertyIsEqualTo%3E%3CPropertyName%3Eshort%3C%2FPropertyName%3E%3CLiteral%3E1%3C%2FLiteral%3E%3C%2FPropertyIsEqualTo%3E%3C%2FAnd%3E%3CPropertyIsLike%20wildCard%3D%27%2A%27%20singleChar%3D%27_%27%20escapeChar%3D%27%21%27%20matchCase%3D%27true%27%3E%3CPropertyName%3Estr%3C%2FPropertyName%3E%3CLiteral%3Est%2A%3C%2FLiteral%3E%3C%2FPropertyIsLike%3E%3C%2FOr%3E%3COr%3E%3CNot%3E%3CPropertyIsNull%3E%3CPropertyName%3Eboolean%3C%2FPropertyName%3E%3C%2FPropertyIsNull%3E%3C%2FNot%3E%3CPropertyIsGreaterThan%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E1%3C%2FLiteral%3E%3C%2FPropertyIsGreaterThan%3E%3C%2FOr%3E%3C%2FOr%3E%3COr%3E%3COr%3E%3CPropertyIsGreaterThanOrEqualTo%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E1%3C%2FLiteral%3E%3C%2FPropertyIsGreaterThanOrEqualTo%3E%3CPropertyIsNotEqualTo%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E2%3C%2FLiteral%3E%3C%2FPropertyIsNotEqualTo%3E%3C%2FOr%3E%3COr%3E%3CPropertyIsLessThan%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E2000000000%3C%2FLiteral%3E%3C%2FPropertyIsLessThan%3E%3CPropertyIsLessThanOrEqualTo%3E%3CPropertyName%3Eint%3C%2FPropertyName%3E%3CLiteral%3E2000000000%3C%2FLiteral%3E%3C%2FPropertyIsLessThanOrEqualTo%3E%3C%2FOr%3E%3C%2FOr%3E%3C%2FOr%3E%3C%2FFilter%3E',
                            """<wfs:FeatureCollection xmlns:xs="http://www.w3.org/2001/XMLSchema"
 xmlns:ogc="http://www.opengis.net/ogc"
 xmlns:foo="http://foo"
@@ -2137,7 +2133,7 @@ xsi:schemaLocation="http://foo /vsimem/wfs_endpoint?SERVICE=WFS&amp;VERSION=1.1.
     assert not (ret == 0 or gdal.GetLastErrorMsg().find('Wrong field type for argument 3 of ST_DWithin') < 0)
 
     # Now valid requests
-    gdal.FileFromMemBuffer('/vsimem/wfs_endpoint?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=my_layer&FILTER=%3CFilter%20xmlns%3D%22http:%2F%2Fwww.opengis.net%2Fogc%22%20xmlns:gml%3D%22http:%2F%2Fwww.opengis.net%2Fgml%22%3E%3COr%3E%3COr%3E%3COr%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22urn:ogc:def:crs:EPSG::4326%22%3E%3Cgml:lowerCorner%3E48.5%201.5%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E49.5%202.5%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22urn:ogc:def:crs:EPSG::4326%22%3E%3Cgml:lowerCorner%3E48.5%201.5%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E49.5%202.5%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3C%2FOr%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22EPSG:4326%22%3E%3Cgml:lowerCorner%3E1.5%2048.5%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E2.5%2049.5%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3C%2FOr%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22urn:ogc:def:crs:EPSG::32630%22%3E%3Cgml:lowerCorner%3E380000%205370000%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E470000%205490000%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3C%2FOr%3E%3C%2FFilter%3E',
+    gdal.FileFromMemBuffer('/vsimem/wfs_endpoint?SERVICE=WFS&VERSION=1.1.0&REQUEST=GetFeature&TYPENAME=my_layer&FILTER=%3CFilter%20xmlns%3D%22http:%2F%2Fwww.opengis.net%2Fogc%22%20xmlns:gml%3D%22http:%2F%2Fwww.opengis.net%2Fgml%22%3E%3COr%3E%3COr%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22urn:ogc:def:crs:EPSG::4326%22%3E%3Cgml:lowerCorner%3E48.5%201.5%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E49.5%202.5%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22urn:ogc:def:crs:EPSG::4326%22%3E%3Cgml:lowerCorner%3E48.5%201.5%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E49.5%202.5%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3C%2FOr%3E%3COr%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22EPSG:4326%22%3E%3Cgml:lowerCorner%3E1.5%2048.5%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E2.5%2049.5%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3CIntersects%3E%3CPropertyName%3Eshape%3C%2FPropertyName%3E%3Cgml:Envelope%20srsName%3D%22urn:ogc:def:crs:EPSG::32630%22%3E%3Cgml:lowerCorner%3E380000%205370000%3C%2Fgml:lowerCorner%3E%3Cgml:upperCorner%3E470000%205490000%3C%2Fgml:upperCorner%3E%3C%2Fgml:Envelope%3E%3C%2FIntersects%3E%3C%2FOr%3E%3C%2FOr%3E%3C%2FFilter%3E',
                            content)
 
     lyr.SetAttributeFilter("ST_Intersects(shape, ST_MakeEnvelope(1.5,48.5,2.5,49.5)) OR " +
@@ -3083,7 +3079,7 @@ xsi:schemaLocation="http://foo /vsimem/wfs_endpoint?SERVICE=WFS&amp;VERSION=1.1.
 
     f = lyr.GetNextFeature()
     if f.gml_id != 'my_layer.1' or f.boolean != 1 or f.str != 'str' or f.short != 1 or \
-       f.int != 123456789 or f.float != 1.2 or f.double != 1.23 or f.dt != '2015-04-17T12:34:56Z' or \
+       f.int != 123456789 or f.float != 1.2 or f.double != 1.23 or f.dt != '2015/04/17 12:34:56+00' or \
        f.GetGeometryRef().ExportToWkt() != 'POINT (2 49)':
         f.DumpReadable()
         pytest.fail()

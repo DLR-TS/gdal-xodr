@@ -234,8 +234,8 @@ GDALDataType CPL_STDCALL GDALFindDataType(
     int nBits, int bSigned, int bFloating, int bComplex )
 {
     if( bSigned ) { nBits = std::max(nBits, 16); }
-    if( bComplex ) { nBits = std::max(nBits, !bSigned ? 32 : 16); }
-    if( bFloating ) { nBits = std::max(nBits, !bSigned ? 64 : 32); }
+    if( bComplex ) { nBits = std::max(nBits, !bSigned ? 32 : 16); } // we don't have complex unsigned data types, so for a complex uint16, promote to complex int32
+    if( bFloating ) { nBits = std::max(nBits, 32); }
 
     if( nBits <= 8 ) { return GDT_Byte; }
 
@@ -511,7 +511,7 @@ int CPL_STDCALL GDALDataTypeIsConversionLossy( GDALDataType eTypeFrom,
 
     if( GDALDataTypeIsInteger(eTypeTo) )
     {
-        // E.g. float32 -> int32 
+        // E.g. float32 -> int32
         if( GDALDataTypeIsFloating(eTypeFrom) )
             return TRUE;
 
@@ -725,7 +725,7 @@ double GDALAdjustValueToDataType(
             }
             else
             {
-                // Intentionaly loose precision.
+                // Intentionally loose precision.
                 // TODO(schwehr): Is the double cast really necessary?
                 // If so, why?  What will fail?
                 dfValue = static_cast<double>(static_cast<float>(dfValue));
@@ -1271,8 +1271,7 @@ GDAL_GCP * CPL_STDCALL GDALDuplicateGCPs( int nCount, const GDAL_GCP *pasGCPList
 /************************************************************************/
 
 /**
- * \fn GDALFindAssociatedFile(const char*, const char*, char**, int)
- * Find file with alternate extension.
+ * \brief Find file with alternate extension.
  *
  * Finds the file with the indicated extension, substituting it in place
  * of the extension of the base filename.  Generally used to search for
@@ -1303,12 +1302,13 @@ GDAL_GCP * CPL_STDCALL GDALDuplicateGCPs( int nCount, const GDAL_GCP *pasGCPList
 CPLString GDALFindAssociatedFile( const char *pszBaseFilename,
                                   const char *pszExt,
                                   CSLConstList papszSiblingFiles,
-                                  int /* nFlags */ )
+                                  CPL_UNUSED int nFlags )
 
 {
     CPLString osTarget = CPLResetExtension( pszBaseFilename, pszExt );
 
-    if( papszSiblingFiles == nullptr )
+    if( papszSiblingFiles == nullptr ||
+        !GDALCanReliablyUseSiblingFileList(osTarget.c_str()) )
     {
         VSIStatBufL sStatBuf;
 
@@ -1459,12 +1459,15 @@ int CPL_STDCALL GDALLoadOziMapFile( const char *pszFilename,
                 // coordinates.
                 if ( eErr == OGRERR_NONE )
                 {
-                    OGRSpatialReference *poLatLong = oSRS.CloneGeogCS();
+                    OGRSpatialReference *poLongLat = oSRS.CloneGeogCS();
 
-                    if ( poLatLong )
+                    if ( poLongLat )
                     {
+                        oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                        poLongLat->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
                         OGRCoordinateTransformation *poTransform =
-                            OGRCreateCoordinateTransformation( poLatLong,
+                            OGRCreateCoordinateTransformation( poLongLat,
                                                                &oSRS );
                         if ( poTransform )
                         {
@@ -1472,7 +1475,7 @@ int CPL_STDCALL GDALLoadOziMapFile( const char *pszFilename,
                                 poTransform->Transform( 1, &dfLon, &dfLat ));
                             delete poTransform;
                         }
-                        delete poLatLong;
+                        delete poLongLat;
                     }
                 }
             }
@@ -1778,7 +1781,7 @@ int GDALReadTabFile2( const char * pszBaseFilename,
 
     const char *pszTAB = CPLResetExtension( pszBaseFilename, "tab" );
 
-    if (papszSiblingFiles)
+    if (papszSiblingFiles && GDALCanReliablyUseSiblingFileList(pszTAB))
     {
         int iSibling = CSLFindString(papszSiblingFiles, CPLGetFilename(pszTAB));
         if (iSibling >= 0)
@@ -1943,7 +1946,7 @@ GDALLoadWorldFile( const char *pszFilename, double *padfGeoTransform )
  * </ul>
  *
  * @param pszBaseFilename the target raster file.
- * @param pszExtension the extension to use (i.e. ".wld") or NULL to derive it
+ * @param pszExtension the extension to use (i.e. "wld") or NULL to derive it
  * from the pszBaseFilename
  * @param padfGeoTransform the six double array into which the
  * geotransformation should be placed.
@@ -2029,7 +2032,7 @@ int GDALReadWorldFile2( const char *pszBaseFilename, const char *pszExtension,
 
     const char *pszTFW = CPLResetExtension( pszBaseFilename, szExtLower );
 
-    if (papszSiblingFiles)
+    if (papszSiblingFiles && GDALCanReliablyUseSiblingFileList(pszTFW))
     {
         const int iSibling =
             CSLFindString(papszSiblingFiles, CPLGetFilename(pszTFW));
@@ -2102,7 +2105,7 @@ int GDALReadWorldFile2( const char *pszBaseFilename, const char *pszExtension,
  * </ul>
  *
  * @param pszBaseFilename the target raster file.
- * @param pszExtension the extension to use (i.e. ".wld"). Must not be NULL
+ * @param pszExtension the extension to use (i.e. "wld"). Must not be NULL
  * @param padfGeoTransform the six double array from which the
  * geotransformation should be read.
  *
@@ -2413,6 +2416,7 @@ GDALGCPsToGeoTransform( int nGCPCount, const GDAL_GCP *pasGCPs,
                             "GDAL_GCPS_TO_GEOTRANSFORM_APPROX_OK", "NO"));
         if( !bApproxOK )
         {
+            // coverity[tainted_data]
             dfPixelThreshold =
                 CPLAtof(CPLGetConfigOption(
                     "GDAL_GCPS_TO_GEOTRANSFORM_APPROX_THRESHOLD", "0.25"));
@@ -3046,26 +3050,26 @@ GDALGeneralCmdLineProcessor( int nArgc, char ***ppapszArgv, int nOptions )
 
             VSIFCloseL( fpOptFile );
 
-            char** papszArgvOptfileMod = papszArgvOptfile;
             if( !bHasOptfile )
             {
+                char** papszArgvOptfileBefore = papszArgvOptfile;
                 if( GDALGeneralCmdLineProcessor(CSLCount(papszArgvOptfile),
-                                        &papszArgvOptfileMod, nOptions) < 0 )
+                                        &papszArgvOptfile, nOptions) < 0 )
                 {
                     CSLDestroy( papszReturn );
                     CSLDestroy(papszArgvOptfile);
                     return -1;
                 }
+                CSLDestroy(papszArgvOptfileBefore);
             }
 
-            char** papszIter = papszArgvOptfileMod + 1;
+            char** papszIter = papszArgvOptfile + 1;
             while( *papszIter )
             {
                 papszReturn = CSLAddString(papszReturn, *papszIter);
                 ++ papszIter;
             }
             CSLDestroy(papszArgvOptfile);
-            CSLDestroy(papszArgvOptfileMod);
 
             iArg += 1;
         }
@@ -3125,17 +3129,17 @@ GDALGeneralCmdLineProcessor( int nArgc, char ***ppapszArgv, int nOptions )
                 if( CPLFetchBool( papszMD, GDAL_DCAP_MULTIDIM_RASTER, false ) )
                 {
                     if( !osKind.empty() ) osKind += ',';
-                    osKind = "multidimensional raster";
+                    osKind += "multidimensional raster";
                 }
                 if( CPLFetchBool( papszMD, GDAL_DCAP_VECTOR, false ) )
                 {
                     if( !osKind.empty() ) osKind += ',';
-                    osKind = "vector";
+                    osKind += "vector";
                 }
                 if( CPLFetchBool( papszMD, GDAL_DCAP_GNM, false ) )
                 {
                     if( !osKind.empty() ) osKind += ',';
-                    osKind = "geography network";
+                    osKind += "geography network";
                 }
                 if( osKind.empty() )
                     osKind = "unknown kind";
@@ -3230,6 +3234,8 @@ GDALGeneralCmdLineProcessor( int nArgc, char ***ppapszArgv, int nOptions )
                       CSLFetchNameValue( papszMD, GDAL_DMD_CREATIONFIELDDATASUBTYPES ) );
             if( CPLFetchBool( papszMD, GDAL_DCAP_NOTNULL_FIELDS, false ) )
                 printf( "  Supports: Creating fields with NOT NULL constraint.\n" );/*ok*/
+            if( CPLFetchBool( papszMD, GDAL_DCAP_UNIQUE_FIELDS, false ) )
+                printf( "  Supports: Creating fields with UNIQUE constraint.\n" );/*ok*/
             if( CPLFetchBool( papszMD, GDAL_DCAP_DEFAULT_FIELDS, false ) )
                 printf( "  Supports: Creating fields with DEFAULT values.\n" );/*ok*/
             if( CPLFetchBool( papszMD, GDAL_DCAP_NOTNULL_GEOMFIELDS, false ) )
@@ -3405,13 +3411,31 @@ static bool _FetchDblFromMD( CSLConstList papszMD, const char *pszKey,
 
 /** Extract RPC info from metadata, and apply to an RPCInfo structure.
  *
- * The inverse of this function is RPCInfoToMD() in alg/gdal_rpc.cpp
+ * The inverse of this function is RPCInfoV1ToMD() in alg/gdal_rpc.cpp
  *
  * @param papszMD Dictionary of metadata representing RPC
  * @param psRPC (output) Pointer to structure to hold the RPC values.
  * @return TRUE in case of success. FALSE in case of failure.
  */
-int CPL_STDCALL GDALExtractRPCInfo( CSLConstList papszMD, GDALRPCInfo *psRPC )
+int CPL_STDCALL GDALExtractRPCInfoV1( CSLConstList papszMD, GDALRPCInfoV1 *psRPC )
+
+{
+    GDALRPCInfoV2 sRPC;
+    if( !GDALExtractRPCInfoV2(papszMD, &sRPC) )
+        return FALSE;
+    memcpy(psRPC, &sRPC, sizeof(GDALRPCInfoV1) );
+    return TRUE;
+}
+
+/** Extract RPC info from metadata, and apply to an RPCInfo structure.
+ *
+ * The inverse of this function is RPCInfoV2ToMD() in alg/gdal_rpc.cpp
+ *
+ * @param papszMD Dictionary of metadata representing RPC
+ * @param psRPC (output) Pointer to structure to hold the RPC values.
+ * @return TRUE in case of success. FALSE in case of failure.
+ */
+int CPL_STDCALL GDALExtractRPCInfoV2( CSLConstList papszMD, GDALRPCInfoV2 *psRPC )
 
 {
     if( CSLFetchNameValue( papszMD, RPC_LINE_NUM_COEFF ) == nullptr )
@@ -3427,6 +3451,8 @@ int CPL_STDCALL GDALExtractRPCInfo( CSLConstList papszMD, GDALRPCInfo *psRPC )
         return FALSE;
     }
 
+    _FetchDblFromMD( papszMD, RPC_ERR_BIAS, &(psRPC->dfERR_BIAS), 1, -1.0 );
+    _FetchDblFromMD( papszMD, RPC_ERR_RAND, &(psRPC->dfERR_RAND), 1, -1.0 );
     _FetchDblFromMD( papszMD, RPC_LINE_OFF, &(psRPC->dfLINE_OFF), 1, 0.0 );
     _FetchDblFromMD( papszMD, RPC_LINE_SCALE, &(psRPC->dfLINE_SCALE), 1, 1.0 );
     _FetchDblFromMD( papszMD, RPC_SAMP_OFF, &(psRPC->dfSAMP_OFF), 1, 0.0 );
@@ -3991,6 +4017,8 @@ GDALRIOResampleAlg GDALRasterIOGetResampleAlg(const char* pszResampling)
         eResampleAlg = GRIORA_Lanczos;
     else if( EQUAL(pszResampling, "AVERAGE") )
         eResampleAlg = GRIORA_Average;
+    else if( EQUAL(pszResampling, "RMS") )
+        eResampleAlg = GRIORA_RMS;
     else if( EQUAL(pszResampling, "MODE") )
         eResampleAlg = GRIORA_Mode;
     else if( EQUAL(pszResampling, "GAUSS") )
@@ -4021,6 +4049,8 @@ const char* GDALRasterIOGetResampleAlg(GDALRIOResampleAlg eResampleAlg)
             return "Lanczos";
         case GRIORA_Average:
             return "Average";
+        case GRIORA_RMS:
+            return "RMS";
         case GRIORA_Mode:
             return "Mode";
         case GRIORA_Gauss:
@@ -4062,6 +4092,53 @@ int GDALCanFileAcceptSidecarFile(const char* pszFilename)
     if( strncmp(pszFilename, "/vsisubfile/", strlen("/vsisubfile/")) == 0 )
         return FALSE;
     return TRUE;
+}
+
+/************************************************************************/
+/*                   GDALCanReliablyUseSiblingFileList()                */
+/************************************************************************/
+
+/* Try to address https://github.com/OSGeo/gdal/issues/2903 */
+/* - On Apple HFS+ filesystem, filenames are stored in a variant of UTF-8 NFD */
+/*   (normalization form decomposed). The filesystem takes care of converting */
+/*   precomposed form as often coming from user interface to this NFD variant */
+/*   See https://stackoverflow.com/questions/6153345/different-utf8-encoding-in-filenames-os-x */
+/*   And readdir() will return such NFD variant encoding. Consequently comparing */
+/*   the user filename with ones with readdir() is not reliable */
+/* - APFS preserves both case and normalization of the filename on disk in all */
+/*   variants. In macOS High Sierra, APFS is normalization-insensitive in both */
+/*   the case-insensitive and case-sensitive variants, using a hash-based native */
+/*   normalization scheme. APFS preserves the normalization of the filename and */
+/*   uses hashes of the normalized form of the filename to provide normalization */
+/*   insensitivity. */
+/*   From https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/APFS_Guide/FAQ/FAQ.html */
+/*   Issues might still arise if the file has been created using one of the UTF-8 */
+/*   encoding (likely the decomposed one if using MacOS specific API), but the */
+/*   string passed to GDAL for opening would be with another one (likely the precomposed one) */
+bool GDALCanReliablyUseSiblingFileList(const char* pszFilename)
+{
+#ifdef __APPLE__
+    for( int i = 0; pszFilename[i] != 0; ++i )
+    {
+        if( reinterpret_cast<const unsigned char*>(pszFilename)[i] > 127 )
+        {
+            // non-ASCII character found
+
+            // if this is a network storage, assume no issue
+            if( strstr(pszFilename, "/vsicurl/") ||
+                strstr(pszFilename, "/vsis3/") ||
+                strstr(pszFilename, "/vsicurl/") )
+            {
+                return true;
+            }
+            return false;
+        }
+    }
+    return true;
+#else
+    (void) pszFilename;
+    return true;
+#endif
 }
 
 /************************************************************************/

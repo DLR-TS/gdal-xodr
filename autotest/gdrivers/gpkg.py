@@ -32,13 +32,12 @@
 import os
 import sys
 import pytest
+from test_py_scripts import samples_path
 
 # Make sure we run from the directory of the script
 if os.path.basename(sys.argv[0]) == os.path.basename(__file__):
     if os.path.dirname(sys.argv[0]) != '':
         os.chdir(os.path.dirname(sys.argv[0]))
-
-sys.path.append('../../gdal/swig/python/samples')
 
 from osgeo import osr, gdal, ogr
 import gdaltest
@@ -46,34 +45,37 @@ import gdaltest
 ###############################################################################
 # Validate a geopackage
 
-try:
-    import validate_gpkg
-    has_validate = True
-except ImportError:
-    has_validate = False
-
 
 def validate(filename, quiet=False):
-    if has_validate:
-        my_filename = filename
-        if my_filename.startswith('/vsimem/'):
-            my_filename = 'tmp/validate.gpkg'
-            f = gdal.VSIFOpenL(filename, 'rb')
-            if f is None:
-                print('Cannot open %s' % filename)
-                return False
-            content = gdal.VSIFReadL(1, 10000000, f)
-            gdal.VSIFCloseL(f)
-            open(my_filename, 'wb').write(content)
-        try:
-            validate_gpkg.check(my_filename)
-        except Exception as e:
-            if not quiet:
-                print(e)
+
+    path = samples_path
+    if path not in sys.path:
+        sys.path.append(path)
+    try:
+        import validate_gpkg
+    except ImportError:
+        print('Cannot import validate_gpkg')
+        return True
+
+    my_filename = filename
+    if my_filename.startswith('/vsimem/'):
+        my_filename = 'tmp/validate.gpkg'
+        f = gdal.VSIFOpenL(filename, 'rb')
+        if f is None:
+            print('Cannot open %s' % filename)
             return False
-        finally:
-            if my_filename != filename:
-                os.unlink(my_filename)
+        content = gdal.VSIFReadL(1, 10000000, f)
+        gdal.VSIFCloseL(f)
+        open(my_filename, 'wb').write(content)
+    try:
+        validate_gpkg.check(my_filename)
+    except Exception as e:
+        if not quiet:
+            print(e)
+        return False
+    finally:
+        if my_filename != filename:
+            os.unlink(my_filename)
     return True
 
 ###############################################################################
@@ -221,7 +223,7 @@ def test_gpkg_1():
 
     got_gt = out_ds.GetGeoTransform()
     for i in range(6):
-        assert abs(expected_gt[i] - got_gt[i]) <= 1e-8
+        assert expected_gt[i] == pytest.approx(got_gt[i], abs=1e-8)
     got_wkt = out_ds.GetProjectionRef()
     assert expected_wkt == got_wkt
     expected_cs = [expected_cs, expected_cs, expected_cs, 4873]
@@ -503,13 +505,19 @@ def test_gpkg_4(tile_drv_name='PNG'):
     out_ds = gdal.Open('/vsimem/tmp.gpkg')
     expected_cs.append(30658)
     got_cs = [out_ds.GetRasterBand(i + 1).Checksum() for i in range(4)]
-    assert got_cs in (expected_cs, [22290, 21651, 21551, 30658])
+    assert got_cs in (expected_cs,
+                      [22290, 21651, 21551, 30658],
+                      [22286, 21645, 21764, 30658], # libwebp 1.0.3
+                      )
     check_tile_format(out_ds, tile_drv_name, working_bands, False)
     out_ds = None
 
     ds = gdal.OpenEx('/vsimem/tmp.gpkg', open_options=['USE_TILE_EXTENT=YES'])
     got_cs = [ds.GetRasterBand(i + 1).Checksum() for i in range(4)]
-    assert got_cs in (clamped_expected_cs, [56886, 43228, 56508, 30638])
+    assert got_cs in (clamped_expected_cs,
+                      [56886, 43228, 56508, 30638],
+                      [30478, 31718, 31360, 30638], # libwebp 1.0.3
+                      )
     ds = None
 
     gdal.Unlink('/vsimem/tmp.gpkg')
@@ -1199,7 +1207,8 @@ def test_gpkg_15():
 
     # Repeated SetProjection()
     out_ds = gdal.Open('/vsimem/tmp.gpkg', gdal.GA_Update)
-    assert out_ds.GetProjectionRef() == ''
+    assert out_ds.GetSpatialRef().IsLocal()
+    assert out_ds.GetProjectionRef().find('Undefined cartesian SRS') >= 0
     srs = osr.SpatialReference()
     srs.ImportFromEPSG(4326)
     ret = out_ds.SetProjection(srs.ExportToWkt())
@@ -1213,7 +1222,8 @@ def test_gpkg_15():
     out_ds = None
 
     out_ds = gdal.Open('/vsimem/tmp.gpkg')
-    assert out_ds.GetProjectionRef() == ''
+    assert out_ds.GetSpatialRef().IsLocal()
+    assert out_ds.GetProjectionRef().find('Undefined cartesian SRS') >= 0
     # Test setting on read-only dataset
     gdal.PushErrorHandler()
     ret = out_ds.SetProjection('')
@@ -1304,9 +1314,9 @@ def test_gpkg_16():
     val3 = ord(out_ds.GetRasterBand(3).ReadRaster(0, 0, 1, 1))
     out_ds = None
 
-    assert abs(val1 - 255) <= 1
-    assert abs(val2 - 127) <= 1
-    assert abs(val3 - 0) <= 1
+    assert val1 == pytest.approx(255, abs=1)
+    assert val2 == pytest.approx(127, abs=1)
+    assert val3 == pytest.approx(0, abs=1)
     gdal.Unlink('/vsimem/tmp.gpkg')
 
 ###############################################################################
@@ -1419,15 +1429,6 @@ def test_gpkg_17():
     gdal.SetConfigOption('ALLOW_GPKG_ZOOM_OTHER_EXTENSION', 'NO')
     ret = out_ds.BuildOverviews('NEAR', [2, 4])
     gdal.SetConfigOption('ALLOW_GPKG_ZOOM_OTHER_EXTENSION', None)
-    gdal.PopErrorHandler()
-    assert ret != 0
-    out_ds = None
-
-    # Test gpkg_zoom_other extension
-    out_ds = gdal.OpenEx('/vsimem/tmp.gpkg', gdal.OF_RASTER | gdal.OF_UPDATE)
-    # Will fail because results in a 6x6 overview
-    gdal.PushErrorHandler()
-    ret = out_ds.BuildOverviews('NEAR', [3])
     gdal.PopErrorHandler()
     assert ret != 0
     out_ds = None
@@ -1841,7 +1842,7 @@ def test_gpkg_21():
     out_ds.SetMetadataItem('1', '2')
     out_ds.SetMetadataItem('3', '4', 'CUSTOM_DOMAIN')
     out_ds.SetMetadataItem('6', '7', 'GEOPACKAGE')
-    # Non GDAL metdata
+    # Non GDAL metadata
     out_ds.ExecuteSQL("INSERT INTO gpkg_metadata VALUES (10, 'dataset', 'uri', 'text/plain', 'my_metadata')")
     out_ds.ExecuteSQL("INSERT INTO gpkg_metadata_reference VALUES ('geopackage',NULL,NULL,NULL,'2012-08-17T14:49:32.932Z',10,NULL)")
     out_ds.ExecuteSQL("INSERT INTO gpkg_metadata VALUES (11, 'dataset', 'uri', 'text/plain', 'other_metadata')")
@@ -2039,7 +2040,11 @@ def test_gpkg_26():
 
         gdal.Unlink('/vsimem/tmp.gpkg')
 
-    tests = [('GoogleCRS84Quad', [[42255, 47336, 24963, 35707], [42255, 47336, 24965, 35707], [42253, 47333, 24961, 35707]], None),
+    tests = [('GoogleCRS84Quad', [[42255, 47336, 24963, 35707],
+                                  [42255, 47336, 24965, 35707],
+                                  [42253, 47333, 24961, 35707],
+                                  [42253, 47334, 24963, 35707], # s390x
+                                  ], None),
              ('GoogleMapsCompatible', [[35429, 36787, 20035, 17849]], None)]
 
     for (scheme, expected_cs, other_options) in tests:
@@ -2086,12 +2091,25 @@ def test_gpkg_26():
 
     gdal.Unlink('/vsimem/tmp.gpkg')
 
+    # Test with a .json tile matrix set
+    ds = gdal.Translate('/vsimem/tmp.gpkg', '../gdrivers/data/small_world.tif',
+                        options='-of GPKG -co TILING_SCHEME=LINZAntarticaMapTileGrid -projwin -180 -50 180 -90')
+    assert ds.GetSpatialRef().GetAuthorityCode(None) == '5482'
+    assert ds.GetGeoTransform() == pytest.approx(((314023.27126670163, 28672, 0.0, 5685976.728733298, 0.0, -28672)), abs=1e-8)
+    ds = None
+    gdal.Unlink('/vsimem/tmp.gpkg')
+
+    # Unsupported TILING_SCHEME
+    src_ds = gdal.Open('data/byte.tif')
+    with gdaltest.error_handler():
+        assert gdaltest.gpkg_dr.CreateCopy('/vsimem/tmp.gpkg', src_ds, options=['TILING_SCHEME=NZTM2000']) is None
+    gdal.Unlink('/vsimem/tmp.gpkg')
+
     # Invalid TILING_SCHEME
     src_ds = gdal.Open('data/byte.tif')
-    gdal.PushErrorHandler()
-    ds = gdaltest.gpkg_dr.CreateCopy('/foo/tmp.gpkg', src_ds, options=['TILING_SCHEME=invalid'])
-    gdal.PopErrorHandler()
-    assert ds is None
+    with gdaltest.error_handler():
+        assert gdaltest.gpkg_dr.CreateCopy('/vsimem/tmp.gpkg', src_ds, options=['TILING_SCHEME=invalid']) is None
+    gdal.Unlink('/vsimem/tmp.gpkg')
 
     # Invalid target filename
     src_ds = gdal.Open('data/byte.tif')
@@ -2651,8 +2669,9 @@ def test_gpkg_39():
     gdal.Translate('/vsimem/gpkg_39.gpkg', src_ds, format='GPKG', noData=74, creationOptions=['TILE_FORMAT=PNG'])
     ds = gdal.Open('/vsimem/gpkg_39.gpkg')
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
+    assert ds.GetRasterBand(1).GetNoDataValue() == pytest.approx(-3.4028234663852885981e+38, rel=1e-8)
     cs = ds.GetRasterBand(1).Checksum()
-    assert cs == 4680
+    assert cs == 4651
     sql_lyr = ds.ExecuteSQL('SELECT scale, offset FROM gpkg_2d_gridded_tile_ancillary')
     f = sql_lyr.GetNextFeature()
     assert f['scale'] != 1.0 and f.IsFieldSetAndNotNull('scale')
@@ -2903,7 +2922,7 @@ def test_gpkg_41():
 
     gdal.SetConfigOption('GPKG_ALLOW_CRAZY_SETTINGS', 'YES')
     with gdaltest.error_handler():
-        gdal.Translate('/vsimem/gpkg_41.gpkg', 'data/huge_line.tif',
+        gdal.Translate('/vsimem/gpkg_41.gpkg', 'data/gpkg/huge_line.tif',
                        format='GPKG', creationOptions=[
                            'BLOCKXSIZE=500000000', 'BLOCKYSIZE=1'])
     gdal.SetConfigOption('GPKG_ALLOW_CRAZY_SETTINGS', None)
@@ -2981,7 +3000,7 @@ def test_gpkg_44():
     if gdaltest.gpkg_dr.GetMetadataItem("ENABLE_SQL_GPKG_FORMAT") != 'YES':
         pytest.skip()
 
-    ds = gdal.Open('data/byte.gpkg.sql')
+    ds = gdal.Open('data/gpkg/byte.gpkg.sql')
     assert ds.GetRasterBand(1).Checksum() == 4672, 'validation failed'
 
 ###############################################################################
@@ -2993,7 +3012,7 @@ def test_gpkg_45():
     if gdaltest.gpkg_dr is None:
         pytest.skip()
 
-    ds = gdal.Open('data/byte.gpkg')
+    ds = gdal.Open('data/gpkg/byte.gpkg')
     assert ds.GetRasterBand(1).Checksum() == 4672, 'validation failed'
 
 ###############################################################################
@@ -3022,8 +3041,8 @@ def test_gpkg_46():
     count = 0
     for f in sql_lyr:
         count += 1
-        if abs(f.GetField(1) - 40075016.6855785) > 1e-7 or \
-           abs(f.GetField(2) - 40075016.6855785) > 1e-7:
+        if f.GetField(1) != pytest.approx(40075016.6855785, abs=1e-7) or \
+           f.GetField(2) != pytest.approx(40075016.6855785, abs=1e-7):
             f.DumpReadable()
             ds.ReleaseResultSet(sql_lyr)
             gdal.Unlink('/vsimem/gpkg_46.gpkg')
@@ -3151,7 +3170,7 @@ def test_gpkg_open_old_gpkg_elevation_tiles_extension():
         pytest.skip()
 
     gdal.ErrorReset()
-    ds = gdal.Open('data/uint16-old-elevation-extension.gpkg')
+    ds = gdal.Open('data/gpkg/uint16-old-elevation-extension.gpkg')
     assert gdal.GetLastErrorMsg() == ''
     cs = ds.GetRasterBand(1).Checksum()
     assert cs == 4672
@@ -3173,7 +3192,7 @@ def test_gpkg_GeneralCmdLineProcessor():
            'scope=' not in ret_gdalinfo and \
            'scope=' not in ret_ogrinfo)
 
-    
+
 ###############################################################################
 
 
@@ -3183,7 +3202,7 @@ def test_gpkg_match_overview_factor():
         pytest.skip()
 
     gdal.FileFromMemBuffer('/vsimem/gpkg_match_overview_factor.gpkg',
-                           open('data/test_match_overview_factor.gpkg', 'rb').read())
+                           open('data/gpkg/test_match_overview_factor.gpkg', 'rb').read())
 
     ds = gdal.Open('/vsimem/gpkg_match_overview_factor.gpkg', gdal.GA_Update)
     ret = ds.BuildOverviews('NONE', [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048])
@@ -3291,7 +3310,7 @@ def test_gpkg_50000_25000_uint16():
     if sys.maxsize < 2**32:
         pytest.skip('Test not available on 32 bit')
 
-    ds = gdal.Open('/vsizip/data/50000_25000_uint16.gpkg.zip/50000_25000_uint16.gpkg')
+    ds = gdal.Open('/vsizip/data/gpkg/50000_25000_uint16.gpkg.zip/50000_25000_uint16.gpkg')
 
     import psutil
     sizeof_uint16 = 2
@@ -3317,7 +3336,7 @@ def test_gpkg_50000_50000_uint16():
     if sys.maxsize < 2**32:
         pytest.skip('Test not available on 32 bit')
 
-    ds = gdal.Open('/vsizip/data/50000_50000_uint16.gpkg.zip/50000_50000_uint16.gpkg')
+    ds = gdal.Open('/vsizip/data/gpkg/50000_50000_uint16.gpkg.zip/50000_50000_uint16.gpkg')
 
     import psutil
     sizeof_uint16 = 2
@@ -3330,6 +3349,31 @@ def test_gpkg_50000_50000_uint16():
     assert data
     ref_ds = gdal.Open('../gcore/data/uint16.tif')
     assert data == ref_ds.ReadRaster()
+
+
+###############################################################################
+# Test writing PNG tiles with negative values
+
+
+def test_gpkg_float32_png_negative_values():
+
+    if gdaltest.gpkg_dr is None:
+        pytest.skip()
+    if gdaltest.png_dr is None:
+        pytest.skip()
+
+    gdal.Unlink('/vsimem/tmp.gpkg')
+
+    ds = gdaltest.gpkg_dr.Create('/vsimem/tmp.gpkg', 1, 1, 1, gdal.GDT_Float32, options=['TILE_FORMAT=PNG'])
+    ds.SetGeoTransform([0, 1, 0, 0, 0, -1])
+    ds.GetRasterBand(1).SetNoDataValue(-32768)
+    ds.GetRasterBand(1).Fill(-10)
+    ds = None
+    ds = gdal.Open('/vsimem/tmp.gpkg')
+    assert ds.GetRasterBand(1).ComputeRasterMinMax() == (-10, -10)
+    ds = None
+
+    gdal.Unlink('/vsimem/tmp.gpkg')
 
 ###############################################################################
 #

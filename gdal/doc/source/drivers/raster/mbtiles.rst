@@ -6,6 +6,8 @@ MBTiles
 
 .. shortname:: MBTiles
 
+.. build_dependencies:: libsqlite3
+
 The MBTiles driver allows reading rasters in
 the MBTiles format, which is a specification for storing tiled map data
 in SQLite databases.
@@ -27,7 +29,7 @@ projection.
 Starting with GDAL 2.3, the driver will open a dataset as RGBA. For
 previous versions, the driver will try to determine the number of bands
 by probing the content of one tile. It is possible to alter this
-behaviour by defining the MBTILES_BAND_COUNT configuration option (or
+behavior by defining the MBTILES_BAND_COUNT configuration option (or
 starting with GDAL 2.1, the BAND_COUNT open option) to the number of
 bands. The values supported are 1, 2, 3 or 4. Four band
 (Red,Green,Blue,Alpha) dataset gives the maximum compatibility with the
@@ -168,9 +170,14 @@ tiles will be stored as 32-bit PNG.
 Vector creation issues
 ----------------------
 
-Tiles are generated with WebMercator (EPSG:3857) projection. Several
-layers can be written. It is possible to decide at which zoom level
-ranges a given layer is written.
+Tiles are generated with WebMercator (EPSG:3857) projection. It is possible
+to decide at which zoom level ranges a given layer is written. Several
+layers can be written but the driver has only write-once support for
+vector data. For writing several vector datasets into MBTiles file an
+intermediate format like GeoPackage must be used as a container so that
+all layers can be converted at the same time. Write-once support means also
+that existing vector layers can't be edited.
+   
 
 Creation options
 ----------------
@@ -282,7 +289,7 @@ whose value is a JSon serialized document such as the below one:
 that are created into the target MVT dataset. They are mapped to the MVT
 target layer *boundaries*.
 
-It is also possible to get the same behaviour with the below layer
+It is also possible to get the same behavior with the below layer
 creation options, although that is not convenient in the ogr2ogr use
 case.
 

@@ -35,8 +35,6 @@
 #include <algorithm>
 #include <exception>
 
-#include <debug.h>
-
 #include "libdap_headers.h"
 
 #include "cpl_string.h"
@@ -178,7 +176,7 @@ static int GetDimension( string oCE, const char *pszDimName,
 /* ==================================================================== */
 /************************************************************************/
 
-class DODSDataset : public GDALDataset
+class DODSDataset final: public GDALDataset
 {
 private:
     AISConnect *poConnect;      // Virtual connection to the data source
@@ -237,7 +235,7 @@ private:
 /* ==================================================================== */
 /************************************************************************/
 
-class DODSRasterBand : public GDALRasterBand
+class DODSRasterBand final: public GDALRasterBand
 {
 private:
     string oVarName;
@@ -357,7 +355,7 @@ DODSDataset::connect_to_server() /*throw(Error)*/
 /*      Connect, and fetch version information.                         */
 /* -------------------------------------------------------------------- */
     AISConnect *poConnection = new AISConnect(oURL);
-    string version = poConnection->request_version();
+    /*string version = */ poConnection->request_version();
     /*    if (version.empty() || version.find("/3.") == string::npos)
     {
         CPLError( CE_Warning, CPLE_AppDefined,
@@ -1071,6 +1069,12 @@ DODSDataset::Open(GDALOpenInfo *poOpenInfo)
         return nullptr;
     }
 
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("DODS") )
+    {
+        delete poDS;
+        return nullptr;
+    }
+
     return poDS;
 }
 
@@ -1719,7 +1723,7 @@ void GDALRegister_DODS()
     poDriver->SetDescription( "DODS" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "DAP 3.x servers" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#DODS" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/dods.html" );
 
     poDriver->pfnOpen = DODSDataset::Open;
 

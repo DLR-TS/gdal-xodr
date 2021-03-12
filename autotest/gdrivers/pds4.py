@@ -48,8 +48,13 @@ def validate_xml(filename):
     if ogr.GetDriverByName('GMLAS') is None:
         pytest.skip()
 
-    if not gdaltest.download_file('https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1B00.xsd',
-                                  'pds.nasa.gov_pds4_pds_v1_PDS4_PDS_1B00.xsd',
+    if not gdaltest.download_file('https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1D00.xsd',
+                                  'pds.nasa.gov_pds4_pds_v1_PDS4_PDS_1D00.xsd',
+                                  force_download=True):
+        pytest.skip()
+
+    if not gdaltest.download_file('https://pds.nasa.gov/pds4/cart/v1/PDS4_CART_1D00_1933.xsd',
+                                  'pds.nasa.gov_pds4_cart_v1_PDS4_CART_1D00_1933.xsd',
                                   force_download=True):
         pytest.skip()
 
@@ -58,12 +63,24 @@ def validate_xml(filename):
                                   force_download=True):
         pytest.skip()
 
-
-    if not gdaltest.download_file('https://raw.githubusercontent.com/nasa-pds-data-dictionaries/ldd-cart/master/build/1.B.0.0/PDS4_CART_1B00.xsd',
-                                  'raw.githubusercontent.com_nasa_pds_data_dictionaries_ldd_cart_master_build_1.B.0.0_PDS4_CART_1B00.xsd',
+    if not gdaltest.download_file('https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1B00.xsd',
+                                  'pds.nasa.gov_pds4_pds_v1_PDS4_PDS_1B00.xsd',
                                   force_download=True):
         pytest.skip()
 
+
+    # Needed by PDS4_CART_1D00_1933
+    if not gdaltest.download_file('https://pds.nasa.gov/pds4/geom/v1/PDS4_GEOM_1B10_1700.xsd',
+                                  'pds.nasa.gov_pds4_geom_v1_PDS4_GEOM_1B10_1700.xsd',
+                                  force_download=True):
+        pytest.skip()
+
+    if not gdaltest.download_file('https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1B10.xsd',
+                                  'pds.nasa.gov_pds4_pds_v1_PDS4_PDS_1B10.xsd',
+                                  force_download=True):
+        pytest.skip()
+
+    # Older schemas
     if not gdaltest.download_file('https://pds.nasa.gov/pds4/pds/v1/PDS4_PDS_1800.xsd',
                                   'pds.nasa.gov_pds4_pds_v1_PDS4_PDS_1800.xsd',
                                   force_download=True):
@@ -89,7 +106,7 @@ def validate_xml(filename):
 # Perform simple read test on PDS4 dataset.
 
 
-def test_pds4_1():
+def test_pds4_read_cart_1700():
     srs = """PROJCS["Transverse Mercator Earth",
     GEOGCS["GCS_Earth",
         DATUM["D_North_American_Datum_1927",
@@ -103,9 +120,55 @@ def test_pds4_1():
     PARAMETER["false_easting",0],
     PARAMETER["false_northing",0],UNIT["meter",1]]
 """
-    gt = (-59250.0, 60.0, 0.0, 3751290.0, 0.0, -60.0)
+    gt = (-59280.0, 60.0, 0.0, 3751320.0, 0.0, -60.0)
 
-    tst = gdaltest.GDALTest('PDS4', 'byte_pds4.xml', 1, 4672)
+    tst = gdaltest.GDALTest('PDS4', 'pds4/byte_pds4_cart_1700.xml', 1, 4672)
+    return tst.testOpen(check_prj=srs, check_gt=gt)
+
+###############################################################################
+# Perform simple read test on PDS4 dataset.
+
+
+def test_pds4_read_cart_1B00():
+    srs = """PROJCS["Transverse Mercator Earth",
+    GEOGCS["GCS_Earth",
+        DATUM["D_North_American_Datum_1927",
+            SPHEROID["North_American_Datum_1927",6378206.4,0]],
+        PRIMEM["Reference_Meridian",0],
+        UNIT["degree",0.0174532925199433]],
+    PROJECTION["Transverse_Mercator"],
+    PARAMETER["latitude_of_origin",0],
+    PARAMETER["central_meridian",-117],
+    PARAMETER["scale_factor",0.9996],
+    PARAMETER["false_easting",0],
+    PARAMETER["false_northing",0],UNIT["meter",1]]
+"""
+    gt = (-59280.0, 60.0, 0.0, 3751320.0, 0.0, -60.0)
+
+    tst = gdaltest.GDALTest('PDS4', 'pds4/byte_pds4_cart_1b00.xml', 1, 4672)
+    return tst.testOpen(check_prj=srs, check_gt=gt)
+
+###############################################################################
+# Perform simple read test on PDS4 dataset.
+
+
+def test_pds4_read_cart_1D00_1933():
+    srs = """PROJCS["Transverse Mercator Earth",
+    GEOGCS["GCS_Earth",
+        DATUM["D_North_American_Datum_1927",
+            SPHEROID["North_American_Datum_1927",6378206.4,0]],
+        PRIMEM["Reference_Meridian",0],
+        UNIT["degree",0.0174532925199433]],
+    PROJECTION["Transverse_Mercator"],
+    PARAMETER["latitude_of_origin",0],
+    PARAMETER["central_meridian",-117],
+    PARAMETER["scale_factor",0.9996],
+    PARAMETER["false_easting",0],
+    PARAMETER["false_northing",0],UNIT["meter",1]]
+"""
+    gt = (-59280.0, 60.0, 0.0, 3751320.0, 0.0, -60.0)
+
+    tst = gdaltest.GDALTest('PDS4', 'pds4/byte_pds4_cart_1d00_1933.xml', 1, 4672)
     return tst.testOpen(check_prj=srs, check_gt=gt)
 
 ###############################################################################
@@ -223,12 +286,16 @@ def test_pds4_8():
     for proj4 in ['+proj=eqc +lat_ts=43.75 +lat_0=10 +lon_0=-112.5 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
                   '+proj=lcc +lat_1=10 +lat_0=10 +lon_0=-112.5 +k_0=0.9 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # LCC_1SP
                   '+proj=lcc +lat_0=10 +lon_0=-112.5 +lat_1=9 +lat_2=11 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # LCC_2SP
-                  '+proj=omerc +lat_0=10 +lonc=11 +alpha=12 +gamma=12 +k=0.9 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # Oblique Mercator Azimuth Center
-                  '+proj=omerc +lat_0=10 +lat_1=12 +lon_1=11 +lat_2=14 +lon_2=13 +k=0.9 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # Oblique Mercator 2 points
+                  '+proj=omerc +lat_0=10 +lonc=11 +alpha=12 +gamma=12 +k=1 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # Oblique Mercator Azimuth Center
+                  '+proj=omerc +lat_0=10 +lat_1=12 +lon_1=11 +lat_2=14 +lon_2=13 +k=1 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # Oblique Mercator 2 points
                   '+proj=stere +lat_0=90 +lon_0=10 +k=0.9 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',  # Polar Stereographic
                   '+proj=poly +lat_0=9 +lon_0=10 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
                   '+proj=sinu +lon_0=10 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
                   '+proj=tmerc +lat_0=11 +lon_0=10 +k=0.9 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
+                  '+proj=merc +lat_ts=2 +lon_0=3 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
+                  '+proj=merc +lon_0=3 +k=0.9 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
+                  '+proj=ortho +lat_0=1 +lon_0=2 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
+                  '+proj=laea +lat_0=1 +lon_0=2 +x_0=0 +y_0=0 +R=2439400 +units=m +no_defs',
                  ]:
         ds = gdal.GetDriverByName('PDS4').Create(filename, 1, 1)
         sr = osr.SpatialReference()
@@ -277,7 +344,7 @@ def test_pds4_8():
 
 def test_pds4_9():
 
-    ds = gdal.Open('data/byte_pds4.xml')
+    ds = gdal.Open('data/pds4/byte_pds4_cart_1700.xml')
     ndv = ds.GetRasterBand(1).GetNoDataValue()
     assert ndv == 74
 
@@ -288,7 +355,7 @@ def test_pds4_9():
     filename = '/vsimem/out.xml'
     # Test copy of all specialConstants
     with hide_substitution_warnings_error_handler():
-        gdal.Translate(filename, 'data/byte_pds4.xml', format='PDS4')
+        gdal.Translate(filename, 'data/pds4/byte_pds4_cart_1700.xml', format='PDS4')
 
     ret = validate_xml(filename)
     assert ret, 'validation failed'
@@ -306,7 +373,7 @@ def test_pds4_9():
     # Test copy of all specialConstants and override noData
     for frmt in ['RAW', 'GEOTIFF']:
         with hide_substitution_warnings_error_handler():
-            gdal.Translate(filename, 'data/byte_pds4.xml', format='PDS4',
+            gdal.Translate(filename, 'data/pds4/byte_pds4_cart_1700.xml', format='PDS4',
                            noData=75,
                            creationOptions=['IMAGE_FORMAT=' + frmt])
 
@@ -328,7 +395,7 @@ def test_pds4_9():
     # Test just setting noData
     for frmt in ['RAW', 'GEOTIFF']:
         with hide_substitution_warnings_error_handler():
-            gdal.Translate(filename, 'data/byte_pds4.xml', format='PDS4',
+            gdal.Translate(filename, 'data/pds4/byte_pds4_cart_1700.xml', format='PDS4',
                            creationOptions=['USE_SRC_LABEL=NO',
                                             'IMAGE_FORMAT=' + frmt])
 
@@ -520,7 +587,7 @@ def test_pds4_10():
         gdal.GetDriverByName('PDS4').Delete(filename)
         gdal.GetDriverByName('PDS4').Delete(filename2)
 
-    
+
 ###############################################################################
 # Test various data types
 
@@ -567,7 +634,7 @@ def test_pds4_12():
                                                       'VAR_INVESTIGATION_AREA_LID_REFERENCE=ialr',
                                                       'VAR_OBSERVING_SYSTEM_NAME=osn',
                                                       'VAR_UNUSED=foo',
-                                                      'TEMPLATE=data/byte_pds4.xml',
+                                                      'TEMPLATE=data/pds4/byte_pds4_cart_1700.xml',
                                                       'BOUNDING_DEGREES=1,2,3,4',
                                                       'LATITUDE_TYPE=Planetographic',
                                                       'LONGITUDE_DIRECTION=Positive West',
@@ -599,35 +666,35 @@ def test_pds4_12():
 
 def test_pds4_13():
 
-    ds = gdal.Open('data/byte_pds4_multi_sds.xml')
+    ds = gdal.Open('data/pds4/byte_pds4_cart_1700_multi_sds.xml')
     subds = ds.GetSubDatasets()
-    expected_subds = [('PDS4:data/byte_pds4_multi_sds.xml:1:1',
-                       'Image file byte_pds4.img, array first_sds'),
-                      ('PDS4:data/byte_pds4_multi_sds.xml:1:2',
-                       'Image file byte_pds4.img, array second_sds'),
-                      ('PDS4:data/byte_pds4_multi_sds.xml:2:1',
-                       'Image file byte_pds4.img, array third_sds')]
+    expected_subds = [('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:1:1',
+                       'Image file byte_pds4_cart_1700.img, array first_sds'),
+                      ('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:1:2',
+                       'Image file byte_pds4_cart_1700.img, array second_sds'),
+                      ('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:2:1',
+                       'Image file byte_pds4_cart_1700.img, array third_sds')]
     assert subds == expected_subds
 
-    ds = gdal.Open('PDS4:data/byte_pds4_multi_sds.xml:1:1')
+    ds = gdal.Open('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:1:1')
     cs = ds.GetRasterBand(1).Checksum()
     assert cs == 2315
 
-    ds = gdal.Open('PDS4:data/byte_pds4_multi_sds.xml:1:2')
+    ds = gdal.Open('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:1:2')
     cs = ds.GetRasterBand(1).Checksum()
     assert cs == 2302
 
-    ds = gdal.Open('PDS4:data/byte_pds4_multi_sds.xml:2:1')
+    ds = gdal.Open('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:2:1')
     cs = ds.GetRasterBand(1).Checksum()
     assert cs == 3496
 
-    ds = gdal.Open(os.path.join(os.getcwd(), 'data', 'byte_pds4_multi_sds.xml'))
+    ds = gdal.Open(os.path.join(os.getcwd(), 'data', 'pds4', 'byte_pds4_cart_1700_multi_sds.xml'))
     subds_name = ds.GetSubDatasets()[0][0]
     ds = gdal.Open(subds_name)
     assert ds is not None
 
     with gdaltest.error_handler():
-        ds = gdal.Open('PDS4:c:\do_not\exist.xml:1:1')
+        ds = gdal.Open(r'PDS4:c:\do_not\exist.xml:1:1')
     assert ds is None
 
     with gdaltest.error_handler():
@@ -639,11 +706,11 @@ def test_pds4_13():
     assert ds is None
 
     with gdaltest.error_handler():
-        ds = gdal.Open('PDS4:data/byte_pds4_multi_sds.xml:3:1')
+        ds = gdal.Open('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:3:1')
     assert ds is None
 
     with gdaltest.error_handler():
-        ds = gdal.Open('PDS4:data/byte_pds4_multi_sds.xml:1:3')
+        ds = gdal.Open('PDS4:data/pds4/byte_pds4_cart_1700_multi_sds.xml:1:3')
     assert ds is None
 
 ###############################################################################
@@ -951,7 +1018,7 @@ def test_pds4_15():
     filename = '/vsimem/out.xml'
     with hide_substitution_warnings_error_handler():
         gdal.GetDriverByName('PDS4').Create(filename, 1, 1,
-                                            options=['TEMPLATE=data/byte_pds4.xml'])
+                                            options=['TEMPLATE=data/pds4/byte_pds4_cart_1700.xml'])
 
     ret = validate_xml(filename)
     assert ret, 'validation failed'
@@ -1104,9 +1171,9 @@ def test_pds4_18():
     if f:
         data = gdal.VSIFReadL(1, 10000, f).decode('ascii')
         gdal.VSIFCloseL(f)
-    assert ('<cart:semi_major_radius unit="m">1</cart:semi_major_radius>' in data and \
-       '<cart:semi_minor_radius unit="m">1</cart:semi_minor_radius>' in data and \
-       '<cart:polar_radius unit="m">2</cart:polar_radius>' in data)
+    assert ('<cart:a_axis_radius unit="m">1</cart:a_axis_radius>' in data and \
+       '<cart:b_axis_radius unit="m">1</cart:b_axis_radius>' in data and \
+       '<cart:c_axis_radius unit="m">2</cart:c_axis_radius>' in data)
 
     gdal.GetDriverByName('PDS4').Delete(filename)
 
@@ -1206,34 +1273,155 @@ def test_pds4_append_subdataset_not_same_srs():
 
     gdal.GetDriverByName('PDS4').Delete(filename)
 
-
 ###############################################################################
-# Test unit
 
 
-def test_pds4_unit():
+def _test_createlabelonly(src_ds,
+                          expected_content = None,
+                          filename = '/vsimem/out.xml',
+                          validate = False):
 
-    filename = '/vsimem/out.xml'
+    src_ds_name = src_ds.GetDescription()
+    src_driver_name = src_ds.GetDriver().GetDescription()
 
-    ds = gdal.GetDriverByName('PDS4').Create(filename, 1, 1, 1)
-    ds.GetRasterBand(1).SetUnitType('my unit')
+    with gdaltest.error_handler():
+        assert gdal.GetDriverByName('PDS4').CreateCopy(filename, src_ds, options=['CREATE_LABEL_ONLY=YES'])
+    with gdaltest.error_handler():
+        ds = gdal.Open(filename)
+    assert ds
+    assert src_ds_name in ds.GetFileList()
+    assert ds.RasterCount == src_ds.RasterCount
+    assert ds.RasterXSize == src_ds.RasterXSize
+    assert ds.RasterYSize == src_ds.RasterYSize
+    with gdaltest.error_handler():
+        for i in range(ds.RasterCount):
+            assert ds.GetRasterBand(i+1).Checksum() == src_ds.GetRasterBand(i+1).Checksum()
     ds = None
+    src_ds = None
 
-    ds = gdal.Open(filename)
-    assert ds.GetRasterBand(1).GetUnitType() == 'my unit'
+    if validate:
+        ret = validate_xml(filename)
+        assert ret, 'validation failed'
 
-    src_ds = gdal.GetDriverByName('MEM').Create('', 1, 1, 1)
-    src_ds.GetRasterBand(1).SetUnitType('my other unit')
-    assert gdal.GetDriverByName('PDS4').CreateCopy(filename, src_ds)
-
-    ds = gdal.Open(filename)
-    assert ds.GetRasterBand(1).GetUnitType() == 'my other unit'
-
-    src_ds = gdal.GetDriverByName('MEM').Create('', 1, 1, 1)
-    assert gdal.GetDriverByName('PDS4').CreateCopy(filename, src_ds,
-                                                   options=['UNIT=yet another unit'])
-
-    ds = gdal.Open(filename)
-    assert ds.GetRasterBand(1).GetUnitType() == 'yet another unit'
+    f = gdal.VSIFOpenL(filename, 'rb')
+    if f:
+        data = gdal.VSIFReadL(1, 10000, f).decode('ascii')
+        gdal.VSIFCloseL(f)
+    assert 'Binary file pre-existing PDS4 label' in data, data
+    if expected_content:
+        if isinstance(expected_content, list):
+            for expected_content_item in expected_content:
+                assert expected_content_item in data, data
+        else:
+            assert expected_content in data, data
 
     gdal.GetDriverByName('PDS4').Delete(filename)
+    assert gdal.VSIStatL(src_ds_name)
+    gdal.GetDriverByName(src_driver_name).Delete(src_ds_name)
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with ENVI
+
+
+def test_pds4_createlabelonly_envi():
+
+    gdal.FileFromMemBuffer('/vsimem/envi_rgbsmall_bip.img', open('data/envi/envi_rgbsmall_bip.img', 'rb').read())
+    gdal.FileFromMemBuffer('/vsimem/envi_rgbsmall_bip.hdr', open('data/envi/envi_rgbsmall_bip.hdr', 'rb').read())
+
+    src_ds = gdal.Open('/vsimem/envi_rgbsmall_bip.img')
+    return _test_createlabelonly(src_ds)
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with GTiff
+
+
+def test_pds4_createlabelonly_gtiff():
+
+    gdal.GetDriverByName('GTiff').CreateCopy('/vsimem/byte.tif', gdal.Open('data/byte.tif'))
+
+    src_ds = gdal.Open('/vsimem/byte.tif')
+    return _test_createlabelonly(src_ds, expected_content = '<parsing_standard_id>TIFF 6.0</parsing_standard_id>', validate = True)
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with a tiled GTiff (incompatible of raw binary layout)
+
+
+def test_pds4_createlabelonly_gtiff_error():
+
+    gdal.GetDriverByName('GTiff').CreateCopy('/vsimem/byte.tif', gdal.Open('data/byte.tif'), options=['TILED=YES'])
+    src_ds = gdal.Open('/vsimem/byte.tif')
+    with gdaltest.error_handler():
+        assert not gdal.GetDriverByName('PDS4').CreateCopy('/vsimem/out.xml', src_ds, options=['CREATE_LABEL_ONLY=YES'])
+    src_ds = None
+    gdal.GetDriverByName('GTiff').Delete('/vsimem/byte.tif')
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with BigTIFF
+
+
+def test_pds4_createlabelonly_bigtiff():
+
+    gdal.GetDriverByName('GTiff').CreateCopy('/vsimem/byte.tif', gdal.Open('data/byte.tif'), options=['BIGTIFF=YES'])
+
+    src_ds = gdal.Open('/vsimem/byte.tif')
+    return _test_createlabelonly(src_ds, expected_content = '<parsing_standard_id>TIFF 6.0</parsing_standard_id>')
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with ISIS3
+
+
+def test_pds4_createlabelonly_isis3():
+
+    gdal.GetDriverByName('ISIS3').CreateCopy('/vsimem/input.cub', gdal.Open('../gcore/data/uint16.tif'))
+
+    src_ds = gdal.Open('/vsimem/input.cub')
+    return _test_createlabelonly(src_ds, expected_content = '<parsing_standard_id>ISIS3</parsing_standard_id>')
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with VICAR
+
+
+def test_pds4_createlabelonly_vicar():
+
+    gdal.FileFromMemBuffer('/vsimem/test_vicar_truncated.bin', open('data/vicar/test_vicar_truncated.bin', 'rb').read())
+
+    src_ds = gdal.Open('/vsimem/test_vicar_truncated.bin')
+    return _test_createlabelonly(src_ds, expected_content = '<parsing_standard_id>VICAR2</parsing_standard_id>')
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with FITS
+
+
+def test_pds4_createlabelonly_fits():
+
+    fits_drv = gdal.GetDriverByName('FITS')
+    if not fits_drv:
+        pytest.skip()
+
+    fits_drv.CreateCopy('tmp/input.fits', gdal.Open('../gcore/data/int16.tif'))
+
+    src_ds = gdal.Open('tmp/input.fits')
+    return _test_createlabelonly(src_ds,
+                                 expected_content = ['<parsing_standard_id>FITS 3.0</parsing_standard_id>',
+                                                     '<disp:vertical_display_direction>Bottom to Top</disp:vertical_display_direction>'],
+                                 filename = 'tmp/out.xml')
+
+
+###############################################################################
+# Test CREATE_LABEL_ONLY=YES with PDS3
+
+
+def test_pds4_createlabelonly_pds3():
+
+    gdal.FileFromMemBuffer('/vsimem/mc02_truncated.img', open('data/pds/mc02_truncated.img', 'rb').read())
+
+    src_ds = gdal.Open('/vsimem/mc02_truncated.img')
+    return _test_createlabelonly(src_ds, expected_content = '<parsing_standard_id>PDS3</parsing_standard_id>')
+
+

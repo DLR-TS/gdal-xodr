@@ -42,7 +42,7 @@ CPL_CVSID("$Id$")
 
 class WEBPRasterBand;
 
-class WEBPDataset : public GDALPamDataset
+class WEBPDataset final: public GDALPamDataset
 {
     friend class WEBPRasterBand;
 
@@ -83,7 +83,7 @@ class WEBPDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class WEBPRasterBand : public GDALPamRasterBand
+class WEBPRasterBand final: public GDALPamRasterBand
 {
     friend class WEBPDataset;
 
@@ -874,7 +874,7 @@ void GDALRegister_WEBP()
     poDriver->SetDescription( "WEBP" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "WEBP" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_webp.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/webp.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "webp" );
     poDriver->SetMetadataItem( GDAL_DMD_MIMETYPE, "image/webp" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Byte" );

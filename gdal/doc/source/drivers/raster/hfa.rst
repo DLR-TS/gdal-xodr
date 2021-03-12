@@ -6,6 +6,8 @@ HFA -- Erdas Imagine .img
 
 .. shortname:: HFA
 
+.. built_in_by_default::
+
 GDAL supports Erdas Imagine .img format for read access and write. The
 driver supports reading overviews, palettes, and georeferencing. It
 supports the Erdas band types u8, s8, u16, s16, u32, s32, f32, f64, c64
@@ -90,7 +92,7 @@ by the HFA driver:
    overviews in Erdas rrd format and with .rrd file name extension
    (gdaladdo with combination -ro --config USE_RRD YES creates overview
    file with .aux extension).
--  **HFA_COMPRESS_OVR=YES/NO** : (GDAL >= 1.11) Whether to create
+-  **HFA_COMPRESS_OVR=YES/NO** : Whether to create
    compressed overviews. Default is to only create compressed overviews
    when the file is compressed.
 

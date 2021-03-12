@@ -393,36 +393,6 @@ OGRLIBKMLLayer::~OGRLIBKMLLayer()
 
  Returns:       The next feature, or NULL if there is no more
 
- This function copied from the sqlite driver.
-******************************************************************************/
-
-OGRFeature *OGRLIBKMLLayer::GetNextFeature()
-{
-    while( true )
-    {
-        OGRFeature *poFeature = GetNextRawFeature();
-        if( poFeature == nullptr )
-            return nullptr;
-
-        if( (m_poFilterGeom == nullptr
-             || FilterGeometry( poFeature->GetGeometryRef() ) )
-            && (m_poAttrQuery == nullptr
-                || m_poAttrQuery->Evaluate( poFeature )) )
-        {
-            return poFeature;
-        }
-
-        delete poFeature;
-    }
-}
-
-/******************************************************************************
- Method to get the next feature on the layer.
-
- Args:          none
-
- Returns:       The next feature, or NULL if there is no more
-
 ******************************************************************************/
 
 OGRFeature *OGRLIBKMLLayer::GetNextRawFeature()
@@ -884,7 +854,7 @@ int OGRLIBKMLLayer::TestCapability( const char *pszCap )
     else if( EQUAL( pszCap, OLCSequentialWrite ) )
         result = bUpdate;
     else if( EQUAL( pszCap, OLCRandomWrite ) )
-        result = bUpdate;
+        result = bUpdate && m_poKmlUpdate;
     else if( EQUAL( pszCap, OLCFastFeatureCount ) )
         result = FALSE;
     else if( EQUAL( pszCap, OLCFastSetNextByIndex ) )

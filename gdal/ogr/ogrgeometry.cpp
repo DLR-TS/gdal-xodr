@@ -84,6 +84,20 @@ static void OGRGEOSWarningHandler(const char *fmt, ...)
 #endif
 
 /************************************************************************/
+/*                            OGRWktOptions()                             */
+/************************************************************************/
+
+int OGRWktOptions::getDefaultPrecision()
+{
+    return atoi(CPLGetConfigOption("OGR_WKT_PRECISION", "15"));
+}
+
+bool OGRWktOptions::getDefaultRound()
+{
+    return CPLTestBool(CPLGetConfigOption("OGR_WKT_ROUND", "TRUE"));
+}
+
+/************************************************************************/
 /*                            OGRGeometry()                             */
 /************************************************************************/
 
@@ -345,22 +359,25 @@ void OGRGeometry::dumpReadable( FILE * fp, const char * pszPrefix,
     }
     else if( pszDisplayGeometry != nullptr && EQUAL(pszDisplayGeometry, "WKT") )
     {
-        char *pszWkt = nullptr;
-        if( exportToWkt( &pszWkt ) == OGRERR_NONE )
+        OGRErr err(OGRERR_NONE);
+        std::string wkt = exportToWkt(OGRWktOptions(), &err);
+        if( err == OGRERR_NONE )
         {
-            fprintf( fp, "%s%s\n", pszPrefix, pszWkt );
-            CPLFree( pszWkt );
+            fprintf( fp, "%s%s\n", pszPrefix, wkt.data() );
         }
     }
     else if( pszDisplayGeometry == nullptr ||
              CPLTestBool(pszDisplayGeometry) ||
              EQUAL(pszDisplayGeometry, "ISO_WKT") )
     {
-        char *pszWkt = nullptr;
-        if( exportToWkt( &pszWkt, wkbVariantIso ) == OGRERR_NONE )
+        OGRErr err(OGRERR_NONE);
+        OGRWktOptions opts;
+
+        opts.variant = wkbVariantIso;
+        std::string wkt = exportToWkt(opts, &err);
+        if( err == OGRERR_NONE )
         {
-            fprintf( fp, "%s%s\n", pszPrefix, pszWkt );
-            CPLFree( pszWkt );
+            fprintf( fp, "%s%s\n", pszPrefix, wkt.data() );
         }
     }
 }
@@ -772,6 +789,10 @@ OGRwkbGeometryType OGRGeometry::getIsoGeometryType() const
  *
  * \brief Modify the geometry such it has no segment longer then the
  * given distance.
+ *
+ * This method modifies the geometry to add intermediate vertices if necessary
+ * so that the maximum length between 2 consecutive vertices is lower than
+ * dfMaxLength.
  *
  * Interpolated points will have Z and M values (if needed) set to 0.
  * Distance computation is performed in 2d only
@@ -1397,7 +1418,7 @@ OGRErr OGRGeometry::importFromWkb( const GByte* pabyData,
  * @return OGRERR_NONE if all goes well, otherwise any of
  * OGRERR_NOT_ENOUGH_DATA, OGRERR_UNSUPPORTED_GEOMETRY_TYPE, or
  * OGRERR_CORRUPT_DATA may be returned.
- * 
+ *
  * @since GDAL 2.3
  */
 
@@ -1719,9 +1740,37 @@ OGRErr OGRGeometry::importPreambleFromWkt( const char ** ppszInput,
 }
 //! @endcond
 
+/************************************************************************/
+/*                           wktTypeString()                            */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+/** Get a type string for WKT, padded with a space at the end.
+ *
+ * @param variant  OGR type variant
+ * @return  "Z " for 3D, "M " for measured, "ZM " for both, or the empty string.
+ */
+std::string OGRGeometry::wktTypeString(OGRwkbVariant variant) const
+{
+    std::string s(" ");
+
+    if (variant == wkbVariantIso)
+    {
+        if (flags & OGR_G_3D)
+            s += "Z";
+        if (flags & OGR_G_MEASURED)
+            s += "M";
+    }
+    if (s.size() > 1)
+        s += " ";
+    return s;
+}
+//! @endcond
+
+
 /**
  * \fn OGRErr OGRGeometry::exportToWkt( char ** ppszDstText,
- * OGRwkbVariant eWkbVariant = wkbVariantOldOgc ) const;
+ * OGRwkbVariant variant = wkbVariantOldOgc ) const;
  *
  * \brief Convert a geometry into well known text format.
  *
@@ -1732,13 +1781,24 @@ OGRErr OGRGeometry::importPreambleFromWkt( const char ** ppszInput,
  * @param ppszDstText a text buffer is allocated by the program, and assigned
  *                    to the passed pointer. After use, *ppszDstText should be
  *                    freed with CPLFree().
- * @param eWkbVariant the specification that must be conformed too :
- *                    - wbkVariantOgc for old-style 99-402 extended
+ * @param variant the specification that must be conformed too :
+ *                    - wkbVariantOgc for old-style 99-402 extended
  *                      dimension (Z) WKB types
- *                    - wbkVariantIso for SFSQL 1.2 and ISO SQL/MM Part 3
+ *                    - wkbVariantIso for SFSQL 1.2 and ISO SQL/MM Part 3
  *
  * @return Currently OGRERR_NONE is always returned.
  */
+OGRErr OGRGeometry::exportToWkt(char ** ppszDstText,
+                                OGRwkbVariant variant) const
+{
+    OGRWktOptions opts;
+    opts.variant = variant;
+    OGRErr err(OGRERR_NONE);
+
+    std::string wkt = exportToWkt(opts, &err);
+    *ppszDstText = CPLStrdup(wkt.data());
+    return err;
+}
 
 /************************************************************************/
 /*                         OGR_G_ExportToWkt()                          */
@@ -1904,7 +1964,7 @@ const char *OGR_G_GetGeometryName( OGRGeometryH hGeom )
  * This function is the same as the CPP method OGRGeometry::clone().
  *
  * @param hGeom handle on the geometry to clone from.
- * @return an handle on the copy of the geometry with the spatial
+ * @return a handle on the copy of the geometry with the spatial
  * reference system as the original.
  */
 
@@ -3411,8 +3471,8 @@ static OGRGeometry* OGRGeometryRebuildCurves( const OGRGeometry* poGeom,
 {
     if( poOGRProduct != nullptr &&
         wkbFlatten(poOGRProduct->getGeometryType()) != wkbPoint &&
-        (poGeom->hasCurveGeometry() ||
-         (poOtherGeom && poOtherGeom->hasCurveGeometry())) )
+        (poGeom->hasCurveGeometry(true) ||
+         (poOtherGeom && poOtherGeom->hasCurveGeometry(true))) )
     {
         OGRGeometry* poCurveGeom = poOGRProduct->getCurveGeometry();
         delete poOGRProduct;
@@ -3521,6 +3581,9 @@ static OGRBoolean OGRGEOSBooleanPredicate(
  *
  * Already-valid geometries are cloned without further intervention.
  *
+ * Running OGRGeometryFactory::removeLowerDimensionSubGeoms() as a post-processing
+ * step is often desired.
+ *
  * This method is the same as the C function OGR_G_MakeValid().
  *
  * This function is built on the GEOS >= 3.8 library, check it for the definition
@@ -3628,6 +3691,87 @@ OGRGeometryH OGR_G_MakeValid( OGRGeometryH hGeom )
 
     return reinterpret_cast<OGRGeometryH>(
         reinterpret_cast<OGRGeometry *>(hGeom)->MakeValid());
+}
+
+/************************************************************************/
+/*                            Normalize()                               */
+/************************************************************************/
+
+/**
+ * \brief Attempts to bring geometry into normalized/canonical form.
+ *
+ * This method is the same as the C function OGR_G_Normalize().
+ *
+ * This function is built on the GEOS library; check it for the definition
+ * of the geometry operation.
+ * If OGR is built without the GEOS library, this function will always fail,
+ * issuing a CPLE_NotSupported error.
+ *
+ * @return a newly allocated geometry now owned by the caller, or NULL
+ * on failure.
+ *
+ * @since GDAL 3.3
+ */
+OGRGeometry *OGRGeometry::Normalize() const
+{
+#ifndef HAVE_GEOS
+    CPLError( CE_Failure, CPLE_NotSupported,
+                  "GEOS support not enabled." );
+        return nullptr;
+#else
+    OGRGeometry *poOGRProduct = nullptr;
+
+    GEOSContextHandle_t hGEOSCtxt = createGEOSContext();
+    GEOSGeom hGeosGeom = exportToGEOS(hGEOSCtxt);
+    if( hGeosGeom != nullptr )
+    {
+
+        int hGEOSRet = GEOSNormalize_r( hGEOSCtxt, hGeosGeom );
+
+        if( hGEOSRet == 0 )
+        {
+             poOGRProduct = BuildGeometryFromGEOS(hGEOSCtxt, hGeosGeom,
+                                                 this, nullptr);
+
+        } else
+        {
+            GEOSGeom_destroy_r( hGEOSCtxt, hGeosGeom );
+        }
+
+    }
+    freeGEOSContext( hGEOSCtxt );
+
+    return poOGRProduct;
+#endif
+}
+
+/************************************************************************/
+/*                         OGR_G_Normalize()                            */
+/************************************************************************/
+
+/**
+ * \brief Attempts to bring geometry into normalized/canonical form.
+ *
+ * This function is the same as the C++ method OGRGeometry::Normalize().
+ *
+ * This function is built on the GEOS library; check it for the definition
+ * of the geometry operation.
+ * If OGR is built without the GEOS library, this function will always fail,
+ * issuing a CPLE_NotSupported error.
+ * @param hGeom The Geometry to normalize.
+ *
+ * @return a newly allocated geometry now owned by the caller, or NULL
+ * on failure.
+ *
+ * @since GDAL 3.3
+ */
+
+OGRGeometryH OGR_G_Normalize( OGRGeometryH hGeom )
+
+{
+    VALIDATE_POINTER1( hGeom, "OGR_G_Normalize", nullptr );
+
+    return OGRGeometry::ToHandle(OGRGeometry::FromHandle(hGeom)->Normalize());
 }
 
 /************************************************************************/
@@ -4745,7 +4889,10 @@ OGRGeometry::Crosses( UNUSED_PARAMETER const OGRGeometry *poOtherGeom ) const
 
         sfcgal_geometry_t *poOther = OGRGeometry::OGRexportToSFCGAL(poOtherGeom);
         if (poOther == nullptr)
+        {
+            sfcgal_geometry_delete(poThis);
             return FALSE;
+        }
 
         int res = sfcgal_geometry_intersects_3d(poThis, poOther);
 
@@ -5141,7 +5288,7 @@ OGRErr OGRGeometry::Centroid( OGRPoint *poPoint ) const
             return OGRERR_FAILURE;
         }
 
-        if( poCentroidGeom != nullptr && getSpatialReference() != nullptr )
+        if( getSpatialReference() != nullptr )
             poCentroidGeom->assignSpatialReference(getSpatialReference());
 
         OGRPoint *poCentroid = poCentroidGeom->toPoint();
@@ -5284,7 +5431,7 @@ OGRGeometryH OGR_G_PointOnSurface( OGRGeometryH hGeom )
             return nullptr;
         }
 
-        if( poInsidePointGeom != nullptr && poThis->getSpatialReference() != nullptr )
+        if( poThis->getSpatialReference() != nullptr )
             poInsidePointGeom->
                 assignSpatialReference(poThis->getSpatialReference());
 
@@ -5797,12 +5944,14 @@ int OGRHasPreparedGeometrySupport()
  *
  * To free with OGRDestroyPreparedGeometry()
  *
- * @param poGeom input geometry to prepare.
+ * @param hGeom input geometry to prepare.
  * @return handle to a prepared geometry.
+ * @since GDAL 3.3
  */
-OGRPreparedGeometry* OGRCreatePreparedGeometry( UNUSED_IF_NO_GEOS const OGRGeometry* poGeom )
+OGRPreparedGeometryH OGRCreatePreparedGeometry( UNUSED_IF_NO_GEOS OGRGeometryH hGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
+    OGRGeometry* poGeom = OGRGeometry::FromHandle(hGeom);
     GEOSContextHandle_t hGEOSCtxt = OGRGeometry::createGEOSContext();
     GEOSGeom hGEOSGeom = poGeom->exportToGEOS(hGEOSCtxt);
     if( hGEOSGeom == nullptr )
@@ -5834,17 +5983,18 @@ OGRPreparedGeometry* OGRCreatePreparedGeometry( UNUSED_IF_NO_GEOS const OGRGeome
 /************************************************************************/
 
 /** Destroys a prepared geometry.
- * @param poPreparedGeom preprated geometry.
+ * @param hPreparedGeom preprated geometry.
+ * @since GDAL 3.3
  */
-void OGRDestroyPreparedGeometry( UNUSED_IF_NO_GEOS OGRPreparedGeometry* poPreparedGeom )
+void OGRDestroyPreparedGeometry( UNUSED_IF_NO_GEOS OGRPreparedGeometryH hPreparedGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
-    if( poPreparedGeom != nullptr )
+    if( hPreparedGeom != nullptr )
     {
-        GEOSPreparedGeom_destroy_r(poPreparedGeom->hGEOSCtxt, poPreparedGeom->poPreparedGEOSGeom);
-        GEOSGeom_destroy_r( poPreparedGeom->hGEOSCtxt, poPreparedGeom->hGEOSGeom );
-        OGRGeometry::freeGEOSContext( poPreparedGeom->hGEOSCtxt );
-        delete poPreparedGeom;
+        GEOSPreparedGeom_destroy_r(hPreparedGeom->hGEOSCtxt, hPreparedGeom->poPreparedGEOSGeom);
+        GEOSGeom_destroy_r( hPreparedGeom->hGEOSCtxt, hPreparedGeom->hGEOSGeom );
+        OGRGeometry::freeGEOSContext( hPreparedGeom->hGEOSCtxt );
+        delete hPreparedGeom;
     }
 #endif
 }
@@ -5854,28 +6004,35 @@ void OGRDestroyPreparedGeometry( UNUSED_IF_NO_GEOS OGRPreparedGeometry* poPrepar
 /************************************************************************/
 
 /** Returns whether a prepared geometry intersects with a geometry.
- * @param poPreparedGeom prepared geometry.
- * @param poOtherGeom other geometry.
+ * @param hPreparedGeom prepared geometry.
+ * @param hOtherGeom other geometry.
  * @return TRUE or FALSE.
+ * @since GDAL 3.3
  */
 int OGRPreparedGeometryIntersects(
-    UNUSED_IF_NO_GEOS const OGRPreparedGeometry* poPreparedGeom,
-    UNUSED_IF_NO_GEOS const OGRGeometry* poOtherGeom )
+    UNUSED_IF_NO_GEOS const OGRPreparedGeometryH hPreparedGeom,
+    UNUSED_IF_NO_GEOS const OGRGeometryH hOtherGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
-    if( poPreparedGeom == nullptr || poOtherGeom == nullptr )
+    OGRGeometry* poOtherGeom = OGRGeometry::FromHandle(hOtherGeom);
+    if( hPreparedGeom == nullptr || poOtherGeom == nullptr
+        // The check for IsEmpty() is for buggy GEOS versions.
+        // See https://github.com/libgeos/geos/pull/423
+        || poOtherGeom->IsEmpty() )
+    {
         return FALSE;
+    }
 
     GEOSGeom hGEOSOtherGeom =
-        poOtherGeom->exportToGEOS(poPreparedGeom->hGEOSCtxt);
+        poOtherGeom->exportToGEOS(hPreparedGeom->hGEOSCtxt);
     if( hGEOSOtherGeom == nullptr )
         return FALSE;
 
     const bool bRet = CPL_TO_BOOL(
-        GEOSPreparedIntersects_r(poPreparedGeom->hGEOSCtxt,
-                                 poPreparedGeom->poPreparedGEOSGeom,
+        GEOSPreparedIntersects_r(hPreparedGeom->hGEOSCtxt,
+                                 hPreparedGeom->poPreparedGEOSGeom,
                                  hGEOSOtherGeom));
-    GEOSGeom_destroy_r( poPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
+    GEOSGeom_destroy_r( hPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
 
     return bRet;
 #else
@@ -5884,28 +6041,34 @@ int OGRPreparedGeometryIntersects(
 }
 
 /** Returns whether a prepared geometry contains a geometry.
- * @param poPreparedGeom prepared geometry.
- * @param poOtherGeom other geometry.
+ * @param hPreparedGeom prepared geometry.
+ * @param hOtherGeom other geometry.
  * @return TRUE or FALSE.
  */
 int OGRPreparedGeometryContains(
-    UNUSED_IF_NO_GEOS const OGRPreparedGeometry* poPreparedGeom,
-    UNUSED_IF_NO_GEOS const OGRGeometry* poOtherGeom )
+    UNUSED_IF_NO_GEOS const OGRPreparedGeometryH hPreparedGeom,
+    UNUSED_IF_NO_GEOS const OGRGeometryH hOtherGeom )
 {
 #ifdef HAVE_GEOS_PREPARED_GEOMETRY
-    if( poPreparedGeom == nullptr || poOtherGeom == nullptr )
+    OGRGeometry* poOtherGeom = OGRGeometry::FromHandle(hOtherGeom);
+    if( hPreparedGeom == nullptr || poOtherGeom == nullptr
+        // The check for IsEmpty() is for buggy GEOS versions.
+        // See https://github.com/libgeos/geos/pull/423
+        || poOtherGeom->IsEmpty() )
+    {
         return FALSE;
+    }
 
     GEOSGeom hGEOSOtherGeom =
-        poOtherGeom->exportToGEOS(poPreparedGeom->hGEOSCtxt);
+        poOtherGeom->exportToGEOS(hPreparedGeom->hGEOSCtxt);
     if( hGEOSOtherGeom == nullptr )
         return FALSE;
 
     const bool bRet = CPL_TO_BOOL(
-        GEOSPreparedContains_r(poPreparedGeom->hGEOSCtxt,
-                               poPreparedGeom->poPreparedGEOSGeom,
+        GEOSPreparedContains_r(hPreparedGeom->hGEOSCtxt,
+                               hPreparedGeom->poPreparedGEOSGeom,
                                hGEOSOtherGeom));
-    GEOSGeom_destroy_r( poPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
+    GEOSGeom_destroy_r( hPreparedGeom->hGEOSCtxt, hGEOSOtherGeom );
 
     return bRet;
 #else
@@ -6077,18 +6240,6 @@ char* OGRGeometryToHexEWKB( OGRGeometry * poGeometry, int nSRSId,
 
     return pszTextBuf;
 }
-
-/**
- * \fn void OGRGeometry::segmentize(double dfMaxLength);
- *
- * \brief Add intermediate vertices to a geometry.
- *
- * This method modifies the geometry to add intermediate vertices if necessary
- * so that the maximum length between 2 consecutive vertices is lower than
- * dfMaxLength.
- *
- * @param dfMaxLength maximum length between 2 consecutive vertices.
- */
 
 /************************************************************************/
 /*                       importPreambleFromWkb()                       */
@@ -6783,7 +6934,7 @@ sfcgal_geometry_t* OGRGeometry::OGRexportToSFCGAL(UNUSED_IF_NO_SFCGAL const OGRG
 {
 #ifdef HAVE_SFCGAL
     sfcgal_init();
-    char *buffer;
+    char *buffer = nullptr;
 
     // special cases - LinearRing, Circular String, Compound Curve, Curve Polygon
 
@@ -6794,11 +6945,14 @@ sfcgal_geometry_t* OGRGeometry::OGRexportToSFCGAL(UNUSED_IF_NO_SFCGAL const OGRG
         if (poLS->exportToWkt(&buffer) == OGRERR_NONE)
         {
             sfcgal_geometry_t *_geometry = sfcgal_io_read_wkt(buffer,strlen(buffer));
-            free(buffer);
+            CPLFree(buffer);
             return _geometry;
         }
         else
+        {
+            CPLFree(buffer);
             return nullptr;
+        }
     }
     else if (EQUAL(poGeom->getGeometryName(), "CIRCULARSTRING") ||
              EQUAL(poGeom->getGeometryName(), "COMPOUNDCURVE") )
@@ -6808,11 +6962,14 @@ sfcgal_geometry_t* OGRGeometry::OGRexportToSFCGAL(UNUSED_IF_NO_SFCGAL const OGRG
         if (poLS->exportToWkt(&buffer) == OGRERR_NONE)
         {
             sfcgal_geometry_t *_geometry = sfcgal_io_read_wkt(buffer,strlen(buffer));
-            free(buffer);
+            CPLFree(buffer);
             return _geometry;
         }
         else
+        {
+            CPLFree(buffer);
             return nullptr;
+        }
     }
     else if (EQUAL(poGeom->getGeometryName(), "CURVEPOLYGON"))
     {
@@ -6821,20 +6978,26 @@ sfcgal_geometry_t* OGRGeometry::OGRexportToSFCGAL(UNUSED_IF_NO_SFCGAL const OGRG
         if (poPolygon->exportToWkt(&buffer) == OGRERR_NONE)
         {
             sfcgal_geometry_t *_geometry = sfcgal_io_read_wkt(buffer,strlen(buffer));
-            free(buffer);
+            CPLFree(buffer);
             return _geometry;
         }
         else
+        {
+            CPLFree(buffer);
             return nullptr;
+        }
     }
     else if (poGeom->exportToWkt(&buffer) == OGRERR_NONE)
     {
         sfcgal_geometry_t *_geometry = sfcgal_io_read_wkt(buffer,strlen(buffer));
-        free(buffer);
+        CPLFree(buffer);
         return _geometry;
     }
     else
+    {
+        CPLFree(buffer);
         return nullptr;
+    }
 #else
     CPLError( CE_Failure, CPLE_NotSupported, "SFCGAL support not enabled." );
     return nullptr;

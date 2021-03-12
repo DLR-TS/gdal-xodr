@@ -464,6 +464,7 @@ typedef void *OGRCoordinateTransformationH;
 #endif
 
 void CPL_DLL OSRSetPROJSearchPaths( const char* const * papszPaths );
+char CPL_DLL **OSRGetPROJSearchPaths( void );
 void CPL_DLL OSRGetPROJVersion( int* pnMajor, int* pnMinor, int* pnPatch );
 
 OGRSpatialReferenceH CPL_DLL CPL_STDCALL
@@ -502,6 +503,9 @@ OGRErr CPL_DLL CPL_STDCALL OSRExportToWkt( OGRSpatialReferenceH, char ** );
 OGRErr CPL_DLL OSRExportToWktEx( OGRSpatialReferenceH, char ** ppszResult,
                                  const char* const* papszOptions );
 OGRErr CPL_DLL CPL_STDCALL OSRExportToPrettyWkt( OGRSpatialReferenceH, char **, int);
+OGRErr CPL_DLL OSRExportToPROJJSON( OGRSpatialReferenceH hSRS,
+                                    char ** ppszReturn,
+                                    const char* const* papszOptions );
 OGRErr CPL_DLL CPL_STDCALL OSRExportToProj4( OGRSpatialReferenceH, char **);
 OGRErr CPL_DLL OSRExportToPCI( OGRSpatialReferenceH, char **, char **,
                                double ** );
@@ -541,6 +545,7 @@ double CPL_DLL OSRGetTargetLinearUnits( OGRSpatialReferenceH, const char *, char
 double CPL_DLL OSRGetPrimeMeridian( OGRSpatialReferenceH, char ** );
 
 int CPL_DLL OSRIsGeographic( OGRSpatialReferenceH );
+int CPL_DLL OSRIsDerivedGeographic( OGRSpatialReferenceH );
 int CPL_DLL OSRIsLocal( OGRSpatialReferenceH );
 int CPL_DLL OSRIsProjected( OGRSpatialReferenceH );
 int CPL_DLL OSRIsCompound( OGRSpatialReferenceH );
@@ -565,11 +570,15 @@ OGRErr CPL_DLL OSRSetTOWGS84( OGRSpatialReferenceH hSRS,
                               double, double, double,
                               double, double, double, double );
 OGRErr CPL_DLL OSRGetTOWGS84( OGRSpatialReferenceH hSRS, double *, int );
+OGRErr CPL_DLL OSRAddGuessedTOWGS84( OGRSpatialReferenceH hSRS);
 
 OGRErr CPL_DLL OSRSetCompoundCS( OGRSpatialReferenceH hSRS,
                                  const char *pszName,
                                  OGRSpatialReferenceH hHorizSRS,
                                  OGRSpatialReferenceH hVertSRS );
+OGRErr CPL_DLL OSRPromoteTo3D( OGRSpatialReferenceH hSRS, const char* pszName );
+OGRErr CPL_DLL OSRDemoteTo2D( OGRSpatialReferenceH hSRS, const char* pszName );
+
 OGRErr CPL_DLL OSRSetGeogCS( OGRSpatialReferenceH hSRS,
                       const char * pszGeogName,
                       const char * pszDatumName,
@@ -608,12 +617,12 @@ int CPL_DLL OSRGetAreaOfUse(  OGRSpatialReferenceH hSRS,
 OGRErr CPL_DLL OSRSetProjection( OGRSpatialReferenceH, const char * );
 OGRErr CPL_DLL OSRSetProjParm( OGRSpatialReferenceH, const char *, double );
 double CPL_DLL OSRGetProjParm( OGRSpatialReferenceH hSRS,
-                        const char * pszParmName,
+                        const char * pszParamName,
                         double dfDefault /* = 0.0 */,
                         OGRErr * /* = NULL */ );
 OGRErr CPL_DLL OSRSetNormProjParm( OGRSpatialReferenceH, const char *, double);
 double CPL_DLL OSRGetNormProjParm( OGRSpatialReferenceH hSRS,
-                                   const char * pszParmName,
+                                   const char * pszParamName,
                                    double dfDefault /* = 0.0 */,
                                    OGRErr * /* = NULL */ );
 
@@ -940,6 +949,15 @@ OGRErr CPL_DLL OSRSetSCH( OGRSpatialReferenceH hSRS,
                               double dfPegLat, double dfPegLong,
                               double dfPegHeading, double dfPegHgt);
 
+/** Vertical Perspective / Near-sided Perspective */
+OGRErr CPL_DLL OSRSetVerticalPerspective( OGRSpatialReferenceH hSRS,
+                                          double dfTopoOriginLat,
+                                          double dfTopoOriginLon,
+                                          double dfTopoOriginHeight,
+                                          double dfViewPointHeight,
+                                          double dfFalseEasting,
+                                          double dfFalseNorthing);
+
 double CPL_DLL OSRCalcInvFlattening( double dfSemiMajor, double dfSemiMinor );
 double CPL_DLL OSRCalcSemiMinorFromInvFlattening( double dfSemiMajor, double dfInvFlattening );
 
@@ -1036,6 +1054,12 @@ int CPL_DLL OCTCoordinateTransformationOptionsSetAreaOfInterest(
     double dfEastLongitudeDeg,
     double dfNorthLatitudeDeg);
 
+int CPL_DLL OCTCoordinateTransformationOptionsSetDesiredAccuracy(
+    OGRCoordinateTransformationOptionsH hOptions, double dfAccuracy);
+
+int CPL_DLL OCTCoordinateTransformationOptionsSetBallparkAllowed(
+    OGRCoordinateTransformationOptionsH hOptions, int bAllowBallpark);
+
 void CPL_DLL OCTDestroyCoordinateTransformationOptions(OGRCoordinateTransformationOptionsH);
 
 OGRCoordinateTransformationH CPL_DLL
@@ -1059,6 +1083,12 @@ int CPL_DLL
 OCTTransform4D( OGRCoordinateTransformationH hCT,
                 int nCount, double *x, double *y, double *z, double *t,
                 int *pabSuccess );
+
+int CPL_DLL
+OCTTransform4DWithErrorCodes( OGRCoordinateTransformationH hCT,
+                  int nCount, double *x, double *y, double *z, double *t,
+                  int *panErrorCodes );
+
 
 CPL_C_END
 

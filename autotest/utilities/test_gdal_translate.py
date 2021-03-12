@@ -120,7 +120,7 @@ def test_gdal_translate_5():
     if test_cli_utilities.get_gdal_translate_path() is None:
         pytest.skip()
 
-    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -expand rgb ../gdrivers/data/bug407.gif tmp/test5.tif')
+    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -expand rgb ../gdrivers/data/gif/bug407.gif tmp/test5.tif')
 
     ds = gdal.Open('tmp/test5.tif')
     assert ds is not None
@@ -316,7 +316,7 @@ def test_gdal_translate_15():
     if test_cli_utilities.get_gdal_translate_path() is None:
         pytest.skip()
 
-    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -sds ../gdrivers/data/A.TOC tmp/test15.tif')
+    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -sds ../gdrivers/data/nitf/A.TOC tmp/test15.tif')
 
     ds = gdal.Open('tmp/test15_1.tif')
     assert ds is not None
@@ -348,7 +348,7 @@ def test_gdal_translate_17():
     if test_cli_utilities.get_gdal_translate_path() is None:
         pytest.skip()
 
-    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -of VRT -expand rgba ../gdrivers/data/bug407.gif tmp/test17.vrt')
+    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -of VRT -expand rgba ../gdrivers/data/gif/bug407.gif tmp/test17.vrt')
 
     ds = gdal.Open('tmp/test17.vrt')
     assert ds is not None
@@ -531,7 +531,7 @@ def test_gdal_translate_25():
     if test_cli_utilities.get_gdal_translate_path() is None:
         pytest.skip()
 
-    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -q ../gdrivers/data/int.img tmp/test_gdal_translate_25.tif -norat')
+    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' -q ../gdrivers/data/hfa/int.img tmp/test_gdal_translate_25.tif -norat')
 
     ds = gdal.Open('tmp/test_gdal_translate_25.tif')
     assert ds.GetRasterBand(1).GetDefaultRAT() is None, 'RAT unexpected'
@@ -612,7 +612,7 @@ def test_gdal_translate_28():
     if test_cli_utilities.get_gdal_translate_path() is None:
         pytest.skip()
 
-    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' ../gdrivers/data/float64.asc tmp/test_gdal_translate_28.tif -oo datatype=float64')
+    gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' ../gdrivers/data/aaigrid/float64.asc tmp/test_gdal_translate_28.tif -oo datatype=float64')
 
     ds = gdal.Open('tmp/test_gdal_translate_28.tif')
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float64
@@ -699,18 +699,18 @@ def test_gdal_translate_32():
     gdaltest.runexternal(test_cli_utilities.get_gdal_translate_path() + ' ../gcore/data/byte_rpc.tif tmp/test_gdal_translate_32.tif -srcwin 1 2 13 14 -outsize 150% 300%')
     ds = gdal.Open('tmp/test_gdal_translate_32.tif')
     md = ds.GetMetadata('RPC')
-    assert (abs(float(md['LINE_OFF']) - 47496) <= 1e-5 and \
-       abs(float(md['LINE_SCALE']) - 47502) <= 1e-5 and \
-       abs(float(md['SAMP_OFF']) - 19676.6923076923) <= 1e-5 and \
-       abs(float(md['SAMP_SCALE']) - 19678.1538461538) <= 1e-5)
+    assert (float(md['LINE_OFF']) == pytest.approx(47496, abs=1e-5) and \
+       float(md['LINE_SCALE']) == pytest.approx(47502, abs=1e-5) and \
+       float(md['SAMP_OFF']) == pytest.approx(19676.6923076923, abs=1e-5) and \
+       float(md['SAMP_SCALE']) == pytest.approx(19678.1538461538, abs=1e-5))
 
     gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdal_translate_path() + ' ../gcore/data/byte_rpc.tif tmp/test_gdal_translate_32.tif -srcwin -10 -5 20 20')
     ds = gdal.Open('tmp/test_gdal_translate_32.tif')
     md = ds.GetMetadata('RPC')
-    assert (abs(float(md['LINE_OFF']) - (15834 - -5)) <= 1e-5 and \
-       abs(float(md['LINE_SCALE']) - 15834) <= 1e-5 and \
-       abs(float(md['SAMP_OFF']) - (13464 - -10)) <= 1e-5 and \
-       abs(float(md['SAMP_SCALE']) - 13464) <= 1e-5)
+    assert (float(md['LINE_OFF']) == pytest.approx((15834 - -5), abs=1e-5) and \
+       float(md['LINE_SCALE']) == pytest.approx(15834, abs=1e-5) and \
+       float(md['SAMP_OFF']) == pytest.approx((13464 - -10), abs=1e-5) and \
+       float(md['SAMP_SCALE']) == pytest.approx(13464, abs=1e-5))
 
 ###############################################################################
 # Test -outsize option in auto mode
@@ -854,6 +854,25 @@ def test_gdal_translate_39():
     assert len(gcps) == 0, 'GCP count wrong.'
 
     ds = None
+
+
+###############################################################################
+# Test -if option
+
+
+def test_gdal_translate_if_option():
+    if test_cli_utilities.get_gdal_translate_path() is None:
+        pytest.skip()
+
+    ret, err = gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdal_translate_path() + ' -if GTiff ../gcore/data/byte.tif /vsimem/out.tif')
+    assert err is None or err == ''
+
+    _, err = gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdal_translate_path() + ' -if invalid_driver_name ../gcore/data/byte.tif /vsimem/out.tif')
+    assert err is not None
+    assert 'invalid_driver_name' in err
+
+    _, err = gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdal_translate_path() + ' -if HFA ../gcore/data/byte.tif /vsimem/out.tif')
+    assert err is not None
 
 
 ###############################################################################

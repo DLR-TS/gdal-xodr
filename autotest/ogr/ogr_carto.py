@@ -39,26 +39,13 @@ from osgeo import ogr
 from osgeo import osr
 import pytest
 
-###############################################################################
-# Test if driver is available
 
-
-def test_ogr_carto_init():
-
-    ogrtest.carto_drv = None
-
-    ogrtest.carto_drv = ogr.GetDriverByName('Carto')
-    if ogrtest.carto_drv is None:
-        pytest.skip()
-
-    
+pytestmark = pytest.mark.require_driver('Carto')
 
 ###############################################################################
 #
 
 def test_ogr_carto_vsimem():
-    if ogrtest.carto_drv is None:
-        pytest.skip()
 
     ogrtest.carto_api_key_ori = gdal.GetConfigOption('CARTO_API_KEY')
     gdal.SetConfigOption('CARTO_API_URL', '/vsimem/carto')
@@ -773,9 +760,9 @@ Error""")
     lyr = ds.GetLayerByName('table1')
     assert lyr is not None
 
-    with gdaltest.tempfile("""/vsimem/carto/copyfrom?q=COPY%20"table1"%20("strfield","my_geom","cartodb_id")%20FROM%20STDIN%20WITH%20(FORMAT%20text,%20ENCODING%20UTF8)&api_key=foo&POSTFIELDS=copytest\t0101000020E610000000000000000059400000000000005940\t11\n\\.\n""","""{}"""):
+    with gdaltest.tempfile("""/vsimem/carto/copyfrom?q=COPY%20%22table1%22%20(%22strfield%22,%22my_geom%22,%22cartodb_id%22)%20FROM%20STDIN%20WITH%20(FORMAT%20text,%20ENCODING%20UTF8)&api_key=foo&POSTFIELDS=copytest\t0101000020E610000000000000000059400000000000005940\t11\n\\.\n""","""{}"""):
 
-        with gdaltest.tempfile("""/vsimem/carto/copyfrom?q=COPY%20"table1"%20("intfield","my_geom")%20FROM%20STDIN%20WITH%20(FORMAT%20text,%20ENCODING%20UTF8)&api_key=foo&POSTFIELDS=12\t0101000020E610000000000000000059400000000000005940\n\\.\n""","""{}"""):
+        with gdaltest.tempfile("""/vsimem/carto/copyfrom?q=COPY%20%22table1%22%20(%22intfield%22,%22my_geom%22)%20FROM%20STDIN%20WITH%20(FORMAT%20text,%20ENCODING%20UTF8)&api_key=foo&POSTFIELDS=12\t0101000020E610000000000000000059400000000000005940\n\\.\n%22""","""{}"""):
 
             f = ogr.Feature(lyr.GetLayerDefn())
             f.SetField('strfield', 'copytest')
@@ -811,8 +798,6 @@ Error""")
 
 
 def test_ogr_carto_vsimem_cleanup():
-    if ogrtest.carto_drv is None:
-        pytest.skip()
 
     gdal.SetConfigOption('CARTO_API_URL', None)
     gdal.SetConfigOption('CPL_CURL_ENABLE_VSIMEM', None)
@@ -829,7 +814,7 @@ def test_ogr_carto_vsimem_cleanup():
 
 
 def test_ogr_carto_test_ogrsf():
-    if ogrtest.carto_drv is None or gdal.GetConfigOption('SKIP_SLOW') is not None:
+    if gdal.GetConfigOption('SKIP_SLOW') is not None:
         pytest.skip()
 
     if gdaltest.skip_on_travis():
@@ -838,7 +823,6 @@ def test_ogr_carto_test_ogrsf():
     ogrtest.carto_test_server = 'https://gdalautotest2.carto.com'
 
     if gdaltest.gdalurlopen(ogrtest.carto_test_server) is None:
-        ogrtest.carto_drv = None
         pytest.skip('cannot open %s' % ogrtest.carto_test_server)
 
     import test_cli_utilities
@@ -855,27 +839,18 @@ def test_ogr_carto_test_ogrsf():
 
 def ogr_carto_rw_init():
 
-    ogrtest.carto_drv = None
-
     ogrtest.carto_connection = gdal.GetConfigOption('CARTO_CONNECTION')
     if ogrtest.carto_connection is None:
         pytest.skip('CARTO_CONNECTION missing')
     if gdal.GetConfigOption('CARTO_API_KEY') is None:
         pytest.skip('CARTO_API_KEY missing')
 
-    ogrtest.carto_drv = ogr.GetDriverByName('Carto')
-    if ogrtest.carto_drv is None:
-        pytest.skip()
 
-    
 ###############################################################################
 # Read/write/update test
 
 
 def ogr_carto_rw_1():
-
-    if ogrtest.carto_drv is None:
-        pytest.skip()
 
     ds = ogr.Open(ogrtest.carto_connection, update=1)
     assert ds is not None

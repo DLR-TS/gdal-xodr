@@ -30,7 +30,7 @@ possible, and if one wants to operate on the whole image, one must use a
 windowing strategy to avoid memory issues : typically by proceeding
 scanline (or group of scanlines) by scanline, or by blocks for tiled
 images. This can make the writing of algorithms more complicated when
-they need to access a neighbourhoud of pixels around each pixel of
+they need to access a neighbourhood of pixels around each pixel of
 interest, since the size of this extra window must be taken into
 account, leading to overlapping regions of interests. Nothing that
 cannot be solved, but that requires some additional thinking that
@@ -135,7 +135,7 @@ best illustrated by the following schemas :
    access mode. The pixel spacing and line spacing are returned by the
    function. This is implemented as a virtual method at the
    GDALRasterBand level, so that drivers have a chance of overriding the
-   base implementation. The base implementation justs uses
+   base implementation. The base implementation just uses
    GDALRasterBandGetVirtualMem(). Overridden implementation may use the
    memory file mapping mechanism instead. Such implementations will be
    done in the RawRasterBand object and in the GeoTIFF driver.
@@ -391,10 +391,10 @@ Implemented by cpl_virtualmem.cpp
     */
    size_t CPL_DLL CPLVirtualMemGetSize(CPLVirtualMem* ctxt);
 
-   /** Return if the virtal memory mapping is a direct file mapping.
+   /** Return if the virtual memory mapping is a direct file mapping.
     *
     * @param ctxt context returned by CPLVirtualMemNew().
-    * @return TRUE if the virtal memory mapping is a direct file mapping.
+    * @return TRUE if the virtual memory mapping is a direct file mapping.
     *
     * @since GDAL 1.11
     */
@@ -748,7 +748,7 @@ Implemented by gdalvirtualmem.cpp
            by pixel organization, tile (1, 0), ...  */
        GTO_TIP,
        /*! Band Interleaved by Tile : tile (0,0) of first band, tile (0,0) of second
-           band, ... tile (1,0) of fisrt band, tile (1,0) of second band, ... */
+           band, ... tile (1,0) of first band, tile (1,0) of second band, ... */
        GTO_BIT,
        /*! Band SeQuential : all the tiles of first band, all the tiles of following band... */
        GTO_BSQ

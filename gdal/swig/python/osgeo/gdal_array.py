@@ -95,7 +95,12 @@ except __builtin__.Exception:
         pass
     _newclass = 0
 
-import osgeo.gdal
+from sys import version_info as _swig_python_version_info
+if _swig_python_version_info >= (2, 7, 0):
+    from . import gdal
+else:
+    import gdal
+del _swig_python_version_info
 class VirtualMem(_object):
     """Proxy of C++ CPLVirtualMemShadow class."""
 
@@ -154,7 +159,7 @@ def BandRasterIONumPy(band, bWrite, xoff, yoff, xsize, ysize, psArray, buf_type,
     return _gdal_array.BandRasterIONumPy(band, bWrite, xoff, yoff, xsize, ysize, psArray, buf_type, resample_alg, callback, callback_data)
 
 def DatasetIONumPy(ds, bWrite, xoff, yoff, xsize, ysize, psArray, buf_type, resample_alg, callback=0, callback_data=None, binterleave=True):
-    """DatasetIONumPy(Dataset ds, int bWrite, int xoff, int yoff, int xsize, int ysize, PyArrayObject * psArray, int buf_type, GDALRIOResampleAlg resample_alg, GDALProgressFunc callback=0, void * callback_data=None, bool binterleave=True) -> CPLErr"""
+    """DatasetIONumPy(Dataset ds, int bWrite, double xoff, double yoff, double xsize, double ysize, PyArrayObject * psArray, int buf_type, GDALRIOResampleAlg resample_alg, GDALProgressFunc callback=0, void * callback_data=None, bool binterleave=True) -> CPLErr"""
     return _gdal_array.DatasetIONumPy(ds, bWrite, xoff, yoff, xsize, ysize, psArray, buf_type, resample_alg, callback, callback_data, binterleave)
 
 def MDArrayIONumPy(bWrite, mdarray, psArray, nDims1, nDims3, buffer_datatype):
@@ -283,10 +288,12 @@ def DatasetReadAsArray(ds, xoff=0, yoff=0, win_xsize=None, win_ysize=None, buf_o
         interleave = True
         xdim = 2
         ydim = 1
+        banddim = 0
     elif interleave == 'pixel':
         interleave = False
         xdim = 1
         ydim = 0
+        banddim = 2
     else:
         raise ValueError('Interleave should be band or pixel')
 
@@ -334,8 +341,8 @@ def DatasetReadAsArray(ds, xoff=0, yoff=0, win_xsize=None, win_ysize=None, buf_o
             raise ValueError('Specified buf_xsize not consistent with array shape')
         if buf_ysize is not None and buf_ysize != shape_buf_ysize:
             raise ValueError('Specified buf_ysize not consistent with array shape')
-        if buf_obj.shape[0] != ds.RasterCount:
-            raise ValueError('Array should have space for %d bands' % ds.RasterCount)
+        if buf_obj.shape[banddim] != ds.RasterCount:
+            raise ValueError('Dimension %d of array should have size %d to store bands)' % (banddim, ds.RasterCount))
 
         datatype = NumericTypeCodeToGDALTypeCode(buf_obj.dtype.type)
         if not datatype:
@@ -550,7 +557,7 @@ def RATWriteArray(rat, array, field, start=0):
         array = array.astype(numpy.double)
     elif numpy.issubdtype(array.dtype, numpy.character):
 # cast away any kind of Unicode etc
-        array = array.astype(numpy.character)
+        array = array.astype(bytes)
     else:
         raise ValueError("Array not of a supported type (integer, double or string)")
 

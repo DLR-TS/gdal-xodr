@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 ###############################################################################
 # $Id$
 #
@@ -65,5 +65,9 @@ def gdal_mkdir(argv, progress=None):
     return ret
 
 
+def main(argv):
+    return gdal_mkdir(argv)
+
+
 if __name__ == '__main__':
-    sys.exit(gdal_mkdir(sys.argv))
+    sys.exit(main(sys.argv))

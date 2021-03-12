@@ -24,7 +24,7 @@ Contributors:  Thomas Maurer
 #include "Defines.h"
 #include "Lerc.h"
 #include "Lerc2.h"
-
+#include <typeinfo>
 #include <limits>
 
 #ifdef HAVE_LERC1_DECODE
@@ -83,11 +83,7 @@ ErrCode Lerc::GetLercInfo(const Byte* pLercBlob, unsigned int numBytesBlob, stru
   lercInfo.RawInit();
 
   // first try Lerc2
-
-  //unsigned int minNumBytesHeader = Lerc2::MinNumBytesNeededToReadHeader();
-
   struct Lerc2::HeaderInfo lerc2Info;
-  //if (minNumBytesHeader <= numBytesBlob && Lerc2::GetHeaderInfo(pLercBlob, lerc2Info))
   if (Lerc2::GetHeaderInfo(pLercBlob, numBytesBlob, lerc2Info))
   {
     lercInfo.version = lerc2Info.version;
@@ -105,12 +101,6 @@ ErrCode Lerc::GetLercInfo(const Byte* pLercBlob, unsigned int numBytesBlob, stru
     if (lercInfo.blobSize > (int)numBytesBlob)    // truncated blob, we won't be able to read this band
       return ErrCode::BufferTooSmall;
 
-    //while (lercInfo.blobSize + minNumBytesHeader < numBytesBlob)    // means there could be another band
-    //{
-    //  struct Lerc2::HeaderInfo hdInfo;
-    //  if (!Lerc2::GetHeaderInfo(pLercBlob + lercInfo.blobSize, hdInfo))
-    //    return ErrCode::Ok;    // no other band, we are done
-
     struct Lerc2::HeaderInfo hdInfo;
     while (Lerc2::GetHeaderInfo(pLercBlob + lercInfo.blobSize, numBytesBlob - lercInfo.blobSize, hdInfo))
     {
@@ -124,7 +114,7 @@ ErrCode Lerc::GetLercInfo(const Byte* pLercBlob, unsigned int numBytesBlob, stru
         return ErrCode::Failed;
       }
 
-      if( lercInfo.blobSize > std::numeric_limits<int>::max() - hdInfo.blobSize )
+      if (lercInfo.blobSize > std::numeric_limits<int>::max() - hdInfo.blobSize)
         return ErrCode::Failed;
 
       lercInfo.blobSize += hdInfo.blobSize;
@@ -144,14 +134,15 @@ ErrCode Lerc::GetLercInfo(const Byte* pLercBlob, unsigned int numBytesBlob, stru
 
 #ifdef HAVE_LERC1_DECODE
   // only if not Lerc2, try legacy Lerc1
-  unsigned int numBytesHeader = CntZImage::computeNumBytesNeededToReadHeader();
+  unsigned int numBytesHeaderBand0 = CntZImage::computeNumBytesNeededToReadHeader(false);
+  unsigned int numBytesHeaderBand1 = CntZImage::computeNumBytesNeededToReadHeader(true);
   Byte* pByte = const_cast<Byte*>(pLercBlob);
 
   lercInfo.zMin =  FLT_MAX;
   lercInfo.zMax = -FLT_MAX;
 
   CntZImage cntZImg;
-  if (numBytesHeader <= numBytesBlob && cntZImg.read(&pByte, 1e12, true))    // read just the header
+  if (numBytesHeaderBand0 <= numBytesBlob && cntZImg.read(&pByte, 1e12, true))    // read just the header
   {
     size_t nBytesRead = pByte - pLercBlob;
     size_t nBytesNeeded = 10 + 4 * sizeof(int) + 1 * sizeof(double);
@@ -162,9 +153,11 @@ ErrCode Lerc::GetLercInfo(const Byte* pLercBlob, unsigned int numBytesBlob, stru
     Byte* ptr = const_cast<Byte*>(pLercBlob);
     ptr += 10 + 2 * sizeof(int);
 
-    int height = *((const int*)ptr);  ptr += sizeof(int);
-    int width  = *((const int*)ptr);  ptr += sizeof(int);
-    double maxZErrorInFile = *((const double*)ptr);
+    int height(0), width(0);
+    memcpy(&height, ptr, sizeof(int));  ptr += sizeof(int);
+    memcpy(&width,  ptr, sizeof(int));  ptr += sizeof(int);
+    double maxZErrorInFile(0);
+    memcpy(&maxZErrorInFile, ptr, sizeof(double));
 
     if (height > 20000 || width > 20000)    // guard against bogus numbers; size limitation for old Lerc1
       return ErrCode::Failed;
@@ -178,7 +171,7 @@ ErrCode Lerc::GetLercInfo(const Byte* pLercBlob, unsigned int numBytesBlob, stru
     Byte* pByte = const_cast<Byte*>(pLercBlob);
     bool onlyZPart = false;
 
-    while (lercInfo.blobSize + numBytesHeader < numBytesBlob)    // means there could be another band
+    while (lercInfo.blobSize + numBytesHeaderBand1 < numBytesBlob)    // means there could be another band
     {
       if (!cntZImg.read(&pByte, 1e12, false, onlyZPart))
         return (lercInfo.nBands > 0) ? ErrCode::Ok : ErrCode::Failed;    // no other band, we are done
@@ -396,11 +389,13 @@ ErrCode Lerc::DecodeTempl(T* pData, const Byte* pLercBlob, unsigned int numBytes
   else    // might be old Lerc1
   {
 #ifdef HAVE_LERC1_DECODE
-    unsigned int numBytesHeader = CntZImage::computeNumBytesNeededToReadHeader();
+    unsigned int numBytesHeaderBand0 = CntZImage::computeNumBytesNeededToReadHeader(false);
+    unsigned int numBytesHeaderBand1 = CntZImage::computeNumBytesNeededToReadHeader(true);
     CntZImage zImg;
 
     for (int iBand = 0; iBand < nBands; iBand++)
     {
+      unsigned int numBytesHeader = iBand == 0 ? numBytesHeaderBand0 : numBytesHeaderBand1;
       if ((size_t)(pByte - pLercBlob) + numBytesHeader > numBytesBlob)
         return ErrCode::BufferTooSmall;
 
@@ -473,7 +468,7 @@ ErrCode Lerc::ConvertToDoubleTempl(const T* pDataIn, size_t nDataValues, double*
 
   for (size_t k = 0; k < nDataValues; k++)
     pDataOut[k] = pDataIn[k];
- 
+
   return ErrCode::Ok;
 }
 
@@ -481,7 +476,7 @@ ErrCode Lerc::ConvertToDoubleTempl(const T* pDataIn, size_t nDataValues, double*
 
 template<class T> ErrCode Lerc::CheckForNaN(const T* arr, int nDim, int nCols, int nRows, const BitMask* pBitMask)
 {
- if (!arr || nDim <= 0 || nCols <= 0 || nRows <= 0)
+  if (!arr || nDim <= 0 || nCols <= 0 || nRows <= 0)
     return ErrCode::WrongParam;
  
 #ifdef CHECK_FOR_NAN

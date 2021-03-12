@@ -13,18 +13,15 @@ sudo add-apt-repository -y ppa:ubuntugis/ubuntugis-testing
 sudo apt-get update
 
 # install test dependencies
-# note: pip 9 is installed on the box, but it hits a strange error after upgrading setuptools.
-# so we install a newer pip first.
-sudo apt-get remove -y python-*
-sudo apt-get install python-minimal
-curl -sSL 'https://bootstrap.pypa.io/get-pip.py' | sudo python
+sudo apt-get install python3.5-dev
+curl -sSL 'https://bootstrap.pypa.io/get-pip.py' | sudo python3.5
 (cd autotest; sudo -H pip install -U -r ./requirements.txt)
 
 sudo pip install lxml flake8 numpy
 
 # MSSQL: server side
-docker pull microsoft/mssql-server-linux:2017-latest
-sudo docker run -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=DummyPassw0rd'  -p 1433:1433 --name sql1 -d microsoft/mssql-server-linux:2017-latest
+docker pull mcr.microsoft.com/mssql/server:2017-latest
+sudo docker run -e 'ACCEPT_EULA=Y' -e 'SA_PASSWORD=DummyPassw0rd'  -p 1433:1433 --name sql1 -d mcr.microsoft.com/mssql/server:2017-latest
 sleep 10
 docker exec -it sql1 /opt/mssql-tools/bin/sqlcmd -l 30 -S localhost -U SA -P DummyPassw0rd -Q "CREATE DATABASE TestDB;"
 
@@ -32,14 +29,12 @@ sudo apt-get install -y --allow-unauthenticated ccache libpng12-dev libjpeg-dev 
 # libgta-dev
 sudo apt-get install -y libqhull-dev
 sudo apt-get install -y libogdi3.2-dev
-# MONO
-sudo apt-get install -y mono-mcs libmono-system-drawing4.0-cil
 # Boost for Mongo
 #sudo apt-get install -y libboost-regex-dev libboost-system-dev libboost-thread-dev
 
 sudo apt-get install doxygen texlive-latex-base
 # flake8 codes to just emulate pyflakes (http://flake8.pycqa.org/en/latest/user/error-codes.html)
-FLAKE8="flake8 --select=F401,F402,F403,F404,F405,F406,F407,F601,F602,F621,F622,F631,F701,F702,F703,F704,F705,F706,F707,F721,F722,F811,F812,F821,F822,F823,F831,F841,F901"
+FLAKE8="flake8 --select=F401,F402,F403,F404,F405,F406,F407,F601,F602,F621,F622,F631,F632,F633,F701,F702,F703,F704,F705,F706,F707,F721,F722,F811,F812,F821,F822,F823,F831,F841,F901"
 $FLAKE8 autotest
 $FLAKE8 gdal/swig/python/scripts
 $FLAKE8 gdal/swig/python/samples
@@ -75,13 +70,13 @@ sudo cp -r openjpeg-v2.3.0-linux-x86_64/lib/* /usr/local/lib
 #tar xzf mongo-cxx-1.0.2-install-ubuntu12.04-64bit.tar.gz
 #sudo cp -r mongo-cxx-1.0.2-install/include/* /usr/local/include
 #sudo cp -r mongo-cxx-1.0.2-install/lib/* /usr/local/lib
-wget https://bitbucket.org/chchrsc/kealib/get/c6d36f3db5e4.zip
-unzip c6d36f3db5e4.zip
-cd chchrsc-kealib-c6d36f3db5e4/trunk
-cmake . -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DHDF5_INCLUDE_DIR=/usr/include -DHDF5_LIB_PATH=/usr/lib -DLIBKEA_WITH_GDAL=OFF
-make -j4
-sudo make install
-cd ../..
+
+wget https://github.com/ubarsc/kealib/archive/kealib-1.4.12.zip
+unzip kealib-1.4.12.zip
+(cd kealib-kealib-1.4.12;
+cmake . -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DHDF5_INCLUDE_DIR=/usr/include -DHDF5_LIB_PATH=/usr/lib -DLIBKEA_WITH_GDAL=OFF;
+make -j4;
+sudo make install)
 
 # Build zstd
 wget https://github.com/facebook/zstd/archive/v1.3.3.tar.gz

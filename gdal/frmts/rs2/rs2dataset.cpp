@@ -273,7 +273,7 @@ CPLErr RS2RasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
 /* or beta nought.                                                      */
 /************************************************************************/
 
-class RS2CalibRasterBand : public GDALPamRasterBand {
+class RS2CalibRasterBand final: public GDALPamRasterBand {
 private:
     // eCalibration m_eCalib;
     GDALDataset *m_poBandDataset;
@@ -1509,7 +1509,7 @@ void GDALRegister_RS2()
     poDriver->SetDescription( "RS2" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "RadarSat 2 XML Product" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_rs2.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/rs2.html" );
     poDriver->SetMetadataItem( GDAL_DMD_SUBDATASETS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

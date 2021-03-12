@@ -147,7 +147,7 @@ GDALFilterLine( float *pafLastLine, float *pafThisLine, float *pafNextLine,
 /*                                                                      */
 /*      This implementation attempts to apply many iterations in        */
 /*      one IO pass by managing the filtering over a rolling buffer     */
-/*      of nIternations+2 scanlines.  While possibly clever this        */
+/*      of nIterations+2 scanlines.  While possibly clever this        */
 /*      makes the algorithm implementation largely                      */
 /*      incomprehensible.                                               */
 /************************************************************************/
@@ -661,8 +661,7 @@ GDALFillNodata( GDALRasterBandH hTargetBand,
 /* -------------------------------------------------------------------- */
 /*      report progress.                                                */
 /* -------------------------------------------------------------------- */
-        if( eErr == CE_None &&
-            !pfnProgress(
+        if( !pfnProgress(
                 dfProgressRatio * (0.5*(iY+1) /
                                    static_cast<double>(nYSize)),
                 "Filling...", pProgressArg ) )
@@ -853,8 +852,7 @@ GDALFillNodata( GDALRasterBandH hTargetBand,
 /* -------------------------------------------------------------------- */
 /*      report progress.                                                */
 /* -------------------------------------------------------------------- */
-        if( eErr == CE_None &&
-            !pfnProgress(
+        if( !pfnProgress(
                 dfProgressRatio*(0.5+0.5*(nYSize-iY) /
                                  static_cast<double>(nYSize)),
                 "Filling...", pProgressArg) )
@@ -875,7 +873,7 @@ GDALFillNodata( GDALRasterBandH hTargetBand,
         GDALFlushRasterCache( hMaskBand );
 
         void *pScaledProgress =
-            GDALCreateScaledProgress( dfProgressRatio, 1.0, pfnProgress, nullptr );
+            GDALCreateScaledProgress( dfProgressRatio, 1.0, pfnProgress, pProgressArg );
 
         eErr = GDALMultiFilter( hTargetBand, hMaskBand, hFiltMaskBand,
                                 nSmoothingIterations,

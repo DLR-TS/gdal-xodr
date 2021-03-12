@@ -107,6 +107,7 @@ OGRGeometryH CPL_DLL OGR_G_ForceToMultiLineString( OGRGeometryH ) CPL_WARN_UNUSE
 OGRGeometryH CPL_DLL OGR_G_ForceTo( OGRGeometryH hGeom,
                                     OGRwkbGeometryType eTargetType,
                                     char** papszOptions ) CPL_WARN_UNUSED_RESULT;
+OGRGeometryH CPL_DLL OGR_G_RemoveLowerDimensionSubGeoms( const OGRGeometryH hGeom ) CPL_WARN_UNUSED_RESULT;
 
 int    CPL_DLL OGR_G_GetDimension( OGRGeometryH );
 int    CPL_DLL OGR_G_GetCoordinateDimension( OGRGeometryH );
@@ -146,12 +147,21 @@ char   CPL_DLL *OGR_G_ExportToJson( OGRGeometryH ) CPL_WARN_UNUSED_RESULT;
 char   CPL_DLL *OGR_G_ExportToJsonEx( OGRGeometryH, char** papszOptions ) CPL_WARN_UNUSED_RESULT;
 /** Create a OGR geometry from a GeoJSON geometry object */
 OGRGeometryH CPL_DLL OGR_G_CreateGeometryFromJson( const char* ) CPL_WARN_UNUSED_RESULT;
+/** Create a OGR geometry from a ESRI JSON geometry object */
+OGRGeometryH CPL_DLL OGR_G_CreateGeometryFromEsriJson( const char* ) CPL_WARN_UNUSED_RESULT;
 
 void   CPL_DLL OGR_G_AssignSpatialReference( OGRGeometryH,
                                              OGRSpatialReferenceH );
 OGRSpatialReferenceH CPL_DLL OGR_G_GetSpatialReference( OGRGeometryH );
 OGRErr CPL_DLL OGR_G_Transform( OGRGeometryH, OGRCoordinateTransformationH );
 OGRErr CPL_DLL OGR_G_TransformTo( OGRGeometryH, OGRSpatialReferenceH );
+
+/** Opaque type for a geometry transformer. */
+typedef struct OGRGeomTransformer* OGRGeomTransformerH;
+OGRGeomTransformerH CPL_DLL OGR_GeomTransformer_Create( OGRCoordinateTransformationH,
+                                                        CSLConstList papszOptions ) CPL_WARN_UNUSED_RESULT;
+OGRGeometryH CPL_DLL OGR_GeomTransformer_Transform(OGRGeomTransformerH hTransformer, OGRGeometryH hGeom ) CPL_WARN_UNUSED_RESULT;
+void CPL_DLL OGR_GeomTransformer_Destroy(OGRGeomTransformerH hTransformer);
 
 OGRGeometryH CPL_DLL OGR_G_Simplify( OGRGeometryH hThis, double tolerance ) CPL_WARN_UNUSED_RESULT;
 OGRGeometryH CPL_DLL OGR_G_SimplifyPreserveTopology( OGRGeometryH hThis, double tolerance ) CPL_WARN_UNUSED_RESULT;
@@ -193,6 +203,7 @@ int    CPL_DLL OGR_G_IsEmpty( OGRGeometryH );
 int    CPL_DLL OGR_G_IsValid( OGRGeometryH );
 /*char    CPL_DLL *OGR_G_IsValidReason( OGRGeometryH );*/
 OGRGeometryH CPL_DLL OGR_G_MakeValid( OGRGeometryH ) CPL_WARN_UNUSED_RESULT;
+OGRGeometryH CPL_DLL OGR_G_Normalize( OGRGeometryH ) CPL_WARN_UNUSED_RESULT;
 int    CPL_DLL OGR_G_IsSimple( OGRGeometryH );
 int    CPL_DLL OGR_G_IsRing( OGRGeometryH );
 
@@ -282,6 +293,17 @@ int CPL_DLL OGRGetGenerate_DB2_V72_BYTE_ORDER(void);
 void CPL_DLL OGRSetNonLinearGeometriesEnabledFlag(int bFlag);
 int CPL_DLL OGRGetNonLinearGeometriesEnabledFlag(void);
 
+/** Opaque type for a prepared geometry */
+typedef struct _OGRPreparedGeometry * OGRPreparedGeometryH;
+
+int CPL_DLL OGRHasPreparedGeometrySupport(void);
+OGRPreparedGeometryH CPL_DLL OGRCreatePreparedGeometry( OGRGeometryH hGeom );
+void CPL_DLL OGRDestroyPreparedGeometry( OGRPreparedGeometryH hPreparedGeom );
+int CPL_DLL OGRPreparedGeometryIntersects( OGRPreparedGeometryH hPreparedGeom,
+                                           OGRGeometryH hOtherGeom );
+int CPL_DLL OGRPreparedGeometryContains( OGRPreparedGeometryH hPreparedGeom,
+                                         OGRGeometryH hOtherGeom );
+
 /* -------------------------------------------------------------------- */
 /*      Feature related (ogr_feature.h)                                 */
 /* -------------------------------------------------------------------- */
@@ -316,6 +338,8 @@ void   CPL_DLL OGR_Fld_Destroy( OGRFieldDefnH );
 
 void   CPL_DLL OGR_Fld_SetName( OGRFieldDefnH, const char * );
 const char CPL_DLL *OGR_Fld_GetNameRef( OGRFieldDefnH );
+void   CPL_DLL OGR_Fld_SetAlternativeName( OGRFieldDefnH, const char * );
+const char CPL_DLL *OGR_Fld_GetAlternativeNameRef( OGRFieldDefnH );
 OGRFieldType CPL_DLL OGR_Fld_GetType( OGRFieldDefnH );
 void   CPL_DLL OGR_Fld_SetType( OGRFieldDefnH, OGRFieldType );
 OGRFieldSubType CPL_DLL OGR_Fld_GetSubType( OGRFieldDefnH );
@@ -332,6 +356,8 @@ int    CPL_DLL OGR_Fld_IsIgnored( OGRFieldDefnH hDefn );
 void   CPL_DLL OGR_Fld_SetIgnored( OGRFieldDefnH hDefn, int );
 int    CPL_DLL OGR_Fld_IsNullable( OGRFieldDefnH hDefn );
 void   CPL_DLL OGR_Fld_SetNullable( OGRFieldDefnH hDefn, int );
+int    CPL_DLL OGR_Fld_IsUnique( OGRFieldDefnH hDefn );
+void   CPL_DLL OGR_Fld_SetUnique( OGRFieldDefnH hDefn, int );
 const char CPL_DLL *OGR_Fld_GetDefault( OGRFieldDefnH hDefn );
 void   CPL_DLL OGR_Fld_SetDefault( OGRFieldDefnH hDefn, const char* );
 int    CPL_DLL OGR_Fld_IsDefaultDriverSpecific( OGRFieldDefnH hDefn );

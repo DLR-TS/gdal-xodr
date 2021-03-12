@@ -1,4 +1,7 @@
 <!--
+IMPORTANT: Do NOT use GitHub to post any questions or support requests!
+           They will be closed immediately and ignored.
+
 Make sure that the title of your commit(s) is descriptive. Typically, they
 should be formatted as "component/filename: Describe what the commit does (fixes #ticket)",
 so that anyone that parses 'git log' immediately knows what a commit is about.
@@ -25,6 +28,7 @@ please squash your commits in a single one at the end. See
 
  - [ ] ADD YOUR TASKS HERE
  - [ ] Add test case(s)
+ - [ ] Add documentation
  - [ ] Review
  - [ ] Adjust for comments
  - [ ] All CI builds and checks have passed

@@ -193,9 +193,9 @@ VRTCreateCopy( const char * pszFilename,
     /*      Convert tree to a single block of XML text.                     */
     /* -------------------------------------------------------------------- */
         char *pszVRTPath = CPLStrdup(CPLGetPath(pszFilename));
-        reinterpret_cast<VRTDataset *>(
+        static_cast<VRTDataset *>(
             poSrcDS )->UnsetPreservedRelativeFilenames();
-        CPLXMLNode *psDSTree = reinterpret_cast<VRTDataset *>(
+        CPLXMLNode *psDSTree = static_cast<VRTDataset *>(
             poSrcDS )->SerializeToXML( pszVRTPath );
 
         char *pszXML = CPLSerializeXMLTree( psDSTree );
@@ -268,7 +268,7 @@ VRTCreateCopy( const char * pszFilename,
 /* -------------------------------------------------------------------- */
 /*      Create the virtual dataset.                                     */
 /* -------------------------------------------------------------------- */
-    VRTDataset *poVRTDS = reinterpret_cast<VRTDataset *>(
+    VRTDataset *poVRTDS = static_cast<VRTDataset *>(
         VRTDataset::Create( pszFilename,
                             poSrcDS->GetRasterXSize(),
                             poSrcDS->GetRasterYSize(),
@@ -311,6 +311,21 @@ VRTCreateCopy( const char * pszFilename,
     if( papszMD )
         poVRTDS->SetMetadata( papszMD, "GEOLOCATION" );
 
+    {
+        const char* pszInterleave = poSrcDS->GetMetadataItem("INTERLEAVE", "IMAGE_STRUCTURE");
+        if (pszInterleave)
+        {
+            poVRTDS->SetMetadataItem("INTERLEAVE", pszInterleave, "IMAGE_STRUCTURE");
+        }
+    }
+    {
+        const char* pszCompression = poSrcDS->GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE");
+        if( pszCompression )
+        {
+            poVRTDS->SetMetadataItem("COMPRESSION", pszCompression, "IMAGE_STRUCTURE");
+        }
+    }
+
 /* -------------------------------------------------------------------- */
 /*      GCPs                                                            */
 /* -------------------------------------------------------------------- */
@@ -331,10 +346,15 @@ VRTCreateCopy( const char * pszFilename,
 /* -------------------------------------------------------------------- */
 /*      Create the band with the appropriate band type.                 */
 /* -------------------------------------------------------------------- */
-        poVRTDS->AddBand( poSrcBand->GetRasterDataType(), nullptr );
+        CPLStringList aosAddBandOptions;
+        int nSrcBlockXSize, nSrcBlockYSize;
+        poSrcBand->GetBlockSize(&nSrcBlockXSize, &nSrcBlockYSize);
+        aosAddBandOptions.SetNameValue("BLOCKXSIZE", CPLSPrintf("%d", nSrcBlockXSize));
+        aosAddBandOptions.SetNameValue("BLOCKYSIZE", CPLSPrintf("%d", nSrcBlockYSize));
+        poVRTDS->AddBand( poSrcBand->GetRasterDataType(), aosAddBandOptions );
 
         VRTSourcedRasterBand *poVRTBand
-            = reinterpret_cast<VRTSourcedRasterBand *>(
+            = static_cast<VRTSourcedRasterBand *>(
                 poVRTDS->GetRasterBand( iBand+1 ) );
 
 /* -------------------------------------------------------------------- */
@@ -346,6 +366,12 @@ VRTCreateCopy( const char * pszFilename,
 /*      Emit various band level metadata.                               */
 /* -------------------------------------------------------------------- */
         poVRTBand->CopyCommonInfoFrom( poSrcBand );
+
+        const char* pszCompression = poSrcBand->GetMetadataItem("COMPRESSION", "IMAGE_STRUCTURE");
+        if( pszCompression )
+        {
+            poVRTBand->SetMetadataItem("COMPRESSION", pszCompression, "IMAGE_STRUCTURE");
+        }
 
 /* -------------------------------------------------------------------- */
 /*      Add specific mask band.                                         */
@@ -409,7 +435,7 @@ void GDALRegister_VRT()
     poDriver->SetMetadataItem( GDAL_DCAP_MULTIDIM_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Virtual Raster" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "vrt" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "gdal_vrttut.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/vrt.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Int32 UInt32 Float32 Float64 "
                                "CInt16 CInt32 CFloat32 CFloat64" );
@@ -422,11 +448,11 @@ void GDALRegister_VRT()
     poDriver->pfnDelete = VRTDataset::Delete;
 
     poDriver->SetMetadataItem( GDAL_DMD_OPENOPTIONLIST,
-"<OptionList>"
+"<OpenOptionList>"
 "  <Option name='ROOT_PATH' type='string' description='Root path to evaluate "
 "relative paths inside the VRT. Mainly useful for inlined VRT, or in-memory "
 "VRT, where their own directory does not make sense'/>"
-"</OptionList>" );
+"</OpenOptionList>" );
 
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

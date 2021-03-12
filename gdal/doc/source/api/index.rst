@@ -35,7 +35,6 @@ API
        gdaldataset_cpp
        gdalrasterband_cpp
        gdalwarp_cpp
-       ogrlayer_cpp
 
    Vector API
    +++++++++++++++++++++++++++
@@ -46,6 +45,7 @@ API
        ogrfeature_cpp
        ogrfeaturestyle_cpp
        ogrgeometry_cpp
+       ogrlayer_cpp
 
    Spatial reference system API
    ++++++++++++++++++++++++++++
@@ -68,20 +68,28 @@ API
        gdalattribute_cpp
        gdalextendeddatatype_cpp
 
-   Geographic networks API
+   Miscellaneous C++ API
    ++++++++++++++++++++++++++++
 
    .. toctree::
        :maxdepth: 1
 
+       cpl_cpp
        gnm_cpp
 
-   `Python API <../python/index.html>`_
-   ------------------------------------
+   Python API
+   ----------
+
+   .. toctree::
+       :maxdepth: 1
+
+       python_api_ref
+       python_gotchas
+
 
    `Java API <../java/index.html>`_
    --------------------------------
-
+   
 .. only:: latex
 
     API is omitted in this PDF document. You can consult it on

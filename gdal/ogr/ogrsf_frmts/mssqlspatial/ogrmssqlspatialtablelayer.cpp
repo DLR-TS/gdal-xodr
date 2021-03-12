@@ -31,6 +31,8 @@
 #include "ogr_mssqlspatial.h"
 #include "ogr_p.h"
 
+#include <memory>
+
 CPL_CVSID("$Id$")
 
 #define UNSUPPORTED_OP_READ_ONLY "%s : unsupported operation on a read-only datasource."
@@ -461,7 +463,6 @@ void OGRMSSQLSpatialTableLayer::DropSpatialIndex()
 CPLString OGRMSSQLSpatialTableLayer::BuildFields()
 
 {
-    int i = 0;
     int nColumn = 0;
     CPLString osFieldList;
 
@@ -514,7 +515,7 @@ CPLString OGRMSSQLSpatialTableLayer::BuildFields()
         CPLFree(panFieldOrdinals);
         panFieldOrdinals = (int *) CPLMalloc( sizeof(int) * poFeatureDefn->GetFieldCount() );
 
-        for( i = 0; i < poFeatureDefn->GetFieldCount(); i++ )
+        for( int i = 0; i < poFeatureDefn->GetFieldCount(); i++ )
         {
             if ( poFeatureDefn->GetFieldDefn(i)->IsIgnored() )
                 continue;
@@ -538,20 +539,6 @@ CPLString OGRMSSQLSpatialTableLayer::BuildFields()
 }
 
 /************************************************************************/
-/*                           ClearStatement()                           */
-/************************************************************************/
-
-void OGRMSSQLSpatialTableLayer::ClearStatement()
-
-{
-    if( poStmt != nullptr )
-    {
-        delete poStmt;
-        poStmt = nullptr;
-    }
-}
-
-/************************************************************************/
 /*                            GetStatement()                            */
 /************************************************************************/
 
@@ -561,7 +548,6 @@ CPLODBCStatement *OGRMSSQLSpatialTableLayer::GetStatement()
     if( poStmt == nullptr )
     {
         poStmt = BuildStatement(BuildFields());
-        iNextShapeId = 0;
     }
 
     return poStmt;
@@ -645,17 +631,6 @@ CPLODBCStatement* OGRMSSQLSpatialTableLayer::BuildStatement(const char* pszColum
 }
 
 /************************************************************************/
-/*                            ResetReading()                            */
-/************************************************************************/
-
-void OGRMSSQLSpatialTableLayer::ResetReading()
-
-{
-    ClearStatement();
-    OGRMSSQLSpatialLayer::ResetReading();
-}
-
-/************************************************************************/
 /*                             GetFeature()                             */
 /************************************************************************/
 
@@ -671,6 +646,7 @@ OGRFeature *OGRMSSQLSpatialTableLayer::GetFeature( GIntBig nFeatureId )
 
     iNextShapeId = nFeatureId;
 
+    m_bResetNeeded = true;
     poStmt = new CPLODBCStatement( poDS->GetSession() );
     CPLString osFields = BuildFields();
     poStmt->Appendf( "select %s from %s where %s = " CPL_FRMT_GIB, osFields.c_str(),
@@ -712,34 +688,34 @@ OGRErr OGRMSSQLSpatialTableLayer::GetExtent(int iGeomField, OGREnvelope *psExten
     if (nGeomColumnType == MSSQLCOLTYPE_GEOGRAPHY || nGeomColumnType == MSSQLCOLTYPE_GEOMETRY)
     {
         // Prepare statement
-        poStmt = new CPLODBCStatement(poDS->GetSession());
+        auto poStatement = std::unique_ptr<CPLODBCStatement>(new CPLODBCStatement(poDS->GetSession()));
 
         if (poDS->sMSSQLVersion.nMajor >= 11) {
             // SQLServer 2012 or later:
             // geography is converted to geometry to obtain the rectangular envelope
             if (nGeomColumnType == MSSQLCOLTYPE_GEOGRAPHY)
-                poStmt->Appendf("WITH extent(extentcol) AS (SELECT geometry::EnvelopeAggregate(geometry::STGeomFromWKB(%s.STAsBinary(), %s.STSrid).MakeValid()) as extentcol FROM [%s].[%s])", pszGeomColumn, pszGeomColumn, pszSchemaName, pszTableName);
+                poStatement->Appendf("WITH extent(extentcol) AS (SELECT geometry::EnvelopeAggregate(geometry::STGeomFromWKB(%s.STAsBinary(), %s.STSrid).MakeValid()) as extentcol FROM [%s].[%s])", pszGeomColumn, pszGeomColumn, pszSchemaName, pszTableName);
             else
-                poStmt->Appendf("WITH extent(extentcol) AS (SELECT geometry::EnvelopeAggregate(%s.MakeValid()) AS extentcol FROM [%s].[%s])", pszGeomColumn, pszSchemaName, pszTableName);
+                poStatement->Appendf("WITH extent(extentcol) AS (SELECT geometry::EnvelopeAggregate(%s.MakeValid()) AS extentcol FROM [%s].[%s])", pszGeomColumn, pszSchemaName, pszTableName);
 
-            poStmt->Appendf("SELECT extentcol.STPointN(1).STX, extentcol.STPointN(1).STY,");
-            poStmt->Appendf("extentcol.STPointN(3).STX, extentcol.STPointN(3).STY FROM extent;");
+            poStatement->Appendf("SELECT extentcol.STPointN(1).STX, extentcol.STPointN(1).STY,");
+            poStatement->Appendf("extentcol.STPointN(3).STX, extentcol.STPointN(3).STY FROM extent;");
         }
         else
         {
             // Before 2012 use two CTE's:
             // geography is converted to geometry to obtain the envelope
             if (nGeomColumnType == MSSQLCOLTYPE_GEOGRAPHY)
-                poStmt->Appendf("WITH ENVELOPE as (SELECT geometry::STGeomFromWKB(%s.STAsBinary(), %s.STSrid).MakeValid().STEnvelope() as envelope from [%s].[%s]),", pszGeomColumn, pszGeomColumn, pszSchemaName, pszTableName);
+                poStatement->Appendf("WITH ENVELOPE as (SELECT geometry::STGeomFromWKB(%s.STAsBinary(), %s.STSrid).MakeValid().STEnvelope() as envelope from [%s].[%s]),", pszGeomColumn, pszGeomColumn, pszSchemaName, pszTableName);
             else
-                poStmt->Appendf("WITH ENVELOPE as (SELECT %s.MakeValid().STEnvelope() as envelope from [%s].[%s]),", pszGeomColumn, pszSchemaName, pszTableName);
+                poStatement->Appendf("WITH ENVELOPE as (SELECT %s.MakeValid().STEnvelope() as envelope from [%s].[%s]),", pszGeomColumn, pszSchemaName, pszTableName);
             
-            poStmt->Appendf(" CORNERS as (SELECT envelope.STPointN(1) as point from ENVELOPE UNION ALL select envelope.STPointN(3) from ENVELOPE)");
-            poStmt->Appendf("SELECT MIN(point.STX), MIN(point.STY), MAX(point.STX), MAX(point.STY) FROM CORNERS;");
+            poStatement->Appendf(" CORNERS as (SELECT envelope.STPointN(1) as point from ENVELOPE UNION ALL select envelope.STPointN(3) from ENVELOPE)");
+            poStatement->Appendf("SELECT MIN(point.STX), MIN(point.STY), MAX(point.STX), MAX(point.STY) FROM CORNERS;");
         }
 
         // Execute
-        if (!poStmt->ExecuteSQL())
+        if (!poStatement->ExecuteSQL())
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                 "Error getting extents, %s",
@@ -748,12 +724,12 @@ OGRErr OGRMSSQLSpatialTableLayer::GetExtent(int iGeomField, OGREnvelope *psExten
         else
         {
             // Try to update
-            while (poStmt->Fetch()) {
+            while (poStatement->Fetch()) {
 
-                const char *minx = poStmt->GetColData(0);
-                const char *miny = poStmt->GetColData(1);
-                const char *maxx = poStmt->GetColData(2);
-                const char *maxy = poStmt->GetColData(3);
+                const char *minx = poStatement->GetColData(0);
+                const char *miny = poStatement->GetColData(1);
+                const char *maxx = poStatement->GetColData(2);
+                const char *maxy = poStatement->GetColData(3);
 
                 if (!(minx == nullptr || miny == nullptr || maxx == nullptr || maxy == nullptr)) {
                     psExtent->MinX = CPLAtof(minx);
@@ -856,8 +832,6 @@ GIntBig OGRMSSQLSpatialTableLayer::GetFeatureCount( int bForce )
     if( TestCapability(OLCFastFeatureCount) == FALSE )
         return OGRMSSQLSpatialLayer::GetFeatureCount( bForce );
 
-    ClearStatement();
-
     CPLODBCStatement* poStatement = BuildStatement( "count(*)" );
 
     if (poStatement == nullptr || !poStatement->Fetch())
@@ -950,7 +924,9 @@ OGRErr OGRMSSQLSpatialTableLayer::CreateField( OGRFieldDefn *poFieldIn,
     }
     else if( oField.GetType() == OFTString )
     {
-        if( oField.GetWidth() == 0 || oField.GetWidth() > 4000 || !bPreservePrecision )
+        if( oField.GetSubType() == OGRFieldSubType::OFSTUUID)
+            strcpy( szFieldType, "uniqueidentifier" );
+        else if( oField.GetWidth() == 0 || oField.GetWidth() > 4000 || !bPreservePrecision )
             strcpy( szFieldType, "nvarchar(MAX)" );
         else
             snprintf( szFieldType, sizeof(szFieldType), "nvarchar(%d)", oField.GetWidth() );
@@ -2431,6 +2407,7 @@ void OGRMSSQLSpatialTableLayer::AppendFieldValue(CPLODBCStatement *poStatement,
                                        OGRFeature* poFeature, int i, int *bind_num, void **bind_buffer)
 {
     int nOGRFieldType = poFeatureDefn->GetFieldDefn(i)->GetType();
+    int nOGRFieldSubType = poFeatureDefn->GetFieldDefn(i)->GetSubType();
 
     // We need special formatting for integer list values.
     if(  nOGRFieldType == OFTIntegerList )
@@ -2521,42 +2498,60 @@ void OGRMSSQLSpatialTableLayer::AppendFieldValue(CPLODBCStatement *poStatement,
     {
         if (nOGRFieldType == OFTString)
         {
-            // bind UTF8 as unicode parameter
-            wchar_t* buffer = CPLRecodeToWChar( pszStrValue, CPL_ENC_UTF8, CPL_ENC_UCS2);
-            size_t nLen = wcslen(buffer) + 1;
-            if (nLen > 4000)
+            if (nOGRFieldSubType == OFSTUUID)
             {
-                /* need to handle nvarchar(max) */
-#ifdef SQL_SS_LENGTH_UNLIMITED
-                nLen = SQL_SS_LENGTH_UNLIMITED;
-#else
-                /* for older drivers truncate the data to 4000 chars */
-                buffer[4000] = 0;
-                nLen = 4000;
-                CPLError( CE_Warning, CPLE_AppDefined,
-                          "String data truncation applied on field: %s. Use a more recent ODBC driver that supports handling large string values.", poFeatureDefn->GetFieldDefn(i)->GetNameRef() );
-#endif
-            }
-#if WCHAR_MAX > 0xFFFFu
-            // Shorten each character to a two-byte value, as expected by
-            // the ODBC driver
-            GUInt16 *panBuffer = reinterpret_cast<GUInt16 *>(buffer);
-            for( unsigned int nIndex = 1; nIndex < nLen; nIndex += 1 )
-                panBuffer[nIndex] = static_cast<GUInt16>(buffer[nIndex]);
-#endif
-            int nRetCode = SQLBindParameter(poStatement->GetStatement(), (SQLUSMALLINT)((*bind_num) + 1),
-                SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WVARCHAR, nLen, 0, (SQLPOINTER)buffer, 0, nullptr);
-            if ( nRetCode == SQL_SUCCESS || nRetCode == SQL_SUCCESS_WITH_INFO )
-            {
-                poStatement->Append( "?" );
-                bind_buffer[*bind_num] = buffer;
-                ++(*bind_num);
-            }
+                int nRetCode = SQLBindParameter(poStatement->GetStatement(), (SQLUSMALLINT)((*bind_num) + 1),
+                    SQL_PARAM_INPUT, SQL_C_CHAR, SQL_GUID, 16, 0, (SQLPOINTER)pszStrValue, 0, nullptr);
+                if ( nRetCode == SQL_SUCCESS || nRetCode == SQL_SUCCESS_WITH_INFO )
+                {
+                    poStatement->Append( "?" );
+                    bind_buffer[*bind_num] = CPLStrdup(pszStrValue);
+                    ++(*bind_num);
+                }
+                else
+                {
+                    OGRMSSQLAppendEscaped(poStatement, pszStrValue);
+                }
+            }   
             else
             {
-                OGRMSSQLAppendEscaped(poStatement, pszStrValue);
-                CPLFree(buffer);
-            }
+                // bind UTF8 as unicode parameter
+                wchar_t* buffer = CPLRecodeToWChar( pszStrValue, CPL_ENC_UTF8, CPL_ENC_UCS2);
+                size_t nLen = wcslen(buffer) + 1;
+                if (nLen > 4000)
+                {
+                    /* need to handle nvarchar(max) */
+    #ifdef SQL_SS_LENGTH_UNLIMITED
+                    nLen = SQL_SS_LENGTH_UNLIMITED;
+    #else
+                    /* for older drivers truncate the data to 4000 chars */
+                    buffer[4000] = 0;
+                    nLen = 4000;
+                    CPLError( CE_Warning, CPLE_AppDefined,
+                            "String data truncation applied on field: %s. Use a more recent ODBC driver that supports handling large string values.", poFeatureDefn->GetFieldDefn(i)->GetNameRef() );
+    #endif
+                }
+    #if WCHAR_MAX > 0xFFFFu
+                // Shorten each character to a two-byte value, as expected by
+                // the ODBC driver
+                GUInt16 *panBuffer = reinterpret_cast<GUInt16 *>(buffer);
+                for( unsigned int nIndex = 1; nIndex < nLen; nIndex += 1 )
+                    panBuffer[nIndex] = static_cast<GUInt16>(buffer[nIndex]);
+    #endif
+                int nRetCode = SQLBindParameter(poStatement->GetStatement(), (SQLUSMALLINT)((*bind_num) + 1),
+                    SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WVARCHAR, nLen, 0, (SQLPOINTER)buffer, 0, nullptr);
+                if ( nRetCode == SQL_SUCCESS || nRetCode == SQL_SUCCESS_WITH_INFO )
+                {
+                    poStatement->Append( "?" );
+                    bind_buffer[*bind_num] = buffer;
+                    ++(*bind_num);
+                }
+                else
+                {
+                    OGRMSSQLAppendEscaped(poStatement, pszStrValue);
+                    CPLFree(buffer);
+                }
+            } 
         }
         else
             OGRMSSQLAppendEscaped(poStatement, pszStrValue);

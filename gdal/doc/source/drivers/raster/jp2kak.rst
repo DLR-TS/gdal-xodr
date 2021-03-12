@@ -6,6 +6,8 @@ JP2KAK -- JPEG-2000 (based on Kakadu)
 
 .. shortname:: JP2KAK
 
+.. build_dependencies:: Kakadu library
+
 Most forms of JPEG2000 JP2 and JPC compressed images (ISO/IEC 15444-1)
 can be read with GDAL using a driver based on the Kakadu library. As
 well, new images can be written. Existing images cannot be updated in
@@ -36,7 +38,7 @@ coordinate system information will be available if the file is a GeoJP2
 (tm) file. Files color encoded in YCbCr color space will be
 automatically translated to RGB. Paletted images are also supported.
 
-Starting with GDAL 1.9.0, XMP metadata can be extracted from JPEG2000
+XMP metadata can be extracted from JPEG2000
 files, and will be stored as XML raw content in the xml:XMP metadata
 domain.
 
@@ -95,7 +97,7 @@ mentioned sources and ignore GMLJP2 boxes.
 Option Options
 --------------
 
-(GDAL >= 2.0 ) The following open option is available:
+The following open option is available:
 
 -  **1BIT_ALPHA_PROMOTION=YES/NO**: Whether a 1-bit alpha channel should
    be promoted to 8-bit. Defaults to YES.
@@ -139,7 +141,7 @@ Creation Options:
    GML in JPEG2000 specification should be included in the file. Unless
    GMLJP2V2_DEF is used, the version of the GMLJP2 box will be version
    1. Defaults to YES.
--  **GMLJP2V2_DEF=filename**: (Starting with GDAL 2.0) Indicates whether
+-  **GMLJP2V2_DEF=filename**: Indicates whether
    a GML box conforming to the `OGC GML in JPEG2000, version
    2 <http://docs.opengeospatial.org/is/08-085r4/08-085r4.html>`__
    specification should be included in the file. *filename* must point
@@ -171,11 +173,15 @@ documentation to better understand their meaning.
 -  **Cprecincts**: Defaults to
    "{512,512},{256,512},{128,512},{64,512},{32,512},{16,512},{8,512},{4,512},{2,512}".
 -  **ORGgen_plt**: Defaults to "yes".
+-  **ORGgen_tlm**: Kakadu library default used.
+-  **ORGtparts**: Kakadu library default used.
 -  **Cmodes**: Kakadu library default used.
 -  **Clevels**: Kakadu library default used.
 -  **Rshift**: Kakadu library default used.
 -  **Rlevels**: Kakadu library default used.
 -  **Rweight**: Kakadu library default used.
+-  **Qguard**: Kakadu library default used.
+-  **Sprofile**: Kakadu library default used.
 
 Known Kakadu Issues
 -------------------

@@ -40,7 +40,7 @@ CPL_CVSID("$Id$")
 
 #define DIGIT_ZERO '0'
 
-class ADRGDataset : public GDALPamDataset
+class ADRGDataset final: public GDALPamDataset
 {
     friend class ADRGRasterBand;
 
@@ -113,7 +113,7 @@ class ADRGDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ADRGRasterBand : public GDALPamRasterBand
+class ADRGRasterBand final: public GDALPamRasterBand
 {
     friend class ADRGDataset;
 
@@ -1096,7 +1096,7 @@ ADRGDataset* ADRGDataset::OpenDataset(
         {
             TILEINDEX = new int [NFL * NFC];
         }
-        catch( const std::bad_alloc& )
+        catch( const std::exception& )
         {
             return nullptr;
         }
@@ -2108,7 +2108,7 @@ void ADRGDataset::WriteTHFFile()
                                                   "RTY!RID",
                                                   "(A(3),A(2))");
         sizeOfFields[nFields++] += WriteFieldDecl(fd, '1', '6', "TRANSMITTAL_HEADER_FIELD", /* VDR */
-                                                  "MSD!VOO!ADR!NOV!SQN!NOF!URF!EDN!DAT",
+                                                  "MSD!VOO!ADR!NOV!SQN!NOF!URF!END!DAT",
                                                   "(A(1),A(200),A(1),I(1),I(1),I(3),A(16),I(3),A(12))");
         sizeOfFields[nFields++] += WriteFieldDecl(fd, '1', '6', "DATA_SET_DESCRIPTION_FIELD", /* FDR */
                                                   "NAM!STR!PRT!SWO!SWA!NEO!NEA",
@@ -2166,7 +2166,7 @@ void ADRGDataset::WriteTHFFile()
         sizeOfFields[nFields] += WriteSubFieldInt(fd, 1, 3); /* NOF */
         // URF - DMA stock number for this CDROM
         sizeOfFields[nFields] += WriteSubFieldStr(fd, "", 16);
-        sizeOfFields[nFields] += WriteSubFieldInt(fd, 1, 3); /* EDN */
+        sizeOfFields[nFields] += WriteSubFieldInt(fd, 1, 3); /* END */
         sizeOfFields[nFields] +=
             WriteSubFieldStr(fd, "017,19940101", 12); // DAT - Publication date
         sizeOfFields[nFields] += WriteFieldTerminator(fd);
@@ -2377,7 +2377,7 @@ void GDALRegister_ADRG()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "ARC Digitized Raster Graphics" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#ADRG" );
+                               "drivers/raster/adrg.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "gen" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte" );

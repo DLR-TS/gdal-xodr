@@ -181,7 +181,7 @@ def test_ogr_rfc28_8_good_quoting():
 
 
 def test_ogr_rfc28_9():
-    ds = ogr.Open('data/oddname.csv')
+    ds = ogr.Open('data/csv/oddname.csv')
     lyr = ds.GetLayer(0)
     lyr.SetAttributeFilter("\"Funky @Name\" = '32'")
 
@@ -199,7 +199,7 @@ def test_ogr_rfc28_9():
 
 
 def test_ogr_rfc28_10():
-    ds = ogr.Open('data/oddname.csv')
+    ds = ogr.Open('data/csv/oddname.csv')
     lyr = ds.ExecuteSQL("SELECT * from oddname where \"Funky @Name\" = '32'")
 
     count = lyr.GetFeatureCount()
@@ -217,7 +217,7 @@ def test_ogr_rfc28_10():
 
 
 def test_ogr_rfc28_11():
-    ds = ogr.Open('data/oddname.csv')
+    ds = ogr.Open('data/csv/oddname.csv')
     lyr = ds.ExecuteSQL("SELECT \"Funky @Name\" from oddname where prime_meridian_code = '8902'")
 
     count = lyr.GetFeatureCount()
@@ -360,7 +360,8 @@ def test_ogr_rfc28_17():
 # Test some special distinct cases.
 
 def test_ogr_rfc28_18():
-    lyr = gdaltest.ds.ExecuteSQL("SELECT COUNT(distinct id), COUNT(distinct id) as \"xx\" from departs")
+    ds = ogr.Open('data/shp/departs.shp')
+    lyr = ds.ExecuteSQL("SELECT COUNT(distinct id), COUNT(distinct id) as \"xx\" from departs")
 
     expect = [1]
     tr = ogrtest.check_features_against_list(lyr, 'COUNT_id', expect)
@@ -369,7 +370,7 @@ def test_ogr_rfc28_18():
     lyr.ResetReading()
     tr = ogrtest.check_features_against_list(lyr, 'xx', expect)
 
-    gdaltest.ds.ReleaseResultSet(lyr)
+    ds.ReleaseResultSet(lyr)
 
     assert tr
 
@@ -1333,7 +1334,83 @@ def test_ogr_rfc28_int_overflows():
         assert f.GetField(0) == res, (sql, res, f.GetField(0))
         ds.ReleaseResultSet(sql_lyr)
 
-    
+
+###############################################################################
+
+def test_ogr_rfc28_many_or():
+
+    ds = ogr.GetDriverByName('Memory').CreateDataSource('')
+    lyr = ds.CreateLayer('lyr')
+    fld_defn = ogr.FieldDefn('val', ogr.OFTInteger)
+    lyr.CreateField(fld_defn)
+    feat = ogr.Feature(lyr.GetLayerDefn())
+    feat.SetField('val', -15)
+    lyr.CreateFeature(feat)
+
+    sql = '1 = 1 AND (' + ' OR '.join('val = %d' % i for i in range(1024)) + ')'
+    assert lyr.SetAttributeFilter(sql) == 0
+    f = lyr.GetNextFeature()
+    assert f is None
+
+    sql = '1 = 1 AND (' + ' OR '.join('val = %d' % (i - 100) for i in range(1024)) + ')'
+    assert lyr.SetAttributeFilter(sql) == 0
+    f = lyr.GetNextFeature()
+    assert f is not None
+
+
+###############################################################################
+
+def test_ogr_rfc28_many_and():
+
+    ds = ogr.GetDriverByName('Memory').CreateDataSource('')
+    lyr = ds.CreateLayer('lyr')
+    fld_defn = ogr.FieldDefn('val', ogr.OFTInteger)
+    lyr.CreateField(fld_defn)
+    feat = ogr.Feature(lyr.GetLayerDefn())
+    feat.SetField('val', -15)
+    lyr.CreateFeature(feat)
+
+    sql = '1 = 1 AND (' + ' AND '.join('val = -1' for i in range(1024)) + ')'
+    assert lyr.SetAttributeFilter(sql) == 0
+    f = lyr.GetNextFeature()
+    assert f is None
+
+    sql = '1 = 1 AND (' + ' AND '.join('val = -15' for i in range(1024)) + ')'
+    assert lyr.SetAttributeFilter(sql) == 0
+    f = lyr.GetNextFeature()
+    assert f is not None
+
+###############################################################################
+# Test fix for https://github.com/OSGeo/gdal/issues/3249
+
+def test_ogr_rfc28_order_by_two_columns():
+
+    ds = ogr.GetDriverByName('Memory').CreateDataSource('')
+    lyr = ds.CreateLayer('lyr')
+    fld_defn = ogr.FieldDefn('int_val', ogr.OFTInteger)
+    lyr.CreateField(fld_defn)
+    fld_defn = ogr.FieldDefn('str_val', ogr.OFTString)
+    lyr.CreateField(fld_defn)
+    for i in range(101):
+        feat = ogr.Feature(lyr.GetLayerDefn())
+        feat.SetField('int_val', 100 - i)
+        if i < 26:
+            feat.SetField('str_val', chr(ord('a') + i))
+        else:
+            feat.SetField('str_val', chr(ord('a') + (i // 26)) + chr(ord('a') + (i % 26)))
+        lyr.CreateFeature(feat)
+
+    sql_lyr = ds.ExecuteSQL('SELECT * FROM lyr ORDER BY int_val, str_val')
+    for i in range(101):
+        f = sql_lyr.GetNextFeature()
+        assert f['int_val'] == i
+    ds.ReleaseResultSet(sql_lyr)
+
+    sql_lyr = ds.ExecuteSQL('SELECT * FROM lyr ORDER BY int_val, str_val LIMIT 1')
+    f = sql_lyr.GetNextFeature()
+    assert f['int_val'] == 0
+    f = None
+    ds.ReleaseResultSet(sql_lyr)
 
 ###############################################################################
 

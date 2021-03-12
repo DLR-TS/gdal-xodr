@@ -136,7 +136,7 @@ class GeoRasterWrapper;
 //  GeoRasterDataset, extends GDALDataset to support GeoRaster Datasets
 //  ---------------------------------------------------------------------------
 
-class GeoRasterDataset : public GDALDataset
+class GeoRasterDataset final: public GDALDataset
 {
     friend class GeoRasterRasterBand;
 
@@ -243,7 +243,7 @@ public:
         { return CE_None; }
     OGRErr CommitTransaction() override { return CE_None; }
     OGRErr RollbackTransaction() override { return CE_None; }
-    
+
     char** GetFileList() override;
 
     void                AssignGeoRaster( GeoRasterWrapper* poGRW );
@@ -253,7 +253,7 @@ public:
 //  GeoRasterRasterBand, extends GDALRasterBand to support GeoRaster Band
 //  ---------------------------------------------------------------------------
 
-class GeoRasterRasterBand : public GDALRasterBand
+class GeoRasterRasterBand final: public GDALRasterBand
 {
     friend class GeoRasterDataset;
 
@@ -286,7 +286,7 @@ private:
     int                 nNoDataArraySz;
     bool                bHasNoDataArray;
 
-    void                ApplyNoDataArry( void* pBuffer ) const;
+    void                ApplyNoDataArray( void* pBuffer ) const;
 
 public:
     double GetNoDataValue( int *pbSuccess = nullptr ) override;
@@ -518,7 +518,7 @@ public:
     int                 eModelCoordLocation;
     unsigned int        anULTCoordinate[3];
 
-    GDALRPCInfo*        phRPC;
+    GDALRPCInfoV2*      phRPC;
 };
 
 #endif /* ifndef GEORASTER_PRIV_H_INCLUDED */

@@ -77,6 +77,7 @@ void OGRGeoPackageLayer::ResetReading()
 {
     ClearStatement();
     iNextShapeId = 0;
+    m_bEOF = false;
 }
 
 /************************************************************************/
@@ -101,15 +102,18 @@ void OGRGeoPackageLayer::ClearStatement()
 OGRFeature *OGRGeoPackageLayer::GetNextFeature()
 
 {
+    if( m_bEOF )
+        return nullptr;
+
+    if( m_poQueryStatement == nullptr )
+    {
+        ResetStatement();
+        if (m_poQueryStatement == nullptr)
+            return nullptr;
+    }
+
     for( ; true; )
     {
-        if( m_poQueryStatement == nullptr )
-        {
-            ResetStatement();
-            if (m_poQueryStatement == nullptr)
-                return nullptr;
-        }
-
     /* -------------------------------------------------------------------- */
     /*      Fetch a record (unless otherwise instructed)                    */
     /* -------------------------------------------------------------------- */
@@ -127,6 +131,7 @@ OGRFeature *OGRGeoPackageLayer::GetNextFeature()
                 }
 
                 ClearStatement();
+                m_bEOF = true;
 
                 return nullptr;
             }
@@ -219,7 +224,8 @@ OGRFeature *OGRGeoPackageLayer::TranslateFeature( sqlite3_stmt* hStmt )
 
         const int iRawField = panFieldOrdinals[iField];
 
-        if( sqlite3_column_type( hStmt, iRawField ) == SQLITE_NULL )
+        const int nSqlite3ColType = sqlite3_column_type( hStmt, iRawField );
+        if( nSqlite3ColType == SQLITE_NULL )
         {
             poFeature->SetFieldNull( iField );
             continue;
@@ -255,19 +261,111 @@ OGRFeature *OGRGeoPackageLayer::TranslateFeature( sqlite3_stmt* hStmt )
 
             case OFTDate:
             {
-                const char* pszTxt = (const char*)sqlite3_column_text( hStmt, iRawField );
-                int nYear, nMonth, nDay;
-                if( sscanf(pszTxt, "%d-%d-%d", &nYear, &nMonth, &nDay) == 3 )
-                    poFeature->SetField(iField, nYear, nMonth, nDay, 0, 0, 0, 0);
+                if( nSqlite3ColType == SQLITE_TEXT )
+                {
+                    const char* pszTxt = (const char*)sqlite3_column_text( hStmt, iRawField );
+                    int nYear, nMonth, nDay;
+                    if( sscanf(pszTxt, "%d-%d-%d", &nYear, &nMonth, &nDay) == 3 )
+                    {
+                        poFeature->SetField(iField, nYear, nMonth, nDay, 0, 0, 0, 0);
+                    }
+                    else if ( sscanf(pszTxt, "%d/%d/%d", &nYear, &nMonth, &nDay) == 3 )
+                    {
+                        poFeature->SetField(iField, nYear, nMonth, nDay, 0, 0, 0, 0);
+                        constexpr int line = __LINE__;
+                        if( !m_poDS->m_oSetGPKGLayerWarnings[line] )
+                        {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "Non-conformant content for record "
+                                     CPL_FRMT_GIB " in column %s, %s, "
+                                     "successfully parsed",
+                                     poFeature->GetFID(),
+                                     poFieldDefn->GetNameRef(), pszTxt);
+                            m_poDS->m_oSetGPKGLayerWarnings[line] = true;
+                        }
+                    }
+                    else
+                    {
+                        constexpr int line = __LINE__;
+                        if( !m_poDS->m_oSetGPKGLayerWarnings[line] )
+                        {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "Invalid content for record "
+                                     CPL_FRMT_GIB " in column %s: %s",
+                                     poFeature->GetFID(),
+                                     poFieldDefn->GetNameRef(), pszTxt);
+                            m_poDS->m_oSetGPKGLayerWarnings[line] = true;
+                        }
+                    }
+                }
+                else
+                {
+                    constexpr int line = __LINE__;
+                    if( !m_poDS->m_oSetGPKGLayerWarnings[line] )
+                    {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "Unexpected data type for record "
+                                 CPL_FRMT_GIB " in column %s",
+                                 poFeature->GetFID(),
+                                 poFieldDefn->GetNameRef());
+                        m_poDS->m_oSetGPKGLayerWarnings[line] = true;
+                    }
+                }
                 break;
             }
 
             case OFTDateTime:
             {
-                const char* pszTxt = (const char*)sqlite3_column_text( hStmt, iRawField );
-                OGRField sField;
-                if( OGRParseXMLDateTime(pszTxt, &sField) )
-                    poFeature->SetField(iField, &sField);
+                if( nSqlite3ColType == SQLITE_TEXT )
+                {
+                    const char* pszTxt = (const char*)sqlite3_column_text( hStmt, iRawField );
+                    OGRField sField;
+                    if( OGRParseXMLDateTime(pszTxt, &sField) )
+                    {
+                        poFeature->SetField(iField, &sField);
+                    }
+                    else if ( OGRParseDate(pszTxt, &sField, 0) )
+                    {
+                        poFeature->SetField(iField, &sField);
+                        constexpr int line = __LINE__;
+                        if( !m_poDS->m_oSetGPKGLayerWarnings[line] )
+                        {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "Non-conformant content for record "
+                                     CPL_FRMT_GIB " in column %s, %s, "
+                                     "successfully parsed",
+                                     poFeature->GetFID(),
+                                     poFieldDefn->GetNameRef(), pszTxt);
+                            m_poDS->m_oSetGPKGLayerWarnings[line] = true;
+                        }
+                    }
+                    else
+                    {
+                        constexpr int line = __LINE__;
+                        if( !m_poDS->m_oSetGPKGLayerWarnings[line] )
+                        {
+                            CPLError(CE_Warning, CPLE_AppDefined,
+                                     "Invalid content for record "
+                                     CPL_FRMT_GIB " in column %s: %s",
+                                     poFeature->GetFID(),
+                                     poFieldDefn->GetNameRef(), pszTxt);
+                           m_poDS->m_oSetGPKGLayerWarnings[line] = true;
+                        }
+                    }
+                }
+                else
+                {
+                    constexpr int line = __LINE__;
+                    if( !m_poDS->m_oSetGPKGLayerWarnings[line] )
+                    {
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "Unexpected data type for record "
+                                 CPL_FRMT_GIB " in column %s",
+                                 poFeature->GetFID(),
+                                 poFieldDefn->GetNameRef());
+                        m_poDS->m_oSetGPKGLayerWarnings[line] = true;
+                    }
+                }
                 break;
             }
 
@@ -479,7 +577,7 @@ void OGRGeoPackageLayer::BuildFeatureDefn( const char *pszLayerName,
 
                     /* Read the SRS */
                     OGRSpatialReference *poSRS =
-                                        m_poDS->GetSpatialRef(nSRID);
+                                        m_poDS->GetSpatialRef(nSRID, true);
                     if ( poSRS )
                     {
                         oGeomField.SetSpatialRef(poSRS);

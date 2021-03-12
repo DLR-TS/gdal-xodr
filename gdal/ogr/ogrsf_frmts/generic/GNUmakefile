@@ -23,10 +23,6 @@ ifeq ($(HAVE_OCI),yes)
 CXXFLAGS :=	$(CXXFLAGS) -DOCI_ENABLED
 endif
 
-ifeq ($(HAVE_SDE),yes)
-CXXFLAGS :=	$(CXXFLAGS) -DSDE_ENABLED
-endif
-
 ifeq ($(HAVE_FGDB),yes)
 CXXFLAGS :=	$(CXXFLAGS) -DFGDB_ENABLED
 endif
@@ -106,4 +102,4 @@ default:	$(O_OBJ:.o=.$(OBJ_EXT))
 clean:
 	rm -f *.o $(O_OBJ)
 
-$(O_OBJ):	../../../GDALmake.opt ../../swq.h
+$(O_OBJ):	../../../GDALmake.opt ../../ogr_swq.h

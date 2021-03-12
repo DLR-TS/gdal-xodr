@@ -132,6 +132,7 @@ CPL_CVSID("$Id$")
 #define BOTTOM_LEFT_LAT_OFFSET 1168
 #define BOTTOM_LEFT_LON_OFFSET 1184
 
+namespace {
 /* a few useful enums */
 enum eFileType {
     level_11 = 0,
@@ -146,6 +147,7 @@ enum ePolarization {
     vh,
     vv
 };
+} // namespace
 
 /************************************************************************/
 /* ==================================================================== */
@@ -155,7 +157,7 @@ enum ePolarization {
 
 class PALSARJaxaRasterBand;
 
-class PALSARJaxaDataset : public GDALPamDataset {
+class PALSARJaxaDataset final: public GDALPamDataset {
     friend class PALSARJaxaRasterBand;
 private:
     GDAL_GCP *pasGCPList;
@@ -194,7 +196,7 @@ PALSARJaxaDataset::~PALSARJaxaDataset()
 /* ==================================================================== */
 /************************************************************************/
 
-class PALSARJaxaRasterBand : public GDALRasterBand {
+class PALSARJaxaRasterBand final: public GDALRasterBand {
     VSILFILE *fp;
     ePolarization nPolarization;
     eFileType nFileType;
@@ -358,7 +360,7 @@ const GDAL_GCP *PALSARJaxaDataset::GetGCPs() {
 /************************************************************************/
 
 void PALSARJaxaDataset::ReadMetadata( PALSARJaxaDataset *poDS, VSILFILE *fp ) {
-    /* seek to the end fo the leader file descriptor */
+    /* seek to the end of the leader file descriptor */
     VSIFSeekL( fp, LEADER_FILE_DESCRIPTOR_LENGTH, SEEK_SET );
     if (poDS->nFileType == level_10) {
         poDS->SetMetadataItem( "PRODUCT_LEVEL", "1.0" );
@@ -658,7 +660,7 @@ void GDALRegister_PALSARJaxa()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "JAXA PALSAR Product Reader (Level 1.1/1.5)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_palsar.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/palsar.html" );
 
     poDriver->pfnOpen = PALSARJaxaDataset::Open;
     poDriver->pfnIdentify = PALSARJaxaDataset::Identify;

@@ -32,6 +32,8 @@
 #include "cpl_vsil_curl_priv.h"
 #include "cpl_vsil_curl_class.h"
 
+#include <errno.h>
+
 #include <algorithm>
 #include <set>
 #include <map>
@@ -69,7 +71,7 @@ class VSIGSFSHandler final : public IVSIS3LikeFSHandler
     VSICurlHandle* CreateFileHandle( const char* pszFilename ) override;
     const char* GetDebugKey() const override { return "GS"; }
 
-    CPLString GetFSPrefix() override { return "/vsigs/"; }
+    CPLString GetFSPrefix() const override { return "/vsigs/"; }
     CPLString GetURLFromFilename( const CPLString& osFilename ) override;
 
     IVSIS3LikeHandleHelper* CreateHandleHelper(
@@ -83,7 +85,8 @@ class VSIGSFSHandler final : public IVSIS3LikeFSHandler
 
     VSIVirtualHandle *Open( const char *pszFilename,
                             const char *pszAccess,
-                            bool bSetError ) override;
+                            bool bSetError,
+                            CSLConstList papszOptions ) override;
 
     const char* GetOptions() override;
 
@@ -151,30 +154,45 @@ VSICurlHandle* VSIGSFSHandler::CreateFileHandle(const char* pszFilename)
 
 VSIVirtualHandle* VSIGSFSHandler::Open( const char *pszFilename,
                                         const char *pszAccess,
-                                        bool bSetError)
+                                        bool bSetError,
+                                        CSLConstList papszOptions )
 {
     if( !STARTS_WITH_CI(pszFilename, GetFSPrefix()) )
         return nullptr;
 
     if( strchr(pszAccess, 'w') != nullptr || strchr(pszAccess, 'a') != nullptr )
     {
+        if( strchr(pszAccess, '+') != nullptr &&
+            !CPLTestBool(CPLGetConfigOption("CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE", "NO")) )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                        "w+ not supported for /vsigs, unless "
+                        "CPL_VSIL_USE_TEMP_FILE_FOR_RANDOM_WRITE is set to YES");
+            errno = EACCES;
+            return nullptr;
+        }
+
         VSIGSHandleHelper* poHandleHelper =
             VSIGSHandleHelper::BuildFromURI(pszFilename + GetFSPrefix().size(),
                                             GetFSPrefix().c_str());
         if( poHandleHelper == nullptr )
             return nullptr;
         VSIS3WriteHandle* poHandle =
-            new VSIS3WriteHandle(this, pszFilename, poHandleHelper, true);
+            new VSIS3WriteHandle(this, pszFilename, poHandleHelper, true, papszOptions);
         if( !poHandle->IsOK() )
         {
             delete poHandle;
-            poHandle = nullptr;
+            return nullptr;
+        }
+        if( strchr(pszAccess, '+') != nullptr)
+        {
+            return VSICreateUploadOnCloseFile(poHandle);
         }
         return poHandle;
     }
 
     return
-        VSICurlFilesystemHandler::Open(pszFilename, pszAccess, bSetError);
+        VSICurlFilesystemHandler::Open(pszFilename, pszAccess, bSetError, papszOptions);
 }
 
 /************************************************************************/

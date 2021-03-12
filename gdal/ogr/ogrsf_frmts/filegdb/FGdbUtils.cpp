@@ -492,7 +492,7 @@ bool GDBGeometryToOGRGeometry(bool forceMulti, FileGDBAPI::ShapeBuffer* pGdbGeom
 
 bool GDBToOGRSpatialReference(const string & wkt, OGRSpatialReference** ppSR)
 {
-    if (wkt.size() <= 0)
+    if (wkt.empty())
     {
         CPLError( CE_Warning, CPLE_AppDefined, "ESRI Spatial Reference is NULL");
         return false;
@@ -623,7 +623,7 @@ std::string FGDBEscapeReservedKeywords(const std::string& name)
                                     "SET", "TABLE", "UPDATE", "VALUES", "WHERE", nullptr};
 
     // Append an underscore to any FGDB reserved words used as field names
-    // This is the same behaviour ArcCatalog follows.
+    // This is the same behavior ArcCatalog follows.
     for (int i = 0; RESERVED_WORDS[i] != nullptr; i++)
     {
         const char* w = RESERVED_WORDS[i];

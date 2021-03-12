@@ -1,4 +1,4 @@
-/******************************************************************************
+ /******************************************************************************
  *
  * Project:  Memory Array Translator
  * Purpose:  Complete implementation.
@@ -93,7 +93,7 @@ MEMRasterBand::MEMRasterBand( GByte *pabyDataIn, GDALDataType eTypeIn,
                               int nXSizeIn, int nYSizeIn ) :
     GDALPamRasterBand(FALSE),
     pabyData(pabyDataIn),
-    nPixelOffset(0),
+    nPixelOffset(GDALGetDataTypeSizeBytes(eTypeIn)),
     nLineOffset(0),
     bOwnData(true),
     bNoDataSet(FALSE),
@@ -109,7 +109,6 @@ MEMRasterBand::MEMRasterBand( GByte *pabyDataIn, GDALDataType eTypeIn,
     nRasterYSize = nYSizeIn;
     nBlockXSize = nXSizeIn;
     nBlockYSize = 1;
-    nPixelOffset = GDALGetDataTypeSizeBytes(eTypeIn);
     nLineOffset = nPixelOffset * static_cast<size_t>(nBlockXSize);
 }
 
@@ -266,12 +265,12 @@ CPLErr MEMRasterBand::IRasterIO( GDALRWFlag eRWFlag,
         for( int iLine=0; iLine < nYSize; iLine++ )
         {
             GDALCopyWords(
-                pabyData + nLineOffset*static_cast<size_t>(iLine + nYOff) +
+                pabyData + nLineOffset*static_cast<GPtrDiff_t>(iLine + nYOff) +
                 nXOff*nPixelOffset,
                 eDataType,
                 static_cast<int>(nPixelOffset),
                 reinterpret_cast<GByte*>( pData ) +
-                nLineSpaceBuf * static_cast<size_t>(iLine),
+                nLineSpaceBuf * static_cast<GPtrDiff_t>(iLine),
                 eBufType,
                 static_cast<int>(nPixelSpaceBuf),
                 nXSize );
@@ -283,10 +282,10 @@ CPLErr MEMRasterBand::IRasterIO( GDALRWFlag eRWFlag,
         {
             GDALCopyWords(
                 reinterpret_cast<GByte *>( pData ) +
-                nLineSpaceBuf*(size_t)iLine,
+                nLineSpaceBuf*static_cast<GPtrDiff_t>(iLine),
                 eBufType,
                 static_cast<int>(nPixelSpaceBuf),
-                pabyData + nLineOffset*static_cast<size_t>(iLine + nYOff) +
+                pabyData + nLineOffset*static_cast<GPtrDiff_t>(iLine + nYOff) +
                 nXOff*nPixelOffset,
                 eDataType,
                 static_cast<int>(nPixelOffset),
@@ -398,45 +397,11 @@ CPLErr MEMDataset::IRasterIO( GDALRWFlag eRWFlag,
                                    nPixelSpaceBuf, nLineSpaceBuf, nBandSpaceBuf,
                                    psExtraArg );
 
-    GDALProgressFunc pfnProgressGlobal = psExtraArg->pfnProgress;
-    void *pProgressDataGlobal = psExtraArg->pProgressData;
-
-    CPLErr eErr = CE_None;
-    for( int iBandIndex = 0;
-         iBandIndex < nBandCount && eErr == CE_None;
-         iBandIndex++ )
-    {
-        GDALRasterBand *poBand = GetRasterBand(panBandMap[iBandIndex]);
-
-        if (poBand == nullptr)
-        {
-            eErr = CE_Failure;
-            break;
-        }
-
-        GByte *pabyBandData
-            = reinterpret_cast<GByte *>(pData) + iBandIndex * nBandSpaceBuf;
-
-        psExtraArg->pfnProgress = GDALScaledProgress;
-        psExtraArg->pProgressData =
-            GDALCreateScaledProgress( 1.0 * iBandIndex / nBandCount,
-                                      1.0 * (iBandIndex + 1) / nBandCount,
-                                      pfnProgressGlobal,
-                                      pProgressDataGlobal );
-
-        eErr = poBand->RasterIO( eRWFlag, nXOff, nYOff, nXSize, nYSize,
-                                 reinterpret_cast<void *>( pabyBandData ),
-                                 nBufXSize, nBufYSize,
-                                 eBufType, nPixelSpaceBuf, nLineSpaceBuf,
-                                 psExtraArg );
-
-        GDALDestroyScaledProgress( psExtraArg->pProgressData );
-    }
-
-    psExtraArg->pfnProgress = pfnProgressGlobal;
-    psExtraArg->pProgressData = pProgressDataGlobal;
-
-    return eErr;
+    return GDALDataset::BandBasedRasterIO( eRWFlag, nXOff, nYOff, nXSize, nYSize,
+                                   pData, nBufXSize, nBufYSize,
+                                   eBufType, nBandCount, panBandMap,
+                                   nPixelSpaceBuf, nLineSpaceBuf, nBandSpaceBuf,
+                                   psExtraArg );
 }
 
 /************************************************************************/
@@ -1374,7 +1339,7 @@ GDALDataset *MEMDataset::Open( GDALOpenInfo * poOpenInfo )
 
     poDS->nRasterXSize = atoi(CSLFetchNameValue(papszOptions,"PIXELS"));
     poDS->nRasterYSize = atoi(CSLFetchNameValue(papszOptions,"LINES"));
-    poDS->eAccess = GA_Update;
+    poDS->eAccess = poOpenInfo->eAccess;
 
 /* -------------------------------------------------------------------- */
 /*      Extract other information.                                      */
@@ -1610,7 +1575,7 @@ GDALDataset *MEMDataset::Create( const char * /* pszFilename */,
 /*                               MEMGroup                               */
 /************************************************************************/
 
-class MEMGroup: public GDALGroup
+class MEMGroup final: public GDALGroup
 {
     std::map<CPLString, std::shared_ptr<GDALGroup>> m_oMapGroups{};
     std::map<CPLString, std::shared_ptr<GDALMDArray>> m_oMapMDArrays{};
@@ -1723,7 +1688,7 @@ public:
 #pragma warning (disable:4250) // warning C4250: 'MEMMDArray': inherits 'MEMAbstractMDArray::MEMAbstractMDArray::IRead' via dominance
 #endif //_MSC_VER
 
-class MEMMDArray: public MEMAbstractMDArray, public GDALMDArray
+class MEMMDArray final: public MEMAbstractMDArray, public GDALMDArray
 {
     std::map<CPLString, std::shared_ptr<GDALAttribute>> m_oMapAttributes{};
     std::string m_osUnit{};
@@ -1733,6 +1698,8 @@ class MEMMDArray: public MEMAbstractMDArray, public GDALMDArray
     double m_dfOffset = 0.0;
     bool m_bHasScale = false;
     bool m_bHasOffset = false;
+    GDALDataType m_eOffsetStorageType = GDT_Unknown;
+    GDALDataType m_eScaleStorageType = GDT_Unknown;
 
 protected:
     MEMMDArray(const std::string& osParentName,
@@ -1779,30 +1746,32 @@ public:
 
     bool SetRawNoDataValue(const void*) override;
 
-    double GetOffset(bool* pbHasOffset) const override
+    double GetOffset(bool* pbHasOffset, GDALDataType* peStorageType) const override
     {
         if( pbHasOffset) *pbHasOffset = m_bHasOffset;
+        if( peStorageType ) *peStorageType = m_eOffsetStorageType;
         return m_dfOffset;
     }
 
-    double GetScale(bool* pbHasScale) const override
+    double GetScale(bool* pbHasScale, GDALDataType* peStorageType) const override
     {
         if( pbHasScale) *pbHasScale = m_bHasScale;
+        if( peStorageType ) *peStorageType = m_eScaleStorageType;
         return m_dfScale;
     }
 
-    bool SetOffset(double dfOffset) override
-    { m_bHasOffset = true; m_dfOffset = dfOffset; return true; }
+    bool SetOffset(double dfOffset, GDALDataType eStorageType) override
+    { m_bHasOffset = true; m_dfOffset = dfOffset; m_eOffsetStorageType = eStorageType; return true; }
 
-    bool SetScale(double dfScale) override
-    { m_bHasScale = true; m_dfScale = dfScale; return true; }
+    bool SetScale(double dfScale, GDALDataType eStorageType) override
+    { m_bHasScale = true; m_dfScale = dfScale; m_eScaleStorageType = eStorageType; return true; }
 };
 
 /************************************************************************/
 /*                               MEMAttribute                           */
 /************************************************************************/
 
-class MEMAttribute: public MEMAbstractMDArray, public GDALAttribute
+class MEMAttribute final: public MEMAbstractMDArray, public GDALAttribute
 {
 protected:
     MEMAttribute(const std::string& osParentName,
@@ -1830,7 +1799,7 @@ public:
 /*                               MEMDimension                           */
 /************************************************************************/
 
-class MEMDimension: public GDALDimension
+class MEMDimension final: public GDALDimension
 {
     std::weak_ptr<GDALMDArray> m_poIndexingVariable{};
 
@@ -2110,12 +2079,12 @@ bool MEMAbstractMDArray::Init(GByte* pData,
             --i;
             const auto& poDim = m_aoDims[i];
             auto nDimSize = poDim->GetSize();
-            auto nNewSize = nTotalSize * nDimSize;
-            if( nNewSize / nDimSize != nTotalSize )
+            if( nDimSize != 0 && nTotalSize > std::numeric_limits<GUInt64>::max() / nDimSize )
             {
                 CPLError(CE_Failure, CPLE_OutOfMemory, "Too big allocation");
                 return false;
             }
+            auto nNewSize = nTotalSize * nDimSize;
             if( anStrides.empty() )
                 m_anStrides[i] = static_cast<size_t>(nTotalSize);
             nTotalSize = nNewSize;
@@ -2592,6 +2561,7 @@ MEMDimension::MEMDimension(const std::string& osParentName,
 /*                           SetIndexingVariable()                      */
 /************************************************************************/
 
+// cppcheck-suppress passedByValue
 bool MEMDimension::SetIndexingVariable(std::shared_ptr<GDALMDArray> poIndexingVariable)
 {
     m_poIndexingVariable = poIndexingVariable;
@@ -2608,11 +2578,6 @@ std::shared_ptr<GDALDimension> MEMGroup::CreateDimension(const std::string& osNa
                                                          GUInt64 nSize,
                                                          CSLConstList)
 {
-    if( nSize == 0 )
-    {
-        CPLError(CE_Failure, CPLE_AppDefined, "Invalid size");
-        return nullptr;
-    }
     if( osName.empty() )
     {
         CPLError(CE_Failure, CPLE_NotSupported,

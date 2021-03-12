@@ -37,7 +37,7 @@ Optionally pyramid levels are generated. It  is  possible to generate  shape fil
 If your number of input tiles exhausts the command line buffer, use the general
 :ref:`--optfile <raster_common_options_optfile>` option
 
-.. program:: gdal_translate
+.. program:: gdal_retile
 
 .. option:: -targetDir <directory>
 
@@ -60,7 +60,7 @@ If your number of input tiles exhausts the command line buffer, use the general
 
     Overlap in pixels between consecutive tiles. If not specified, 0 is the default
 
-    ..versionadded:: 2.2
+    .. versionadded:: 2.2
 
 .. option:: -levels <numberOfLevels>
 

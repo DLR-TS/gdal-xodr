@@ -66,7 +66,8 @@
 typedef enum
 {
     FORMAT_AAIG,
-    FORMAT_GRASSASCII
+    FORMAT_GRASSASCII,
+    FORMAT_ISG,
 } GridFormat;
 
 /************************************************************************/
@@ -77,7 +78,7 @@ typedef enum
 
 class AAIGRasterBand;
 
-class AAIGDataset : public GDALPamDataset
+class AAIGDataset CPL_NON_FINAL: public GDALPamDataset
 {
     friend class AAIGRasterBand;
 
@@ -100,6 +101,7 @@ class AAIGDataset : public GDALPamDataset
     double      adfGeoTransform[6];
     bool        bNoDataSet;
     double      dfNoDataValue;
+    CPLString   osUnits{};
 
     virtual int ParseHeader(const char* pszHeader, const char* pszDataType);
 
@@ -135,7 +137,7 @@ class AAIGDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class GRASSASCIIDataset : public AAIGDataset
+class GRASSASCIIDataset final: public AAIGDataset
 {
     int ParseHeader(const char* pszHeader, const char* pszDataType) override;
 
@@ -149,11 +151,28 @@ class GRASSASCIIDataset : public AAIGDataset
 
 /************************************************************************/
 /* ==================================================================== */
+/*                           ISGDataset                                 */
+/* ==================================================================== */
+/************************************************************************/
+
+class ISGDataset final: public AAIGDataset
+{
+    int ParseHeader(const char* pszHeader, const char* pszDataType) override;
+
+  public:
+    ISGDataset() : AAIGDataset() {}
+
+    static GDALDataset *Open( GDALOpenInfo * );
+    static int          Identify( GDALOpenInfo * );
+};
+
+/************************************************************************/
+/* ==================================================================== */
 /*                            AAIGRasterBand                             */
 /* ==================================================================== */
 /************************************************************************/
 
-class AAIGRasterBand : public GDALPamRasterBand
+class AAIGRasterBand final: public GDALPamRasterBand
 {
     friend class AAIGDataset;
 

@@ -81,6 +81,7 @@
 %constant GRIORA_CubicSpline = GRIORA_CubicSpline;
 %constant GRIORA_Lanczos = GRIORA_Lanczos;
 %constant GRIORA_Average = GRIORA_Average;
+%constant GRIORA_RMS = GRIORA_RMS;
 %constant GRIORA_Mode = GRIORA_Mode;
 %constant GRIORA_Gauss = GRIORA_Gauss;
 
@@ -111,6 +112,7 @@
 %constant GRA_CubicSpline      = GRA_CubicSpline;
 %constant GRA_Lanczos          = GRA_Lanczos;
 %constant GRA_Average          = GRA_Average;
+%constant GRA_RMS = GRA_RMS;
 %constant GRA_Mode             = GRA_Mode;
 %constant GRA_Max              = GRA_Max;
 %constant GRA_Min              = GRA_Min;
@@ -191,6 +193,7 @@
 %constant char *DCAP_NOTNULL_FIELDS      = GDAL_DCAP_NOTNULL_FIELDS;
 %constant char *DCAP_DEFAULT_FIELDS      = GDAL_DCAP_DEFAULT_FIELDS;
 %constant char *DCAP_NOTNULL_GEOMFIELDS  = GDAL_DCAP_NOTNULL_GEOMFIELDS;
+%constant char *DCAP_UNIQUE_FIELDS       = GDAL_DCAP_UNIQUE_FIELDS;
 
 %constant char *DIM_TYPE_HORIZONTAL_X       = GDAL_DIM_TYPE_HORIZONTAL_X;
 %constant char *DIM_TYPE_HORIZONTAL_Y       = GDAL_DIM_TYPE_HORIZONTAL_Y;
@@ -215,11 +218,12 @@
 #define GDAL_DCAP_CREATE     "DCAP_CREATE"
 #define GDAL_DCAP_CREATECOPY "DCAP_CREATECOPY"
 #define GDAL_DCAP_VIRTUALIO  "DCAP_VIRTUALIO"
-#define DCAP_RASTER          "GDAL_DCAP_RASTER"
-#define DCAP_VECTOR          "GDAL_DCAP_VECTOR"
-#define DCAP_NOTNULL_FIELDS  "GDAL_DCAP_NOTNULL_FIELDS"
-#define DCAP_DEFAULT_FIELDS  "GDAL_DCAP_DEFAULT_FIELDS"
-#define DCAP_NOTNULL_GEOMFIELDS  "GDAL_DCAP_NOTNULL_GEOMFIELDS"
+#define DCAP_RASTER          "DCAP_RASTER"
+#define DCAP_VECTOR          "DCAP_VECTOR"
+#define DCAP_NOTNULL_FIELDS  "DCAP_NOTNULL_FIELDS"
+#define DCAP_DEFAULT_FIELDS  "DCAP_DEFAULT_FIELDS"
+#define DCAP_NOTNULL_GEOMFIELDS  "DCAP_NOTNULL_GEOMFIELDS"
+#define DCAP_UNIQUE_FIELDS   "DCAP_UNIQUE_FIELDS"
 
 #define DIM_TYPE_HORIZONTAL_X "HORIZONTAL_X"
 #define DIM_TYPE_HORIZONTAL_Y "HORIZONTAL_Y"

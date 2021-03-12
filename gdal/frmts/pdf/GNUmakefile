@@ -20,6 +20,7 @@ endif
 
 ifeq ($(HAVE_PDFIUM),yes)
 CPPFLAGS +=  -DHAVE_PDFIUM
+CXX := $(subst -std=c++11,-std=c++14,${CXX})
 # -Wzero-as-null-pointer-constant  isn't compatible of pdfium headers
 # /home/even/pdfium/install/include/pdfium/third_party/base/numerics/safe_conversions.h: In instantiation of ‘Dst pdfium::base::checked_cast(Src) [with Dst = int; Src = long unsigned int]’:
 # /home/even/pdfium/install/include/pdfium/core/include/fxcrt/fx_string.h:43:26:   required from here
@@ -43,4 +44,4 @@ install-obj:	$(O_OBJ:.o=.$(OBJ_EXT))
 plugin: $(PLUGIN_DL)
 
 $(PLUGIN_DL):  $(OBJ)
-	$(LD_SHARED) $(OBJ) ../../ogr/ogrsf_frmts/o/ogrmemdatasource.o ../../ogr/ogrsf_frmts/o/ogrmemdriver.o ../../ogr/ogrsf_frmts/o/ogrmemlayer.o $(LDFLAGS) $(CONFIG_LIBS) -o $(PLUGIN_DL) $(PDFIUM_PLUGIN_LIB) $(POPPLER_PLUGIN_LIB) $(PODOFO_PLUGIN_LIB)
+	$(LD_SHARED) $(OBJ) ../../ogr/ogrsf_frmts/o/ogrmemdatasource.o ../../ogr/ogrsf_frmts/o/ogrmemdriver.o ../../ogr/ogrsf_frmts/o/ogrmemlayer.o $(LDFLAGS) -o $(PLUGIN_DL) $(PDFIUM_PLUGIN_LIB) $(POPPLER_PLUGIN_LIB) $(PODOFO_PLUGIN_LIB) $(CONFIG_LIBS)

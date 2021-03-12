@@ -313,7 +313,7 @@ OGRErr OGRDXFLayer::CollectBoundaryPath( OGRGeometryCollection *poGC,
                 OGRGeometry *poArc = OGRGeometryFactory::approximateArcAngles(
                     dfCenterX, dfCenterY, dfElevation,
                     dfRadius, dfRadius, 0.0,
-                    dfStartAngle, dfEndAngle, 0.0 );
+                    dfStartAngle, dfEndAngle, 0.0, poDS->InlineBlocks() );
 
                 // If the input was 2D, we assume we want to keep it that way
                 if( dfElevation == 0.0 )
@@ -424,7 +424,7 @@ OGRErr OGRDXFLayer::CollectBoundaryPath( OGRGeometryCollection *poGC,
                 OGRGeometry *poArc = OGRGeometryFactory::approximateArcAngles(
                     dfCenterX, dfCenterY, dfElevation,
                     dfMajorRadius, dfMinorRadius, dfRotation,
-                    dfStartAngle, dfEndAngle, 0.0 );
+                    dfStartAngle, dfEndAngle, 0.0, poDS->InlineBlocks() );
 
                 // If the input was 2D, we assume we want to keep it that way
                 if( dfElevation == 0.0 )
@@ -592,6 +592,9 @@ OGRErr OGRDXFLayer::CollectPolylinePath( OGRGeometryCollection *poGC,
     int nVertexCount = -1;
     bool bHaveBulges = false;
 
+    if( dfElevation != 0 )
+        oSmoothPolyline.setCoordinateDimension(3);
+
 /* -------------------------------------------------------------------- */
 /*      Read the boundary path type.                                    */
 /* -------------------------------------------------------------------- */
@@ -678,7 +681,12 @@ OGRErr OGRDXFLayer::CollectPolylinePath( OGRGeometryCollection *poGC,
         return OGRERR_FAILURE;
     }
 
-    poGC->addGeometryDirectly( oSmoothPolyline.Tesselate() );
+    // Only process polylines with at least 2 vertices
+    if( nVertexCount >= 2 )
+    {
+        oSmoothPolyline.SetUseMaxGapWhenTessellatingArcs( poDS->InlineBlocks() );
+        poGC->addGeometryDirectly( oSmoothPolyline.Tessellate() );
+    }
 
 /* -------------------------------------------------------------------- */
 /*      Skip through source boundary objects if present.                */

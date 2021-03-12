@@ -498,8 +498,10 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
               return nullptr;
           }
           DGNElemMultiPoint *psLine = static_cast<DGNElemMultiPoint *>(
-              CPLCalloc(sizeof(DGNElemMultiPoint)+(count-1)*sizeof(DGNPoint),
+              VSI_CALLOC_VERBOSE(sizeof(DGNElemMultiPoint)+(count-1)*sizeof(DGNPoint),
                         1));
+          if( psLine == nullptr )
+              return nullptr;
           psElement = (DGNElemCore *) psLine;
           psElement->stype = DGNST_MULTIPOINT;
           DGNParseCore( psDGN, psElement );
@@ -1049,7 +1051,11 @@ static DGNElemCore *DGNProcessElement( DGNInfo *psDGN, int nType, int nLevel )
           int attr_bytes = psDGN->nElemBytes -
             (psDGN->abyElem[30] + psDGN->abyElem[31]*256)*2 - 32;
           int numelems = (psDGN->nElemBytes - 36 - attr_bytes)/4;
-
+          if( numelems < 1 )
+          {
+              CPLError(CE_Failure, CPLE_AssertionFailed, "numelems < 1");
+              return nullptr;
+          }
           DGNElemKnotWeight *psArray = static_cast<DGNElemKnotWeight *>(
               CPLCalloc(sizeof(DGNElemKnotWeight) + (numelems-1)*sizeof(float),
                         1));
@@ -1689,18 +1695,19 @@ void DGNInverseTransformPointToInt( DGNInfo *psDGN, DGNPoint *psPoint,
     {
         GInt32 nCTI = static_cast<GInt32>(
             std::max(-2147483647.0, std::min(2147483647.0, adfCT[i])));
-        unsigned char *pabyCTI = (unsigned char *) &nCTI;
+        unsigned char abyCTI[4];
+        memcpy(abyCTI, &nCTI, sizeof(GInt32));
 
 #ifdef WORDS_BIGENDIAN
-        pabyTarget[i*4+0] = pabyCTI[1];
-        pabyTarget[i*4+1] = pabyCTI[0];
-        pabyTarget[i*4+2] = pabyCTI[3];
-        pabyTarget[i*4+3] = pabyCTI[2];
+        pabyTarget[i*4+0] = abyCTI[1];
+        pabyTarget[i*4+1] = abyCTI[0];
+        pabyTarget[i*4+2] = abyCTI[3];
+        pabyTarget[i*4+3] = abyCTI[2];
 #else
-        pabyTarget[i*4+3] = pabyCTI[1];
-        pabyTarget[i*4+2] = pabyCTI[0];
-        pabyTarget[i*4+1] = pabyCTI[3];
-        pabyTarget[i*4+0] = pabyCTI[2];
+        pabyTarget[i*4+3] = abyCTI[1];
+        pabyTarget[i*4+2] = abyCTI[0];
+        pabyTarget[i*4+1] = abyCTI[3];
+        pabyTarget[i*4+0] = abyCTI[2];
 #endif
     }
 }

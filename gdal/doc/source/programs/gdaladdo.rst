@@ -15,7 +15,7 @@ Synopsis
 
 .. code-block::
 
-    gdaladdo [-r {nearest,average,gauss,cubic,cubicspline,lanczos,average_magphase,mode}]
+    gdaladdo [-r {nearest,average,rms,bilinear,gauss,cubic,cubicspline,lanczos,average_magphase,mode}]
             [-b band]* [-minsize val]
             [-ro] [-clean] [-oo NAME=VALUE]* [--help-general] filename [levels]
 
@@ -27,13 +27,17 @@ most supported file formats with one of several downsampling algorithms.
 
 .. program:: gdaladdo
 
-.. option:: -r {nearest (default),average,gauss,cubic,cubicspline,lanczos,average_magphase,mode}
+.. option:: -r {nearest (default),average,rms,gauss,cubic,cubicspline,lanczos,average_magphase,mode}
 
     Select a resampling algorithm.
 
     ``nearest`` applies a nearest neighbour (simple sampling) resampler
 
-    ``average`` computes the average of all non-NODATA contributing pixels.
+    ``average`` computes the average of all non-NODATA contributing pixels. Starting with GDAL 3.1, this is a weighted average taking into account properly the weight of source pixels not contributing fully to the target pixel.
+
+    ``rms`` computes the root mean squared / quadratic mean of all non-NODATA contributing pixels (GDAL >= 3.3)
+
+    ``bilinear`` applies a bilinear convolution kernel.
 
     ``gauss`` applies a Gaussian kernel before computing the overview,
     which can lead to better results than simple averaging in e.g case of sharp edges
@@ -111,35 +115,41 @@ in TIFF format.  By default, the GeoTIFF driver stores overviews internally to t
 operated on (if it is writable), unless the -ro flag is specified.
 
 Most drivers also support an alternate overview format using Erdas Imagine
-format.  To trigger this use the USE_RRD=YES configuration option.  This will
+format.  To trigger this use the :decl_configoption:`USE_RRD` =YES configuration option.  This will
 place the overviews in an associated .aux file suitable for direct use with
 Imagine or ArcGIS as well as GDAL applications.  (e.g. --config USE_RRD YES)
 
 External overviews in GeoTIFF format
 ------------------------------------
 
-External overviews created in TIFF format may be compressed using the COMPRESS_OVERVIEW
+External overviews created in TIFF format may be compressed using the :decl_configoption:`COMPRESS_OVERVIEW`
 configuration option.  All compression methods, supported by the GeoTIFF
-driver, are available here. (e.g. --config COMPRESS_OVERVIEW DEFLATE).
-The photometric interpretation can be set with --config PHOTOMETRIC_OVERVIEW {RGB,YCBCR,...},
-and the interleaving with --config INTERLEAVE_OVERVIEW {PIXEL|BAND}.
+driver, are available here. (e.g. ``--config COMPRESS_OVERVIEW DEFLATE``).
+The photometric interpretation can be set with the :decl_configoption:`PHOTOMETRIC_OVERVIEW`
+=RGB/YCBCR/... configuration option,
+and the interleaving with the :decl_configoption:`INTERLEAVE_OVERVIEW` =PIXEL/BAND configuration option.
 
 For JPEG compressed external overviews, the JPEG quality can be set with
-"--config JPEG_QUALITY_OVERVIEW value"
+``--config JPEG_QUALITY_OVERVIEW value``.
+
+For WEBP compressed external and internal overviews, the WEBP quality level can be set with
+``--config WEBP_LEVEL_OVERVIEW value``. If not set, will default to 75.
 
 For LZW or DEFLATE compressed external overviews, the predictor value can be set
-with "--config PREDICTOR_OVERVIEW 1|2|3"
+with ``--config PREDICTOR_OVERVIEW 1|2|3``.
 
-To produce the smallest possible JPEG-In-TIFF overviews, you should use :
+To produce the smallest possible JPEG-In-TIFF overviews, you should use:
 
 ::
 
     --config COMPRESS_OVERVIEW JPEG --config PHOTOMETRIC_OVERVIEW YCBCR --config INTERLEAVE_OVERVIEW PIXEL
 
 External overviews can be created in the BigTIFF format by using
-the BIGTIFF_OVERVIEW configuration option : --config BIGTIFF_OVERVIEW {IF_NEEDED|IF_SAFER|YES|NO}.
+the :decl_configoption:`BIGTIFF_OVERVIEW` configuration option:
+``--config BIGTIFF_OVERVIEW {IF_NEEDED|IF_SAFER|YES|NO}``.
+
 The default value is IF_SAFER starting with GDAL 2.3.0 (previously was IF_NEEDED).
-The behaviour of this option is exactly the same as the BIGTIFF creation option
+The behavior of this option is exactly the same as the BIGTIFF creation option
 documented in the GeoTIFF driver documentation.
 
 - YES forces BigTIFF.
@@ -149,6 +159,26 @@ documented in the GeoTIFF driver documentation.
 - IF_SAFER will create BigTIFF if the resulting file *might* exceed 4GB.
 
 See the documentation of the :ref:`raster.gtiff` driver for further explanations on all those options.
+
+Setting blocksize in Geotiff overviews
+---------------------------------------
+
+``--config GDAL_TIFF_OVR_BLOCKSIZE <size>``
+
+Example: ``--config GDAL_TIFF_OVR_BLOCKSIZE 256``
+
+Default value is 128, or starting with GDAL 3.1, if creating overviews on a tiled GeoTIFF file, the tile size of the full resolution image.
+Note: without this setting, the file can have the full resolution image with a blocksize different from overviews blocksize.(e.g. full resolution image at blocksize 256, overviews at blocksize 128)
+
+
+Multithreading
+--------------
+
+.. versionadded:: 3.2
+
+The :decl_configoption:`GDAL_NUM_THREADS` configuration option can be set to
+``ALL_CPUS`` or a integer value to specify the number of threads to use for
+overview computation.
 
 C API
 -----

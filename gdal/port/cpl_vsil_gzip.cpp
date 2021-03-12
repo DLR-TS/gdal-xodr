@@ -93,6 +93,10 @@
 #endif
 #include <zlib.h>
 
+#ifdef HAVE_LIBDEFLATE
+#include "libdeflate.h"
+#endif
+
 #include <algorithm>
 #include <list>
 #include <map>
@@ -181,7 +185,7 @@ class VSIGZipHandle final : public VSIVirtualHandle
 
     void check_header();
     int get_byte();
-    int gzseek( vsi_l_offset nOffset, int nWhence );
+    bool gzseek( vsi_l_offset nOffset, int nWhence );
     int gzrewind ();
     uLong getLong ();
 
@@ -236,7 +240,8 @@ public:
 
     VSIVirtualHandle *Open( const char *pszFilename,
                             const char *pszAccess,
-                            bool bSetError ) override;
+                            bool bSetError,
+                            CSLConstList /* papszOptions */ ) override;
     VSIGZipHandle *OpenGZipReadOnly( const char *pszFilename,
                                      const char *pszAccess );
     int Stat( const char *pszFilename, VSIStatBufL *pStatBuf,
@@ -526,21 +531,25 @@ void VSIGZipHandle::check_header()
     if( (flags & EXTRA_FIELD) != 0 )
     {
         // Skip the extra field.
-        len = static_cast<uInt>(get_byte());
-        len += static_cast<uInt>(get_byte()) << 8;
+        len = static_cast<uInt>(get_byte()) & 0xFF;
+        len += (static_cast<uInt>(get_byte()) & 0xFF) << 8;
         // len is garbage if EOF but the loop below will quit anyway.
-        while( len-- != 0 && get_byte() != EOF ) {}
+        while( len != 0 && get_byte() != EOF )
+        {
+            --len;
+        }
     }
 
-    int c = 0;
     if( (flags & ORIG_NAME) != 0 )
     {
         // Skip the original file name.
+        int c;
         while( (c = get_byte()) != 0 && c != EOF ) {}
     }
     if( (flags & COMMENT) != 0 )
     {
         // skip the .gz file comment.
+        int c;
         while ((c = get_byte()) != 0 && c != EOF) {}
     }
     if( (flags & HEAD_CRC) != 0 )
@@ -619,18 +628,14 @@ int VSIGZipHandle::gzrewind ()
 
 int VSIGZipHandle::Seek( vsi_l_offset nOffset, int nWhence )
 {
-    /* The semantics of gzseek are different from ::Seek */
-    /* It returns the current offset, where as ::Seek should return 0 */
-    /* if successful */
-    int ret = gzseek(nOffset, nWhence);
-    return (ret >= 0) ? 0 : ret;
+    return gzseek(nOffset, nWhence) ? 0 : -1;
 }
 
 /************************************************************************/
 /*                            gzseek()                                  */
 /************************************************************************/
 
-int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
+bool VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
 {
     const vsi_l_offset original_offset = offset;
     const int original_nWhence = whence;
@@ -648,8 +653,8 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
         {
             if( out + offset > m_compressed_size )
             {
-                CPL_VSIL_GZ_RETURN(-1);
-                return -1L;
+                CPL_VSIL_GZ_RETURN(FALSE);
+                return false;
             }
 
             offset = startOff + out + offset;
@@ -658,8 +663,8 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
         {
             if( offset > m_compressed_size )
             {
-                CPL_VSIL_GZ_RETURN(-1);
-                return -1L;
+                CPL_VSIL_GZ_RETURN(FALSE);
+                return false;
             }
 
             offset = startOff + offset;
@@ -670,30 +675,27 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
             // so no way to seek backward. See #1590 */
             if( offset > 0 ) // || -offset > compressed_size
             {
-                CPL_VSIL_GZ_RETURN(-1);
-                return -1L;
+                CPL_VSIL_GZ_RETURN(FALSE);
+                return false;
             }
 
             offset = startOff + m_compressed_size - offset;
         }
         else
         {
-            CPL_VSIL_GZ_RETURN(-1);
-            return -1L;
+            CPL_VSIL_GZ_RETURN(FALSE);
+            return false;
         }
 
         if( VSIFSeekL(reinterpret_cast<VSILFILE*>(m_poBaseHandle), offset, SEEK_SET) < 0 )
         {
-            CPL_VSIL_GZ_RETURN(-1);
-            return -1L;
+            CPL_VSIL_GZ_RETURN(FALSE);
+            return false;
         }
 
         out = offset - startOff;
         in = out;
-#ifdef ENABLE_DEBUG
-        CPLDebug("GZIP", "return " CPL_FRMT_GUIB, in);
-#endif
-        return in > INT_MAX ? INT_MAX : static_cast<int>(in);
+        return true;
     }
 
     // whence == SEEK_END is unsuppored in original gzseek.
@@ -704,7 +706,7 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
         if( offset == 0 && m_uncompressed_size != 0 )
         {
             out = m_uncompressed_size;
-            return 1;
+            return true;
         }
 
         // We don't know the uncompressed size. This is unfortunate.
@@ -738,14 +740,14 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
     }
     else if( gzrewind() < 0 )
     {
-            CPL_VSIL_GZ_RETURN(-1);
-            return -1L;
+        CPL_VSIL_GZ_RETURN(FALSE);
+        return false;
     }
 
     if( z_err != Z_OK && z_err != Z_STREAM_END )
     {
-        CPL_VSIL_GZ_RETURN(-1);
-        return -1L;
+        CPL_VSIL_GZ_RETURN(FALSE);
+        return false;
     }
 
     for( unsigned int i = 0;
@@ -794,17 +796,14 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
         outbuf = static_cast<Byte*>(ALLOC(Z_BUFSIZE));
         if( outbuf == nullptr )
         {
-            CPL_VSIL_GZ_RETURN(-1);
-            return -1L;
+            CPL_VSIL_GZ_RETURN(FALSE);
+            return false;
         }
     }
 
     if( original_nWhence == SEEK_END && z_err == Z_STREAM_END )
     {
-#ifdef ENABLE_DEBUG
-        CPLDebug("GZIP", "gzseek return " CPL_FRMT_GUIB, out);
-#endif
-        return static_cast<int>(out);
+        return true;
     }
 
     while( offset > 0 )
@@ -817,8 +816,8 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
             static_cast<int>(Read(outbuf, 1, static_cast<uInt>(size)));
         if( read_size == 0 )
         {
-            // CPL_VSIL_GZ_RETURN(-1);
-            return -1L;
+            // CPL_VSIL_GZ_RETURN(FALSE);
+            return false;
         }
         if( original_nWhence == SEEK_END )
         {
@@ -831,7 +830,7 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
         offset -= read_size;
     }
 #ifdef ENABLE_DEBUG
-    CPLDebug("GZIP", "gzseek return " CPL_FRMT_GUIB, out);
+    CPLDebug("GZIP", "gzseek at offset " CPL_FRMT_GUIB, out);
 #endif
 
     if( original_offset == 0 && original_nWhence == SEEK_END )
@@ -870,7 +869,7 @@ int VSIGZipHandle::gzseek( vsi_l_offset offset, int whence )
         }
     }
 
-    return static_cast<int>(out);
+    return true;
 }
 
 /************************************************************************/
@@ -1125,10 +1124,10 @@ size_t VSIGZipHandle::Read( void * const buf, size_t const nSize,
 
 uLong VSIGZipHandle::getLong ()
 {
-    uLong x = static_cast<uLong>(get_byte());
+    uLong x = static_cast<uLong>(get_byte()) & 0xFF;
 
-    x += static_cast<uLong>(get_byte()) << 8;
-    x += static_cast<uLong>(get_byte()) << 16;
+    x += (static_cast<uLong>(get_byte()) & 0xFF) << 8;
+    x += (static_cast<uLong>(get_byte()) & 0xFF) << 16;
     const int c = get_byte();
     if( c == EOF )
     {
@@ -1874,6 +1873,7 @@ VSIVirtualHandle* VSICreateGZipWritable( VSIVirtualHandle* poBaseHandle,
         nThreads = std::max(1, std::min(128, nThreads));
         if( nThreads > 1 )
         {
+            // coverity[tainted_data]
             return new VSIGZipWriteHandleMT( poBaseHandle,
                                                 nThreads,
                                                 nDeflateTypeIn,
@@ -2145,7 +2145,8 @@ void VSIGZipFilesystemHandler::SaveInfo_unlocked( VSIGZipHandle* poHandle )
 
 VSIVirtualHandle* VSIGZipFilesystemHandler::Open( const char *pszFilename,
                                                   const char *pszAccess,
-                                                  bool /* bSetError */ )
+                                                  bool /* bSetError */,
+                                                  CSLConstList /* papszOptions */ )
 {
     if( !STARTS_WITH_CI(pszFilename, "/vsigzip/") )
         return nullptr;
@@ -2640,7 +2641,8 @@ class VSIZipFilesystemHandler final : public VSIArchiveFilesystemHandler
 
     VSIVirtualHandle *Open( const char *pszFilename,
                             const char *pszAccess,
-                            bool bSetError ) override;
+                            bool bSetError,
+                            CSLConstList /* papszOptions */ ) override;
 
     VSIVirtualHandle *OpenForWrite( const char *pszFilename,
                                     const char *pszAccess );
@@ -2773,7 +2775,8 @@ VSIArchiveReader* VSIZipFilesystemHandler::CreateReader(
 
 VSIVirtualHandle* VSIZipFilesystemHandler::Open( const char *pszFilename,
                                                  const char *pszAccess,
-                                                 bool /* bSetError */ )
+                                                 bool /* bSetError */,
+                                                 CSLConstList /* papszOptions */ )
 {
 
     if( strchr(pszAccess, 'w') != nullptr )
@@ -3350,29 +3353,17 @@ void* CPLZLibDeflate( const void* ptr,
                       size_t nOutAvailableBytes,
                       size_t* pnOutBytes )
 {
-    z_stream strm;
-    strm.zalloc = nullptr;
-    strm.zfree = nullptr;
-    strm.opaque = nullptr;
-    int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
-    if( ret != Z_OK )
-    {
-        if( pnOutBytes != nullptr )
-            *pnOutBytes = 0;
-        return nullptr;
-    }
+    if( pnOutBytes != nullptr )
+        *pnOutBytes = 0;
 
     size_t nTmpSize = 0;
     void* pTmp;
     if( outptr == nullptr )
     {
-        nTmpSize = 8 + nBytes * 2;
+        nTmpSize = 32 + nBytes * 2;
         pTmp = VSIMalloc(nTmpSize);
         if( pTmp == nullptr )
         {
-            deflateEnd(&strm);
-            if( pnOutBytes != nullptr )
-                *pnOutBytes = 0;
             return nullptr;
         }
     }
@@ -3380,6 +3371,38 @@ void* CPLZLibDeflate( const void* ptr,
     {
         pTmp = outptr;
         nTmpSize = nOutAvailableBytes;
+    }
+
+#ifdef HAVE_LIBDEFLATE
+    struct libdeflate_compressor* enc = libdeflate_alloc_compressor(7);
+    if( enc == nullptr )
+    {
+        if( pTmp != outptr )
+            VSIFree(pTmp);
+        return nullptr;
+    }
+    size_t nCompressedBytes = libdeflate_zlib_compress(
+                    enc, ptr, nBytes, pTmp, nTmpSize);
+    libdeflate_free_compressor(enc);
+    if( nCompressedBytes == 0 )
+    {
+        if( pTmp != outptr )
+            VSIFree(pTmp);
+        return nullptr;
+    }
+    if( pnOutBytes != nullptr )
+        *pnOutBytes = nCompressedBytes;
+#else
+    z_stream strm;
+    strm.zalloc = nullptr;
+    strm.zfree = nullptr;
+    strm.opaque = nullptr;
+    int ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+    if( ret != Z_OK )
+    {
+        if( pTmp != outptr )
+            VSIFree(pTmp);
+        return nullptr;
     }
 
     strm.avail_in = static_cast<uInt>(nBytes);
@@ -3391,13 +3414,13 @@ void* CPLZLibDeflate( const void* ptr,
     {
         if( pTmp != outptr )
             VSIFree(pTmp);
-        if( pnOutBytes != nullptr )
-            *pnOutBytes = 0;
         return nullptr;
     }
     if( pnOutBytes != nullptr )
         *pnOutBytes = nTmpSize - strm.avail_out;
     deflateEnd(&strm);
+#endif
+
     return pTmp;
 }
 
@@ -3425,6 +3448,39 @@ void* CPLZLibInflate( const void* ptr, size_t nBytes,
                       void* outptr, size_t nOutAvailableBytes,
                       size_t* pnOutBytes )
 {
+    if( pnOutBytes != nullptr )
+        *pnOutBytes = 0;
+
+#ifdef HAVE_LIBDEFLATE
+    if( outptr )
+    {
+        struct libdeflate_decompressor* dec = libdeflate_alloc_decompressor();
+        if( dec == nullptr )
+        {
+            return nullptr;
+        }
+        enum libdeflate_result res;
+        if( nBytes > 2 &&
+            static_cast<const GByte*>(ptr)[0] == 0x1F &&
+            static_cast<const GByte*>(ptr)[1] == 0x8B )
+        {
+            res = libdeflate_gzip_decompress(
+                dec, ptr, nBytes, outptr, nOutAvailableBytes, pnOutBytes);
+        }
+        else
+        {
+            res = libdeflate_zlib_decompress(
+                dec, ptr, nBytes, outptr, nOutAvailableBytes, pnOutBytes);
+        }
+        libdeflate_free_decompressor(dec);
+        if( res != LIBDEFLATE_SUCCESS )
+        {
+            return nullptr;
+        }
+        return outptr;
+    }
+#endif
+
     z_stream strm;
     strm.zalloc = nullptr;
     strm.zfree = nullptr;
@@ -3434,8 +3490,6 @@ void* CPLZLibInflate( const void* ptr, size_t nBytes,
     int ret = inflateInit2(&strm, MAX_WBITS + 32);
     if( ret != Z_OK )
     {
-        if( pnOutBytes != nullptr )
-            *pnOutBytes = 0;
         return nullptr;
     }
 
@@ -3448,8 +3502,6 @@ void* CPLZLibInflate( const void* ptr, size_t nBytes,
         if( pszTmp == nullptr )
         {
             inflateEnd(&strm);
-            if( pnOutBytes != nullptr )
-                *pnOutBytes = 0;
             return nullptr;
         }
     }
@@ -3470,8 +3522,6 @@ void* CPLZLibInflate( const void* ptr, size_t nBytes,
             if( outptr == pszTmp )
             {
                 inflateEnd(&strm);
-                if( pnOutBytes != nullptr )
-                    *pnOutBytes = 0;
                 return nullptr;
             }
 
@@ -3483,8 +3533,6 @@ void* CPLZLibInflate( const void* ptr, size_t nBytes,
             {
                 VSIFree(pszTmp);
                 inflateEnd(&strm);
-                if( pnOutBytes != nullptr )
-                    *pnOutBytes = 0;
                 return nullptr;
             }
             pszTmp = pszTmpNew;
@@ -3511,8 +3559,6 @@ void* CPLZLibInflate( const void* ptr, size_t nBytes,
         if( outptr != pszTmp )
             VSIFree(pszTmp);
         inflateEnd(&strm);
-        if( pnOutBytes != nullptr )
-            *pnOutBytes = 0;
         return nullptr;
     }
 }

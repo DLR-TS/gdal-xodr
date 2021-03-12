@@ -16,7 +16,7 @@ Synopsis
 .. code-block::
 
     gdal_polygonize.py [-8] [-nomask] [-mask filename] <raster_file> [-b band]
-                       [-q] [-f ogr_format] <out_file< [layer] [fieldname]
+                       [-q] [-f ogr_format] <out_file> [layer] [fieldname]
 
 Description
 -----------
@@ -31,7 +31,7 @@ exist, defaulting to GML format.
 The utility is based on the ::cpp:func:`GDALPolygonize` function which has additional
 details on the algorithm.
 
-.. program:: gdaladdo
+.. program:: gdal_polygonize
 
 .. option:: -8
 

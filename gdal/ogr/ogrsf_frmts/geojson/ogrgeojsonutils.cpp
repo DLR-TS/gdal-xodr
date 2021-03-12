@@ -28,6 +28,7 @@
  ****************************************************************************/
 
 #include "ogrgeojsonutils.h"
+#include <assert.h>
 #include <cpl_port.h>
 #include <cpl_conv.h>
 #include <ogr_geometry.h>
@@ -157,8 +158,12 @@ static CPLString GetCompactJSon( const char* pszText, size_t nMaxSize )
 /*                          IsGeoJSONLikeObject()                       */
 /************************************************************************/
 
-static bool IsGeoJSONLikeObject( const char* pszText, bool* pbMightBeSequence )
+static bool IsGeoJSONLikeObject( const char* pszText, bool& bMightBeSequence,
+                                 bool& bReadMoreBytes)
 {
+    bMightBeSequence = false;
+    bReadMoreBytes = false;
+
     if( !IsJSONObject(pszText) )
         return false;
 
@@ -167,8 +172,6 @@ static bool IsGeoJSONLikeObject( const char* pszText, bool* pbMightBeSequence )
 
     if( IsTypeSomething(pszText, "FeatureCollection") )
     {
-        if( pbMightBeSequence )
-            *pbMightBeSequence = false;
         return true;
     }
 
@@ -176,17 +179,23 @@ static bool IsGeoJSONLikeObject( const char* pszText, bool* pbMightBeSequence )
     if( osWithoutSpace.find("{\"features\":[") == 0 &&
         osWithoutSpace.find(szESRIJSonPotentialStart1) != 0 )
     {
-        if( pbMightBeSequence )
-            *pbMightBeSequence = false;
         return true;
     }
 
     // See https://raw.githubusercontent.com/icepack/icepack-data/master/meshes/larsen/larsen_inflow.geojson
-    if( osWithoutSpace.find("{\"crs\":{") == 0 &&
-        osWithoutSpace.find(",\"features\":[") != std::string::npos )
+    // "{"crs":...,"features":[..."
+    // or https://gist.githubusercontent.com/NiklasDallmann/27e339dd78d1942d524fbcd179f9fdcf/raw/527a8319d75a9e29446a32a19e4c902213b0d668/42XR9nLAh8Poh9Xmniqh3Bs9iisNm74mYMC56v3Wfyo=_isochrones_fails.geojson
+    // "{"bbox":...,"features":[..."
+    if( osWithoutSpace.find(",\"features\":[") != std::string::npos )
     {
-        if( pbMightBeSequence )
-            *pbMightBeSequence = false;
+        return !ESRIJSONIsObject(pszText);
+    }
+
+    // See https://github.com/OSGeo/gdal/issues/2720
+    if( osWithoutSpace.find("{\"coordinates\":[") == 0 ||
+        // and https://github.com/OSGeo/gdal/issues/2787
+        osWithoutSpace.find("{\"geometry\":{\"coordinates\":[") == 0 )
+    {
         return true;
     }
 
@@ -199,9 +208,16 @@ static bool IsGeoJSONLikeObject( const char* pszText, bool* pbMightBeSequence )
            IsTypeSomething(pszText, "MultiPolygon") ||
            IsTypeSomething(pszText, "GeometryCollection") )
     {
-        if( pbMightBeSequence )
-            *pbMightBeSequence = true;
+        bMightBeSequence = true;
         return true;
+    }
+
+    // See https://github.com/OSGeo/gdal/issues/3280
+    if( osWithoutSpace.find("{\"properties\":{") == 0 )
+    {
+        bMightBeSequence = true;
+        bReadMoreBytes = true;
+        return false;
     }
 
     return false;
@@ -209,7 +225,9 @@ static bool IsGeoJSONLikeObject( const char* pszText, bool* pbMightBeSequence )
 
 static bool IsGeoJSONLikeObject( const char* pszText )
 {
-    return IsGeoJSONLikeObject(pszText, nullptr);
+    bool bMightBeSequence;
+    bool bReadMoreBytes;
+    return IsGeoJSONLikeObject(pszText, bMightBeSequence, bReadMoreBytes);
 }
 
 /************************************************************************/
@@ -285,6 +303,7 @@ static bool IsLikelyNewlineSequenceGeoJSON( VSILFILE* fpL,
         {
             const char* pszText = pszFileContent ? pszFileContent:
                 reinterpret_cast<const char*>(pabyHeader);
+            assert(pszText);
             nRead = std::min(strlen(pszText), nBufferSize);
             memcpy(abyBuffer.data(), pszText, nRead);
             bFirstIter = false;
@@ -373,10 +392,17 @@ bool GeoJSONFileIsObject( GDALOpenInfo* poOpenInfo )
     }
 
     bool bMightBeSequence = false;
+    bool bReadMoreBytes = false;
     if( !IsGeoJSONLikeObject(reinterpret_cast<const char*>(poOpenInfo->pabyHeader),
-        &bMightBeSequence) )
+                             bMightBeSequence, bReadMoreBytes) )
     {
-        return false;
+        if( !(bReadMoreBytes && poOpenInfo->nHeaderBytes >= 6000 &&
+              poOpenInfo->TryToIngest(1000 * 1000) &&
+             !IsGeoJSONLikeObject(reinterpret_cast<const char*>(poOpenInfo->pabyHeader),
+                                  bMightBeSequence, bReadMoreBytes)) )
+        {
+            return false;
+        }
     }
 
     return !(bMightBeSequence && IsLikelyNewlineSequenceGeoJSON(
@@ -390,7 +416,8 @@ bool GeoJSONFileIsObject( GDALOpenInfo* poOpenInfo )
 bool GeoJSONIsObject( const char* pszText )
 {
     bool bMightBeSequence = false;
-    if( !IsGeoJSONLikeObject(pszText, &bMightBeSequence) )
+    bool bReadMoreBytes = false;
+    if( !IsGeoJSONLikeObject(pszText, bMightBeSequence, bReadMoreBytes) )
     {
         return false;
     }
@@ -421,9 +448,16 @@ bool GeoJSONSeqFileIsObject( GDALOpenInfo* poOpenInfo )
         return IsGeoJSONLikeObject(pszText+1);
 
     bool bMightBeSequence = false;
-    if( !IsGeoJSONLikeObject(pszText, &bMightBeSequence) )
+    bool bReadMoreBytes = false;
+    if( !IsGeoJSONLikeObject(pszText, bMightBeSequence, bReadMoreBytes) )
     {
-        return false;
+        if( !(bReadMoreBytes && poOpenInfo->nHeaderBytes >= 6000 &&
+              poOpenInfo->TryToIngest(1000 * 1000) &&
+             !IsGeoJSONLikeObject(reinterpret_cast<const char*>(poOpenInfo->pabyHeader),
+                                  bMightBeSequence, bReadMoreBytes)) )
+        {
+            return false;
+        }
     }
 
     return bMightBeSequence && IsLikelyNewlineSequenceGeoJSON(
@@ -436,7 +470,8 @@ bool GeoJSONSeqIsObject( const char* pszText )
         return IsGeoJSONLikeObject(pszText+1);
 
     bool bMightBeSequence = false;
-    if( !IsGeoJSONLikeObject(pszText, &bMightBeSequence) )
+    bool bReadMoreBytes = false;
+    if( !IsGeoJSONLikeObject(pszText, bMightBeSequence, bReadMoreBytes) )
     {
         return false;
     }
@@ -544,8 +579,7 @@ GeoJSONSourceType ESRIJSONDriverGetSourceType( GDALOpenInfo* poOpenInfo )
     // By default read first 6000 bytes.
     // 6000 was chosen as enough bytes to
     // enable all current tests to pass.
-    if( poOpenInfo->fpL == nullptr ||
-        !poOpenInfo->TryToIngest(6000) )
+    if( !poOpenInfo->TryToIngest(6000) )
     {
         return eGeoJSONSourceUnknown;
     }
@@ -603,8 +637,7 @@ GeoJSONSourceType TopoJSONDriverGetSourceType( GDALOpenInfo* poOpenInfo )
     // By default read first 6000 bytes.
     // 6000 was chosen as enough bytes to
     // enable all current tests to pass.
-    if( poOpenInfo->fpL == nullptr ||
-        !poOpenInfo->TryToIngest(6000) )
+    if( !poOpenInfo->TryToIngest(6000) )
     {
         return eGeoJSONSourceUnknown;
     }

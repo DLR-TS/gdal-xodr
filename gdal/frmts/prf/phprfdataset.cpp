@@ -134,7 +134,9 @@ bool PhPrfDataset::AddTile( const char* pszPartName, GDALAccess eAccessType,
             return false;
         }
 
-        //! \todo What reason for nBlockXSize&nBlockYSize passed to AddSrcBandDescription
+        // Block sizes (nBlockXSize&nBlockYSize) passed as zeros.
+        // They will be loaded when RefUnderlyingRasterBand
+        // function is called on first open of tile's dataset 'poTileDataset'.
         poTileDataset->AddSrcBandDescription(poBand->GetRasterDataType(), 0, 0);
         GDALRasterBand* poTileBand = poTileDataset->GetRasterBand( nBand );
 
@@ -661,7 +663,7 @@ void GDALRegister_PRF()
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "prf" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_prf.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/prf.html" );
     poDriver->pfnIdentify = PhPrfDataset::Identify;
     poDriver->pfnOpen = PhPrfDataset::Open;
     GDALRegisterDriver( (GDALDriverH)poDriver );

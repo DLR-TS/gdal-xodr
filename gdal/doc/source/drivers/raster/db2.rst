@@ -6,6 +6,8 @@ DB2 raster
 
 .. shortname:: DB2
 
+.. build_dependencies:: ODBC (and any or all of PNG, JPEG, WEBP drivers)
+
 .. note::
 
     The DB2 driver is based largely on the source code for the OGR/DB2
@@ -26,7 +28,7 @@ DB2 raster
     been changed to DB2. In some cases it isn't clear whether we should
     refer to "DB2 tiles" or "GeoPackage tiles".
 
-Starting with GDAL 2.0, this driver implements full read/creation/update
+This driver implements full read/creation/update
 of tables containing raster tiles in the `OGC GeoPackage format
 standard <http://www.geopackage.org/spec/>`__. The GeoPackage standard
 uses a SQLite database file as a generic container, and the standard

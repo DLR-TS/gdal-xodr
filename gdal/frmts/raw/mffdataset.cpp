@@ -95,7 +95,7 @@ class MFFDataset final : public RawDataset
     static GDALDataset *Open( GDALOpenInfo * );
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
-                                GDALDataType eType, char ** papszParmList );
+                                GDALDataType eType, char ** papszParamList );
     static GDALDataset *CreateCopy( const char * pszFilename,
                                     GDALDataset *poSrcDS,
                                     int bStrict, char ** papszOptions,
@@ -1107,7 +1107,7 @@ int GetMFFProjectionType(const char *pszNewProjection)
 GDALDataset *MFFDataset::Create( const char * pszFilenameIn,
                                  int nXSize, int nYSize, int nBands,
                                  GDALDataType eType,
-                                 char ** papszParmList )
+                                 char ** papszParamList )
 
 {
 /* -------------------------------------------------------------------- */
@@ -1174,7 +1174,7 @@ GDALDataset *MFFDataset::Create( const char * pszFilenameIn,
     bOK &= VSIFPrintfL( fp, "BYTE_ORDER = LSB\n" ) >= 0;
 #endif
 
-    if (CSLFetchNameValue(papszParmList,"NO_END") == nullptr)
+    if (CSLFetchNameValue(papszParamList,"NO_END") == nullptr)
         bOK &= VSIFPrintfL( fp, "END\n" ) >= 0;
 
     if( VSIFCloseL( fp ) != 0 )
@@ -1648,7 +1648,7 @@ void GDALRegister_MFF()
     poDriver->SetDescription( "MFF" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Vexcel MFF Raster" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#MFF" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/mff.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "hdr" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte UInt16 Float32 CInt16 CFloat32" );

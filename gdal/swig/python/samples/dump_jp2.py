@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ******************************************************************************
 #  $Id$
@@ -154,32 +154,32 @@ def extract_all_xml_boxes(filename, prefix):
     return 0
 
 
-def main():
+def main(argv):
     i = 1
     out_gmljp2 = None
     out_crsdictionary = None
     extract_all_xml_boxes_prefix = None
     filename = None
-    while i < len(sys.argv):
-        if sys.argv[i] == "-dump_gmljp2":
-            if i >= len(sys.argv) - 1:
+    while i < len(argv):
+        if argv[i] == "-dump_gmljp2":
+            if i >= len(argv) - 1:
                 return Usage()
-            out_gmljp2 = sys.argv[i + 1]
+            out_gmljp2 = argv[i + 1]
             i = i + 1
-        elif sys.argv[i] == "-dump_crsdictionary":
-            if i >= len(sys.argv) - 1:
+        elif argv[i] == "-dump_crsdictionary":
+            if i >= len(argv) - 1:
                 return Usage()
-            out_crsdictionary = sys.argv[i + 1]
+            out_crsdictionary = argv[i + 1]
             i = i + 1
-        elif sys.argv[i] == "-extract_all_xml_boxes":
-            if i >= len(sys.argv) - 1:
+        elif argv[i] == "-extract_all_xml_boxes":
+            if i >= len(argv) - 1:
                 return Usage()
-            extract_all_xml_boxes_prefix = sys.argv[i + 1]
+            extract_all_xml_boxes_prefix = argv[i + 1]
             i = i + 1
-        elif sys.argv[i][0] == '-':
+        elif argv[i][0] == '-':
             return Usage()
         elif filename is None:
-            filename = sys.argv[i]
+            filename = argv[i]
         else:
             return Usage()
 
@@ -206,4 +206,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv))

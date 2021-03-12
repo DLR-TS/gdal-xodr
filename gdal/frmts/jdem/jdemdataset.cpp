@@ -79,7 +79,7 @@ static double JDEMGetAngle( const char *pszField )
 
 class JDEMRasterBand;
 
-class JDEMDataset : public GDALPamDataset
+class JDEMDataset final: public GDALPamDataset
 {
     friend class JDEMRasterBand;
 
@@ -106,7 +106,7 @@ class JDEMDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class JDEMRasterBand : public GDALPamRasterBand
+class JDEMRasterBand final: public GDALPamRasterBand
 {
     friend class JDEMDataset;
 
@@ -370,7 +370,7 @@ void GDALRegister_JDEM()
     poDriver->SetDescription("JDEM");
     poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "Japanese DEM (.mem)");
-    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "frmt_various.html#JDEM");
+    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "drivers/raster/jdem.html");
     poDriver->SetMetadataItem(GDAL_DMD_EXTENSION, "mem");
     poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
 

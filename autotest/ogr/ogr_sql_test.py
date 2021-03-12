@@ -27,9 +27,6 @@
 # Boston, MA 02111-1307, USA.
 ###############################################################################
 
-import sys
-
-
 from osgeo import gdal
 from osgeo import ogr
 import gdaltest
@@ -133,7 +130,7 @@ def test_ogr_sql_5():
     if feat['min_eas_id'] != 158:
         feat.DumpReadable()
         pytest.fail()
-    if abs(feat['avg_eas_id'] - 168.142857142857) > 1e-12:
+    if feat['avg_eas_id'] != pytest.approx(168.142857142857, abs=1e-12):
         feat.DumpReadable()
         pytest.fail()
     if feat['count_eas_id'] != 7:
@@ -212,17 +209,60 @@ def test_ogr_sql_9():
 # Test the ILIKE operator.
 
 
-def test_ogr_sql_10():
+def test_ogr_sql_ilike():
 
-    expect = [170]
+    ds = ogr.Open('data/prime_meridian.csv')
+    sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME ilike 'GREEN%'")
+    count = sql_lyr.GetFeatureCount()
+    ds.ReleaseResultSet(sql_lyr)
 
-    sql_lyr = gdaltest.ds.ExecuteSQL("select eas_id from poly where prfedea ilike '%413'")
+    assert count == 1
 
-    tr = ogrtest.check_features_against_list(sql_lyr, 'eas_id', expect)
+    ds = ogr.Open('data/prime_meridian.csv')
+    sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME ilike '%WICH'")
+    count = sql_lyr.GetFeatureCount()
+    ds.ReleaseResultSet(sql_lyr)
 
-    gdaltest.ds.ReleaseResultSet(sql_lyr)
+    assert count == 1
 
-    assert tr
+    sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME ilike 'FOO%'")
+    count = sql_lyr.GetFeatureCount()
+    ds.ReleaseResultSet(sql_lyr)
+
+    assert count == 0
+
+###############################################################################
+# Test the LIKE operator.
+
+
+def test_ogr_sql_like():
+
+    ds = ogr.Open('data/prime_meridian.csv')
+    sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME like 'Green%'")
+    count = sql_lyr.GetFeatureCount()
+    ds.ReleaseResultSet(sql_lyr)
+
+    assert count == 1
+
+    ds = ogr.Open('data/prime_meridian.csv')
+    sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME like '%wich'")
+    count = sql_lyr.GetFeatureCount()
+    ds.ReleaseResultSet(sql_lyr)
+
+    assert count == 1
+
+    sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME like 'GREEN%'")
+    count = sql_lyr.GetFeatureCount()
+    ds.ReleaseResultSet(sql_lyr)
+
+    assert count == 0
+
+    with gdaltest.config_option('OGR_SQL_LIKE_AS_ILIKE', 'YES'):
+        sql_lyr = ds.ExecuteSQL("select * from prime_meridian where PRIME_MERIDIAN_NAME like 'GREEN%'")
+        count = sql_lyr.GetFeatureCount()
+        ds.ReleaseResultSet(sql_lyr)
+
+    assert count == 1
 
 ###############################################################################
 # Test MAX() on empty dataset.
@@ -232,11 +272,12 @@ def test_ogr_sql_11():
 
     expect = [None]
 
-    sql_lyr = gdaltest.ds.ExecuteSQL("select max(eas_id) from empty")
+    ds = ogr.Open('data/shp/empty.shp')
+    sql_lyr = ds.ExecuteSQL("select max(eas_id) from empty")
 
     tr = ogrtest.check_features_against_list(sql_lyr, 'max_eas_id', expect)
 
-    gdaltest.ds.ReleaseResultSet(sql_lyr)
+    ds.ReleaseResultSet(sql_lyr)
 
     assert tr
 
@@ -248,11 +289,12 @@ def test_ogr_sql_12():
 
     expect = []
 
-    sql_lyr = gdaltest.ds.ExecuteSQL("select distinct eas_id from empty")
+    ds = ogr.Open('data/shp/empty.shp')
+    sql_lyr = ds.ExecuteSQL("select distinct eas_id from empty")
 
     tr = ogrtest.check_features_against_list(sql_lyr, 'eas_id', expect)
 
-    gdaltest.ds.ReleaseResultSet(sql_lyr)
+    ds.ReleaseResultSet(sql_lyr)
 
     assert tr
 
@@ -280,10 +322,10 @@ def test_ogr_sql_13():
 def test_ogr_sql_14():
 
     expect = [
-        'BRUSH(fc:#000000,bc:#ffffff,id:"mapinfo-brush-1,ogr-brush-1");PEN(w:1px,c:#000000,id:"mapinfo-pen-2,ogr-pen-0")',
-        'BRUSH(fc:#000000,bc:#ffffff,id:"mapinfo-brush-1,ogr-brush-1");PEN(w:1px,c:#000000,id:"mapinfo-pen-2,ogr-pen-0")']
+        'BRUSH(fc:#000000,bc:#ffffff,id:"mapinfo-brush-1,ogr-brush-1");PEN(w:1px,c:#000000,id:"mapinfo-pen-2,ogr-pen-0",cap:r,j:r)',
+        'BRUSH(fc:#000000,bc:#ffffff,id:"mapinfo-brush-1,ogr-brush-1");PEN(w:1px,c:#000000,id:"mapinfo-pen-2,ogr-pen-0",cap:r,j:r)']
 
-    ds = ogr.Open('data/small.mif')
+    ds = ogr.Open('data/mitab/small.mif')
     sql_lyr = ds.ExecuteSQL("select ogr_style from small where ogr_geom_wkt LIKE 'POLYGON%'")
 
     tr = ogrtest.check_features_against_list(sql_lyr, 'ogr_style', expect)
@@ -316,7 +358,7 @@ def test_ogr_sql_16():
 
     expect = [2]
 
-    ds = ogr.Open('data/small.mif')
+    ds = ogr.Open('data/mitab/small.mif')
     sql_lyr = ds.ExecuteSQL("select fid from small where owner < 'H'")
 
     tr = ogrtest.check_features_against_list(sql_lyr, 'fid', expect)
@@ -334,7 +376,7 @@ def test_ogr_sql_17():
 
     expect = ['1', '2']
 
-    ds = ogr.Open('data/small.mif')
+    ds = ogr.Open('data/mitab/small.mif')
     sql_lyr = ds.ExecuteSQL("select CAST(fid as CHARACTER(10)), CAST(data as numeric(7,3)) from small")
 
     fld_def = sql_lyr.GetLayerDefn().GetFieldDefn(0)
@@ -372,43 +414,6 @@ def test_ogr_sql_17():
 
     assert tr
 
-
-###############################################################################
-# Test extended character set
-
-def test_ogr_sql_18():
-
-    if sys.version_info >= (3, 0, 0):
-        pytest.skip()
-
-    name = 'data/departs.vrt'
-
-    ds = ogr.Open(name)
-    assert ds is not None
-
-    sql = 'select * from D\303\251parts'
-    sql_lyr = ds.ExecuteSQL(sql)
-    if sql_lyr is None:
-        ds = None
-        pytest.fail()
-    feat = sql_lyr.GetNextFeature()
-    assert feat is not None
-    feat = None
-
-    ds.ReleaseResultSet(sql_lyr)
-
-    # Test #2221
-    sql = 'select NOMd\303\251PART from D\303\251parts'
-    sql_lyr = ds.ExecuteSQL(sql)
-    if sql_lyr is None:
-        ds = None
-        pytest.fail()
-    feat = sql_lyr.GetNextFeature()
-    assert feat is not None
-    feat = None
-
-    ds.ReleaseResultSet(sql_lyr)
-    ds = None
 
 ###############################################################################
 # Test empty request string
@@ -515,7 +520,7 @@ def test_ogr_sql_24():
 
     result = 'success'
 
-    ds = ogr.Open('data/smalltest.dgn')
+    ds = ogr.Open('data/dgn/smalltest.dgn')
 
     sql_layer = ds.ExecuteSQL('SELECT * from elements where colorindex=83 and type=3')
 
@@ -590,7 +595,7 @@ def test_ogr_sql_26():
 
 def test_ogr_sql_27():
 
-    ds = ogr.Open('data/testdatetime.csv')
+    ds = ogr.Open('data/csv/testdatetime.csv')
 
     sql_lyr = ds.ExecuteSQL("SELECT * FROM testdatetime WHERE "
                             "timestamp < '2010/04/01 00:00:00' AND "
@@ -1087,7 +1092,7 @@ def test_ogr_sql_38():
 
     gdaltest.ds.ReleaseResultSet(sql_lyr)
 
-    if abs(val - 1634833.39062) < 1e-5:
+    if val == pytest.approx(1634833.39062, abs=1e-5):
         return
     pytest.fail(val)
 
@@ -1104,7 +1109,7 @@ def test_ogr_sql_39():
 
     gdaltest.ds.ReleaseResultSet(sql_lyr)
 
-    if abs(val - 5268.813) < 1e-5:
+    if val == pytest.approx(5268.813, abs=1e-5):
         return
     pytest.fail(val)
 
@@ -1325,7 +1330,7 @@ def test_ogr_sql_46():
 
 def test_ogr_sql_47():
 
-    ds = ogr.Open('data/sort_test.dbf')
+    ds = ogr.Open('data/shp/sort_test.dbf')
     sql_lyr = ds.ExecuteSQL('SELECT * FROM sort_test ORDER BY text_value')
     prec_val = ''
     for f in sql_lyr:
@@ -1363,10 +1368,62 @@ def test_ogr_sql_48():
     ds.ReleaseResultSet(sql_lyr)
     assert i == 1001
 
+###############################################################################
+# Test arithmetic expressions
+
+
+def test_ogr_sql_49():
+
+    # expressions and expected result
+    expressions = [ ( "1/1", 1),
+                    ( "1/1.", 1.),
+                    ( "cast((1) as integer)/1." , 1. ),
+                    ( "1./cast((1) as integer)" , 1. ),
+                    ( "1.5+1" , 2.5 ),
+                    ( "(1*1)+1.5" , 2.5 ),
+                    ( "1+1" , 2 ),
+                    ( "cast(1 as integer)+ 1234567890123" , 1234567890124 ),
+                    ( "cast(1 as integer)* 1234567890123" , 1234567890123 )
+    ]
+
+    for expression, expected in expressions:
+        sql_lyr = gdaltest.ds.ExecuteSQL('select {} as result from poly limit 1'.format( expression ) )
+        tr = ogrtest.check_features_against_list(sql_lyr, 'result', [expected])
+
+        gdaltest.ds.ReleaseResultSet(sql_lyr)
+
+        assert tr
+
+
+
+
+###############################################################################
+# Test field names with same case
+
+
+def test_ogr_sql_field_names_same_case():
+
+    ds = ogr.GetDriverByName('Memory').CreateDataSource('')
+    lyr = ds.CreateLayer('test')
+    lyr.CreateField(ogr.FieldDefn('id'))
+    lyr.CreateField(ogr.FieldDefn('ID'))
+    lyr.CreateField(ogr.FieldDefn('ID2'))
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f['id'] = 'foo'
+    f['ID'] = 'bar'
+    f['ID2'] = 'baz'
+    lyr.CreateFeature(f)
+
+    sql_lyr = ds.ExecuteSQL('SELECT * FROM test')
+    f = sql_lyr.GetNextFeature()
+    ds.ReleaseResultSet(sql_lyr)
+    assert f['id'] == 'foo'
+    assert f['ID'] == 'bar'
+    assert f['ID2'] == 'baz'
+
+###############################################################################
+
 
 def test_ogr_sql_cleanup():
     gdaltest.lyr = None
     gdaltest.ds = None
-
-
-

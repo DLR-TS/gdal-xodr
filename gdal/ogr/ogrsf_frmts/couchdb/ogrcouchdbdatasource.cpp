@@ -28,7 +28,7 @@
 
 #include "ogr_couchdb.h"
 #include "ogrgeojsonreader.h"
-#include "swq.h"
+#include "ogr_swq.h"
 
 CPL_CVSID("$Id$")
 
@@ -699,7 +699,7 @@ class PointerAutoFree
         ~PointerAutoFree() { CPLFree(m_p); }
 };
 
-class OGRCouchDBOneLineLayer : public OGRLayer
+class OGRCouchDBOneLineLayer final: public OGRLayer
 {
     public:
         OGRFeature* poFeature;

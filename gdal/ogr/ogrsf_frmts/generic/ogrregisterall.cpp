@@ -54,6 +54,9 @@ void OGRRegisterAllInternal()
 #ifdef NTF_ENABLED
     RegisterOGRNTF();
 #endif
+#ifdef LVBAG_ENABLED
+    RegisterOGRLVBAG();
+#endif
 #ifdef SDTS_ENABLED
     RegisterOGRSDTS();
 #endif
@@ -71,9 +74,6 @@ void OGRRegisterAllInternal()
 #endif
 #ifdef MEM_ENABLED
     RegisterOGRMEM();
-#endif
-#ifdef BNA_ENABLED
-    RegisterOGRBNA();
 #endif
 #ifdef CSV_ENABLED
     RegisterOGRCSV();
@@ -149,18 +149,12 @@ void OGRRegisterAllInternal()
 #ifdef INGRES_ENABLED
     RegisterOGRIngres();
 #endif
-#ifdef SDE_ENABLED
-    RegisterOGRSDE();
-#endif
 /* Register OpenFileGDB before FGDB as it is more capable for read-only */
 #ifdef OPENFILEGDB_ENABLED
     RegisterOGROpenFileGDB();
 #endif
 #ifdef FGDB_ENABLED
     RegisterOGRFileGDB();
-#endif
-#ifdef XPLANE_ENABLED
-    RegisterOGRXPlane();
 #endif
 #ifdef DWG_ENABLED
     RegisterOGRDWG();
@@ -176,6 +170,9 @@ void OGRRegisterAllInternal()
 #endif
 #ifdef GRASS_ENABLED
     RegisterOGRGRASS();
+#endif
+#ifdef FLATGEOBUF_ENABLED
+    RegisterOGRFlatGeobuf();
 #endif
 #ifdef FME_ENABLED
     RegisterOGRFME();
@@ -205,36 +202,21 @@ void OGRRegisterAllInternal()
 #ifdef GPSBABEL_ENABLED
     RegisterOGRGPSBabel();
 #endif
-#ifdef SUA_ENABLED
-    RegisterOGRSUA();
-#endif
-#ifdef OPENAIR_ENABLED
-    RegisterOGROpenAir();
-#endif
 #ifdef PDS_ENABLED
     RegisterOGRPDS();
 #endif
 #ifdef WFS_ENABLED
     RegisterOGRWFS();
-    RegisterOGRWFS3();
+    RegisterOGROAPIF();
 #endif
 #ifdef SOSI_ENABLED
     RegisterOGRSOSI();
-#endif
-#ifdef HTF_ENABLED
-    RegisterOGRHTF();
-#endif
-#ifdef AERONAVFAA_ENABLED
-    RegisterOGRAeronavFAA();
 #endif
 #ifdef GEOMEDIA_ENABLED
     RegisterOGRGeomedia();
 #endif
 #ifdef EDIGEO_ENABLED
     RegisterOGREDIGEO();
-#endif
-#ifdef GFT_ENABLED
-    RegisterOGRGFT();
 #endif
 #ifdef SVG_ENABLED
     RegisterOGRSVG();
@@ -250,12 +232,6 @@ void OGRRegisterAllInternal()
 #endif
 #ifdef ARCGEN_ENABLED
     RegisterOGRARCGEN();
-#endif
-#ifdef SEGUKOOA_ENABLED
-    RegisterOGRSEGUKOOA();
-#endif
-#ifdef SEGY_ENABLED
-    RegisterOGRSEGY();
 #endif
 #ifdef XLS_ENABLED
     RegisterOGRXLS();
@@ -308,6 +284,12 @@ void OGRRegisterAllInternal()
 #ifdef MVT_ENABLED
     RegisterOGRMVT();
 #endif
+#ifdef NGW_ENABLED
+    RegisterOGRNGW();
+#endif // NGW_ENABLED
+#ifdef MAPML_ENABLED
+    RegisterOGRMapML();
+#endif
 
 /* Put TIGER and AVCBIN at end since they need poOpenInfo->GetSiblingFiles() */
 #ifdef TIGER_ENABLED
@@ -318,8 +300,5 @@ void OGRRegisterAllInternal()
     RegisterOGRAVCE00();
 #endif
 
-#ifdef NGW_ENABLED
-    RegisterOGRNGW();
-#endif // NGW_ENABLED
 
 } /* OGRRegisterAll */

@@ -30,6 +30,7 @@
 ###############################################################################
 
 import gdaltest
+import struct
 
 from osgeo import gdal
 
@@ -69,6 +70,24 @@ def test_gdalmdimtranslate_multidim_to_classic():
 
     assert gdal.MultiDimTranslate(tmpfile, 'data/mdim.vrt',
                                   arraySpecs = ['/my_subgroup/array_in_subgroup'])
+
+    gdal.Unlink(tmpfile)
+
+###############################################################################
+
+
+def test_gdalmdimtranslate_multidim_1d_to_classic():
+
+    tmpfile = '/vsimem/out.tif'
+
+    assert gdal.MultiDimTranslate(tmpfile, 'data/mdim.vrt',
+                                  arraySpecs = ['latitude'])
+    ds = gdal.Open(tmpfile)
+    band = ds.GetRasterBand(1)
+    data = band.ReadRaster()
+    assert len(data) == 10 * 4
+    assert struct.unpack('f' * 10, data)[0] == 90.0
+    ds = None
 
     gdal.Unlink(tmpfile)
 
@@ -710,6 +729,61 @@ def test_gdalmdimtranslate_scaleaxes():
   </Group>
 </VRTDataset>
 """
+
+
+def test_gdalmdimtranslate_dims_with_same_name_different_size():
+
+    srcfile = '/vsimem/in.vrt'
+    gdal.FileFromMemBuffer(srcfile, """<VRTDataset>
+    <Group name="/">
+        <Array name="X">
+            <DataType>Float64</DataType>
+            <Dimension name="dim0" size="2"/>
+        </Array>
+        <Array name="Y">
+            <DataType>Float64</DataType>
+            <Dimension name="dim0" size="3"/>
+        </Array>
+    </Group>
+</VRTDataset>""")
+
+    tmpfile = '/vsimem/test.vrt'
+    gdal.MultiDimTranslate(tmpfile, srcfile, groupSpecs = [ '/' ], format = 'VRT')
+
+    f = gdal.VSIFOpenL(tmpfile, 'rb')
+    got_data = gdal.VSIFReadL(1, 10000, f).decode('ascii')
+    gdal.VSIFCloseL(f)
+    #print(got_data)
+
+    assert got_data == """<VRTDataset>
+  <Group name="/">
+    <Dimension name="dim0" size="2" />
+    <Dimension name="dim0_2" size="3" />
+    <Array name="X">
+      <DataType>Float64</DataType>
+      <DimensionRef ref="dim0" />
+      <Source>
+        <SourceFilename relativetoVRT="1">in.vrt</SourceFilename>
+        <SourceArray>/X</SourceArray>
+        <SourceSlab offset="0" count="2" step="1" />
+        <DestSlab offset="0" />
+      </Source>
+    </Array>
+    <Array name="Y">
+      <DataType>Float64</DataType>
+      <DimensionRef ref="dim0_2" />
+      <Source>
+        <SourceFilename relativetoVRT="1">in.vrt</SourceFilename>
+        <SourceArray>/Y</SourceArray>
+        <SourceSlab offset="0" count="3" step="1" />
+        <DestSlab offset="0" />
+      </Source>
+    </Array>
+  </Group>
+</VRTDataset>
+"""
+    gdal.Unlink(tmpfile)
+    gdal.Unlink(srcfile)
 
 
 def XXXX_test_all():

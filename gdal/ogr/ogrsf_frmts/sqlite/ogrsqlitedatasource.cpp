@@ -328,7 +328,6 @@ int OGRSQLiteDataSource::GetSpatialiteVersionNumber()
 OGRSQLiteBaseDataSource::OGRSQLiteBaseDataSource() :
     m_pszFilename(nullptr),
     hDB(nullptr),
-    bUpdate(FALSE),
     pMyVFS(nullptr),
     fpMainFile(nullptr),  // Do not close. The VFS layer will do it for us.
 #ifdef SPATIALITE_412_OR_LATER
@@ -522,7 +521,7 @@ OGRSQLiteDataSource::~OGRSQLiteDataSource()
 void OGRSQLiteDataSource::SaveStatistics()
 {
     if( !bIsSpatiaLiteDB || !IsSpatialiteLoaded() ||
-        bLastSQLCommandIsUpdateLayerStatistics || !bUpdate )
+        bLastSQLCommandIsUpdateLayerStatistics || !GetUpdate() )
         return;
 
     int nSavedAllLayersCacheData = -1;
@@ -945,6 +944,7 @@ void *OGRSQLiteBaseDataSource::GetInternalHandle( const char * pszKey )
     return nullptr;
 }
 
+
 /************************************************************************/
 /*                               Create()                               */
 /************************************************************************/
@@ -1302,7 +1302,7 @@ void OGRSQLiteDataSource::ReloadLayers()
     nLayers = 0;
 
     GDALOpenInfo oOpenInfo(m_pszFilename,
-                           GDAL_OF_VECTOR | (bUpdate ? GDAL_OF_UPDATE: 0));
+                           GDAL_OF_VECTOR | (GetUpdate() ? GDAL_OF_UPDATE: 0));
     Open(&oOpenInfo);
 }
 
@@ -1315,7 +1315,7 @@ int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
 {
     const char * pszNewName = poOpenInfo->pszFilename;
     CPLAssert( nLayers == 0 );
-    bUpdate = poOpenInfo->eAccess == GA_Update;
+    eAccess = poOpenInfo->eAccess;
     nOpenFlags = poOpenInfo->nOpenFlags;
     SetDescription(pszNewName);
 
@@ -1426,7 +1426,7 @@ int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
                 if( STARTS_WITH(pszLine, "--") )
                     continue;
 
-                // Blacklist a few words tat might have security implications
+                // Reject a few words tat might have security implications
                 // Basically we just want to allow CREATE TABLE and INSERT INTO
                 if( CPLString(pszLine).ifind("ATTACH") != std::string::npos ||
                     CPLString(pszLine).ifind("DETACH") != std::string::npos ||
@@ -1515,7 +1515,7 @@ int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
                 VSIFCloseL(poOpenInfo->fpL);
                 poOpenInfo->fpL = nullptr;
             }
-            if (!OpenOrCreateDB((bUpdate) ? SQLITE_OPEN_READWRITE : SQLITE_OPEN_READONLY, TRUE) )
+            if (!OpenOrCreateDB(GetUpdate() ? SQLITE_OPEN_READWRITE : SQLITE_OPEN_READONLY, TRUE) )
             {
                 poOpenInfo->fpL = VSIFOpenL(poOpenInfo->pszFilename,
                             poOpenInfo->eAccess == GA_Update ? "rb+" : "rb");
@@ -1538,6 +1538,13 @@ int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
         return OpenRasterSubDataset( pszNewName );
     }
 #endif
+
+    const char* pszPreludeStatements = CSLFetchNameValue(papszOpenOptions, "PRELUDE_STATEMENTS");
+    if( pszPreludeStatements )
+    {
+        if( SQLCommand(hDB, pszPreludeStatements) != OGRERR_NONE )
+            return FALSE;
+    }
 
 /* -------------------------------------------------------------------- */
 /*      If we have a GEOMETRY_COLUMNS tables, initialize on the basis   */
@@ -1694,7 +1701,7 @@ int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
         {
             iSpatialiteVersion = GetSpatialiteVersionNumber();
         }
-        else if( bUpdate )
+        else if( GetUpdate() )
         {
             CPLError(CE_Failure, CPLE_AppDefined, "SpatiaLite%s DB found, "
                      "but updating tables disabled because no linking against spatialite library !",
@@ -1704,7 +1711,7 @@ int OGRSQLiteDataSource::Open( GDALOpenInfo* poOpenInfo)
             return FALSE;
         }
 
-        if (bSpatialite4Layout && bUpdate && iSpatialiteVersion > 0 && iSpatialiteVersion < 40)
+        if (bSpatialite4Layout && GetUpdate() && iSpatialiteVersion > 0 && iSpatialiteVersion < 40)
         {
             CPLError(CE_Failure, CPLE_AppDefined, "SpatiaLite v4 DB found, "
                      "but updating tables disabled because runtime spatialite library is v%.1f !",
@@ -2067,17 +2074,17 @@ int OGRSQLiteDataSource::TestCapability( const char * pszCap )
 
 {
     if( EQUAL(pszCap,ODsCCreateLayer) )
-        return bUpdate;
+        return GetUpdate();
     else if( EQUAL(pszCap,ODsCDeleteLayer) )
-        return bUpdate;
+        return GetUpdate();
     else if( EQUAL(pszCap,ODsCCurveGeometries) )
         return !bIsSpatiaLiteDB;
     else if( EQUAL(pszCap,ODsCMeasuredGeometries) )
         return TRUE;
     else if( EQUAL(pszCap,ODsCCreateGeomFieldAfterCreateLayer) )
-        return bUpdate;
+        return GetUpdate();
     else if( EQUAL(pszCap,ODsCRandomLayerWrite) )
-        return bUpdate;
+        return GetUpdate();
     else
         return OGRSQLiteBaseDataSource::TestCapability(pszCap);
 }
@@ -2493,7 +2500,7 @@ OGRSQLiteDataSource::ICreateLayer( const char * pszLayerNameIn,
 /*      Verify we are in update mode.                                   */
 /* -------------------------------------------------------------------- */
     char *pszLayerName = nullptr;
-    if( !bUpdate )
+    if( !GetUpdate() )
     {
         CPLError( CE_Failure, CPLE_NoWriteAccess,
                   "Data source %s opened read-only.\n"
@@ -2756,7 +2763,7 @@ void OGRSQLiteDataSource::DeleteLayer( const char *pszLayerName )
 /* -------------------------------------------------------------------- */
 /*      Verify we are in update mode.                                   */
 /* -------------------------------------------------------------------- */
-    if( !bUpdate )
+    if( !GetUpdate() )
     {
         CPLError( CE_Failure, CPLE_NoWriteAccess,
                   "Data source %s opened read-only.\n"
@@ -3732,6 +3739,9 @@ OGRSpatialReference *OGRSQLiteDataSource::FetchSRS( int nId )
         }
     }
 
+    if( poSRS )
+        poSRS->StripTOWGS84IfKnownDatumAndAllowed();
+
 /* -------------------------------------------------------------------- */
 /*      Add to the cache.                                               */
 /* -------------------------------------------------------------------- */
@@ -3771,4 +3781,14 @@ void OGRSQLiteBaseDataSource::SetEnvelopeForSQL(const CPLString& osSQL,
                                             const OGREnvelope& oEnvelope)
 {
     oMapSQLEnvelope[osSQL] = oEnvelope;
+}
+
+/************************************************************************/
+/*                         AbortSQL()                                   */
+/************************************************************************/
+
+OGRErr OGRSQLiteBaseDataSource::AbortSQL()
+{
+    sqlite3_interrupt( hDB );
+    return OGRERR_NONE;
 }

@@ -130,6 +130,7 @@ typedef struct
 typedef struct
 {
     GInt32      nEllipsoid;
+    GInt32      nVertDatum;
     GInt32      nDatum;
     GInt32      nZone;
 } RMFExtHeader;
@@ -138,7 +139,7 @@ typedef struct
 /*                            RMFCompressionJob                         */
 /************************************************************************/
 
-typedef struct
+struct RMFCompressionJob
 {
     RMFDataset* poDS = nullptr;
     CPLErr eResult = CE_None;
@@ -150,7 +151,7 @@ typedef struct
     size_t nCompressedBytes = 0;
     GUInt32 nXSize = 0;
     GUInt32 nYSize = 0;
-} RMFCompressionJob;
+};
 
 /************************************************************************/
 /*                            RMFCompressData                           */
@@ -176,11 +177,11 @@ struct RMFCompressData
 /*                            RMFTileData                               */
 /************************************************************************/
 
-typedef struct
+struct RMFTileData
 {
     std::vector<GByte>  oData;
     int                 nBandsWritten = 0;
-} RMFTileData;
+};
 
 /************************************************************************/
 /*                              RMFDataset                              */
@@ -198,6 +199,7 @@ private:
     GUInt32         *paiTiles;
     GByte           *pabyDecompressBuffer;
     GByte           *pabyCurrentTile;
+    bool            bCurrentTileIsNull;
     int             nCurrentTileXOff;
     int             nCurrentTileYOff;
     GUInt32         nCurrentTileBytes;
@@ -312,7 +314,7 @@ private:
     int                 SetupCompression(GDALDataType eType,
                                          const char* pszFilename);
     static void         WriteTileJobFunc(void* pData);
-    CPLErr              InitCompressorData(char **papszParmList);
+    CPLErr              InitCompressorData(char **papszParamList);
     CPLErr              WriteTile(int nBlockXOff, int nBlockYOff,
                                   GByte* pabyData, size_t nBytes,
                                   GUInt32 nRawXSize, GUInt32 nRawYSize);
@@ -320,7 +322,8 @@ private:
                                      GByte* pabyData, size_t nBytes);
     CPLErr              ReadTile(int nBlockXOff, int nBlockYOff,
                                  GByte* pabyData, size_t nBytes,
-                                 GUInt32 nRawXSize, GUInt32 nRawYSize);
+                                 GUInt32 nRawXSize, GUInt32 nRawYSize,
+                                 bool& bNullTile);
     void                SetupNBits();
 };
 

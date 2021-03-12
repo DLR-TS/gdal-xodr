@@ -218,7 +218,7 @@ static CPLErr ImageGetRow(ImageRec* image, unsigned char* buf, int y, int z)
 
 class SGIRasterBand;
 
-class SGIDataset : public GDALPamDataset
+class SGIDataset final: public GDALPamDataset
 {
     friend class SGIRasterBand;
 
@@ -246,7 +246,7 @@ public:
 /* ==================================================================== */
 /************************************************************************/
 
-class SGIRasterBand : public GDALPamRasterBand
+class SGIRasterBand final: public GDALPamRasterBand
 {
     friend class SGIDataset;
 
@@ -842,7 +842,7 @@ void GDALRegister_SGI()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "SGI Image File Format 1.0" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "rgb" );
     poDriver->SetMetadataItem( GDAL_DMD_MIMETYPE, "image/rgb" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#SGI" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/sgi.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Byte" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

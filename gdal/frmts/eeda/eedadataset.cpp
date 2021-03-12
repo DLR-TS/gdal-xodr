@@ -31,7 +31,7 @@
 #include "cpl_conv.h"
 #include "ogrgeojsonreader.h"
 #include "ogrgeojsonwriter.h"
-#include "swq.h"
+#include "ogr_swq.h"
 #include "eeda.h"
 
 #include <algorithm>
@@ -82,7 +82,7 @@ static CPLString CPLEscapeURLQueryParameter( const char *pszInput )
 
 class GDALEEDALayer;
 
-class GDALEEDADataset: public GDALEEDABaseDataset
+class GDALEEDADataset final: public GDALEEDABaseDataset
 {
             CPL_DISALLOW_COPY_ASSIGN(GDALEEDADataset)
 
@@ -104,7 +104,7 @@ class GDALEEDADataset: public GDALEEDABaseDataset
 /*                          GDALEEDALayer                               */
 /************************************************************************/
 
-class GDALEEDALayer: public OGRLayer
+class GDALEEDALayer final: public OGRLayer
 {
                 CPL_DISALLOW_COPY_ASSIGN(GDALEEDALayer)
 
@@ -120,7 +120,7 @@ class GDALEEDALayer: public OGRLayer
                 CPLString        m_osStartTime{};
                 CPLString        m_osEndTime{};
                 bool             m_bFilterMustBeClientSideEvaluated;
-                std::set<int>    m_oSetQueriableFields{};
+                std::set<int>    m_oSetQueryableFields{};
                 std::map<CPLString, CPLString> m_oMapCodeToWKT{};
 
                 OGRFeature*      GetNextRawFeature();
@@ -292,7 +292,7 @@ GDALEEDALayer::GDALEEDALayer(GDALEEDADataset* poDS,
                     }
                     OGRFieldDefn oFieldDefn(pszName, eType);
                     m_poFeatureDefn->AddFieldDefn(&oFieldDefn);
-                    m_oSetQueriableFields.insert( m_poFeatureDefn->GetFieldCount() - 1 );
+                    m_oSetQueryableFields.insert( m_poFeatureDefn->GetFieldCount() - 1 );
                 }
             }
         }
@@ -337,7 +337,7 @@ GDALEEDALayer::GDALEEDALayer(GDALEEDADataset* poDS,
                 }
                 OGRFieldDefn oFieldDefn(it.key, eType);
                 m_poFeatureDefn->AddFieldDefn(&oFieldDefn);
-                m_oSetQueriableFields.insert( m_poFeatureDefn->GetFieldCount() - 1 );
+                m_oSetQueryableFields.insert( m_poFeatureDefn->GetFieldCount() - 1 );
             }
         }
         {
@@ -692,16 +692,16 @@ bool GDALEEDALayer::IsSimpleComparison(const swq_expr_node* poNode)
              poNode->nSubExprCount == 2 &&
              poNode->papoSubExpr[0]->eNodeType == SNT_COLUMN &&
              poNode->papoSubExpr[1]->eNodeType == SNT_CONSTANT &&
-             m_oSetQueriableFields.find(
+             m_oSetQueryableFields.find(
                                     poNode->papoSubExpr[0]->field_index) !=
-                                m_oSetQueriableFields.end();
+                                m_oSetQueryableFields.end();
 }
 
 /************************************************************************/
 /*                             GetOperatorText()                        */
 /************************************************************************/
 
-static const char* GetOperatorText(int nOp)
+static const char* GetOperatorText(swq_op nOp)
 {
     if( nOp == SWQ_LT )
         return "<";
@@ -855,9 +855,9 @@ CPLString GDALEEDALayer::BuildFilter(swq_expr_node* poNode, bool bIsAndTopLevel)
               poNode->nOperation == SWQ_IN &&
               poNode->nSubExprCount >= 2 &&
               poNode->papoSubExpr[0]->eNodeType == SNT_COLUMN &&
-              m_oSetQueriableFields.find(
+              m_oSetQueryableFields.find(
                                     poNode->papoSubExpr[0]->field_index) !=
-                                m_oSetQueriableFields.end() )
+                                m_oSetQueryableFields.end() )
     {
         const int nFieldIdx = poNode->papoSubExpr[0]->field_index;
         CPLString osFilter;
@@ -1230,7 +1230,7 @@ void GDALRegister_EEDA()
     poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Earth Engine Data API" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_eeda.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/vector/eeda.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CONNECTION_PREFIX, "EEDA:" );
     poDriver->SetMetadataItem( GDAL_DMD_OPENOPTIONLIST,
 "<OpenOptionList>"

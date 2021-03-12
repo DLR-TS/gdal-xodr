@@ -77,7 +77,7 @@ IMPLEMENT_OBJECT_CREATE(CropableMG4PointReader)
 
 static double MaxRasterSize = 2048.0;
 static double MaxBlockSideSize = 1024.0;
-class MG4LidarDataset : public GDALPamDataset
+class MG4LidarDataset final: public GDALPamDataset
 {
 friend class MG4LidarRasterBand;
 
@@ -109,7 +109,7 @@ protected:
 /*                            MG4LidarRasterBand                                          */
 /* ========================================  */
 
-class MG4LidarRasterBand : public GDALPamRasterBand
+class MG4LidarRasterBand final: public GDALPamRasterBand
 {
    friend class MG4LidarDataset;
 
@@ -727,6 +727,9 @@ GDALDataset *MG4LidarDataset::Open( GDALOpenInfo * poOpenInfo )
           return nullptr;
    }
 
+  if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("MG4LIDAR") )
+      return nullptr;
+
    CPLXMLNode *psInputFile = CPLGetXMLNode( pxmlPCView, "InputFile" );
    if( psInputFile == nullptr )
    {
@@ -927,7 +930,7 @@ void GDALRegister_MG4Lidar()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "MrSID Generation 4 / Lidar (.sid)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,  "frmt_mrsid_lidar.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,  "drivers/raster/mg4lidar.html" );
 
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "view" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Float64" );

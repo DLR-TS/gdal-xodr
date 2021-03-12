@@ -27,6 +27,7 @@
 
 #include "cpl_string.h"
 #include "ogr_srs_api.h"
+#include "ogr_spatialref.h"
 
 #include <algorithm>
 #include <cmath>
@@ -341,5 +342,119 @@ namespace tut
         CPLFree(wkt1);
     }
 
+    // Test StripTOWGS84IfKnownDatum
+    template<>
+    template<>
+    void object::test<8 >()
+    {
+        // Not a boundCRS
+        {
+            OGRSpatialReference oSRS;
+            oSRS.importFromEPSG(4326);
+            ensure(!oSRS.StripTOWGS84IfKnownDatum());
+        }
+        // Custom boundCRS --> do not strip TOWGS84
+        {
+            OGRSpatialReference oSRS;
+            oSRS.SetFromUserInput("+proj=longlat +ellps=GRS80 +towgs84=1,2,3,4,5,6,7");
+            ensure(!oSRS.StripTOWGS84IfKnownDatum());
+            double vals[7] = { 0 };
+            ensure(oSRS.GetTOWGS84(vals, 7) == OGRERR_NONE);
+        }
+        // BoundCRS whose base CRS has a known code --> strip TOWGS84
+        {
+            OGRSpatialReference oSRS;
+            oSRS.importFromEPSG(4326);
+            oSRS.SetTOWGS84(1,2,3,4,5,6,7);
+            ensure(oSRS.StripTOWGS84IfKnownDatum());
+            double vals[7] = { 0 };
+            ensure(oSRS.GetTOWGS84(vals, 7) != OGRERR_NONE);
+        }
+        // BoundCRS whose datum code is known --> strip TOWGS84
+        {
+            OGRSpatialReference oSRS;
+            oSRS.SetFromUserInput(
+                "GEOGCS[\"bar\","
+                "DATUM[\"foo\","
+                "SPHEROID[\"WGS 84\",6378137,298.257223563],"
+                "TOWGS84[1,2,3,4,5,6,7],"
+                "AUTHORITY[\"FOO\",\"1\"]],"
+                "PRIMEM[\"Greenwich\",0],"
+                "UNIT[\"degree\",0.0174532925199433]]");
+            ensure(oSRS.StripTOWGS84IfKnownDatum());
+            double vals[7] = { 0 };
+            ensure(oSRS.GetTOWGS84(vals, 7) != OGRERR_NONE);
+        }
+        // BoundCRS whose datum name is known --> strip TOWGS84
+        {
+            OGRSpatialReference oSRS;
+            oSRS.SetFromUserInput(
+                "GEOGCS[\"WGS 84\","
+                "DATUM[\"WGS_1984\","
+                "SPHEROID[\"WGS 84\",6378137,298.257223563],"
+                "TOWGS84[1,2,3,4,5,6,7]],"
+                "PRIMEM[\"Greenwich\",0],"
+                "UNIT[\"degree\",0.0174532925199433]]");
+            ensure(oSRS.StripTOWGS84IfKnownDatum());
+            double vals[7] = { 0 };
+            ensure(oSRS.GetTOWGS84(vals, 7) != OGRERR_NONE);
+        }
+        // BoundCRS whose datum name is unknown --> do not strip TOWGS84
+        {
+            OGRSpatialReference oSRS;
+            oSRS.SetFromUserInput(
+                "GEOGCS[\"WGS 84\","
+                "DATUM[\"i am unknown\","
+                "SPHEROID[\"WGS 84\",6378137,298.257223563],"
+                "TOWGS84[1,2,3,4,5,6,7]],"
+                "PRIMEM[\"Greenwich\",0],"
+                "UNIT[\"degree\",0.0174532925199433]]");
+            ensure(!oSRS.StripTOWGS84IfKnownDatum());
+            double vals[7] = { 0 };
+            ensure(oSRS.GetTOWGS84(vals, 7) == OGRERR_NONE);
+        }
+    }
+
+    // Test GetEPSGGeogCS
+    template<>
+    template<>
+    void object::test<9 >()
+    {
+        // When export to WKT1 is not possible
+        OGRSpatialReference oSRS;
+        oSRS.SetFromUserInput(
+            "PROJCRS[\"World_Vertical_Perspective\",\n"
+            "    BASEGEOGCRS[\"WGS 84\",\n"
+            "        DATUM[\"World Geodetic System 1984\",\n"
+            "            ELLIPSOID[\"WGS 84\",6378137,298.257223563,\n"
+            "                LENGTHUNIT[\"metre\",1]]],\n"
+            "        PRIMEM[\"Greenwich\",0,\n"
+            "            ANGLEUNIT[\"Degree\",0.0174532925199433]]],\n"
+            "    CONVERSION[\"World_Vertical_Perspective\",\n"
+            "        METHOD[\"Vertical Perspective\",\n"
+            "            ID[\"EPSG\",9838]],\n"
+            "        PARAMETER[\"Latitude of topocentric origin\",0,\n"
+            "            ANGLEUNIT[\"Degree\",0.0174532925199433],\n"
+            "            ID[\"EPSG\",8834]],\n"
+            "        PARAMETER[\"Longitude of topocentric origin\",0,\n"
+            "            ANGLEUNIT[\"Degree\",0.0174532925199433],\n"
+            "            ID[\"EPSG\",8835]],\n"
+            "        PARAMETER[\"Viewpoint height\",35800000,\n"
+            "            LENGTHUNIT[\"metre\",1],\n"
+            "            ID[\"EPSG\",8840]]],\n"
+            "    CS[Cartesian,2],\n"
+            "        AXIS[\"(E)\",east,\n"
+            "            ORDER[1],\n"
+            "            LENGTHUNIT[\"metre\",1]],\n"
+            "        AXIS[\"(N)\",north,\n"
+            "            ORDER[2],\n"
+            "            LENGTHUNIT[\"metre\",1]],\n"
+            "    USAGE[\n"
+            "        SCOPE[\"Not known.\"],\n"
+            "        AREA[\"World.\"],\n"
+            "        BBOX[-90,-180,90,180]],\n"
+            "    ID[\"ESRI\",54049]]");
+        ensure_equals(oSRS.GetEPSGGeogCS(), 4326);
+    }
 
 } // namespace tut

@@ -58,7 +58,7 @@ public:
     /**
      * Json object types
      */
-    enum Type {
+    enum class Type {
         Unknown,
         Null,
         Object,
@@ -73,7 +73,7 @@ public:
     /**
      * Json object format to string options
      */
-    enum PrettyFormat {
+    enum class PrettyFormat {
         Plain,  ///< No extra whitespace or formatting applied
         Spaced, ///< Minimal whitespace inserted
         Pretty  ///< Formatted output
@@ -86,6 +86,7 @@ public:
     ~CPLJSONObject();
     CPLJSONObject(const CPLJSONObject &other);
     CPLJSONObject &operator=(const CPLJSONObject &other);
+    CPLJSONObject &operator=(CPLJSONObject &&other);
 
 private:
     explicit CPLJSONObject(const std::string &osName, JSONObjectH poJsonObject);
@@ -100,6 +101,7 @@ public:
     void Add(const std::string &osName, GInt64 nValue);
     void Add(const std::string &osName, const CPLJSONArray &oValue);
     void Add(const std::string &osName, const CPLJSONObject &oValue);
+    void AddNoSplitName(const std::string &osName, const CPLJSONObject &oValue);
     void Add(const std::string &osName, bool bValue);
     void AddNull(const std::string &osName);
 
@@ -127,14 +129,14 @@ public:
     GInt64 ToLong(GInt64 nDefault = 0) const;
     bool ToBool(bool bDefault = false) const;
     CPLJSONArray ToArray() const;
-    std::string Format(enum PrettyFormat eFormat) const;
+    std::string Format(PrettyFormat eFormat) const;
 
     //
     void Delete(const std::string &osName);
     CPLJSONArray GetArray(const std::string &osName) const;
     CPLJSONObject GetObj(const std::string &osName) const;
     CPLJSONObject operator[](const std::string &osName) const;
-    enum Type GetType() const;
+    Type GetType() const;
 /*! @cond Doxygen_Suppress */
     std::string GetName() const { return m_osKey; }
 /*! @endcond */
@@ -168,6 +170,22 @@ public:
 
 private:
     explicit CPLJSONArray(const std::string &osName, JSONObjectH poJsonObject);
+
+    class CPL_DLL ConstIterator
+    {
+            const CPLJSONArray& m_oSelf;
+            int m_nIdx;
+            mutable CPLJSONObject m_oObj{};
+
+        public:
+            ConstIterator(const CPLJSONArray& oSelf, bool bStart): m_oSelf(oSelf), m_nIdx(bStart ? 0 : oSelf.Size()) {}
+            ~ConstIterator() = default;
+            CPLJSONObject& operator*() const { m_oObj = m_oSelf[m_nIdx]; return m_oObj; }
+            ConstIterator& operator++() { m_nIdx ++; return *this; }
+            bool operator==(const ConstIterator& it) const { return m_nIdx == it.m_nIdx; }
+            bool operator!=(const ConstIterator& it) const { return m_nIdx != it.m_nIdx; }
+    };
+
 /*! @endcond */
 public:
     int Size() const;
@@ -180,6 +198,11 @@ public:
     void Add(bool bValue);
     CPLJSONObject operator[](int nIndex);
     const CPLJSONObject operator[](int nIndex) const;
+
+    /** Iterator to first element */
+    ConstIterator begin() const { return ConstIterator(*this, true); }
+    /** Iterator to after last element */
+    ConstIterator end() const { return ConstIterator(*this, false); }
 };
 
 /**
@@ -195,22 +218,23 @@ public:
     CPLJSONDocument& operator=(const CPLJSONDocument &other);
 /*! @endcond */
 
-    bool Save(const std::string &osPath);
-    std::string SaveAsString();
+    bool Save(const std::string &osPath) const;
+    std::string SaveAsString() const;
 
     CPLJSONObject GetRoot();
+    const CPLJSONObject GetRoot() const;
     bool Load(const std::string &osPath);
     bool LoadMemory(const std::string &osStr);
     bool LoadMemory(const GByte *pabyData, int nLength = -1);
     bool LoadChunks(const std::string &osPath, size_t nChunkSize = 16384,
                     GDALProgressFunc pfnProgress = nullptr,
                     void *pProgressArg = nullptr);
-    bool LoadUrl(const std::string &osUrl, char **papszOptions,
+    bool LoadUrl(const std::string &osUrl, const char* const* papszOptions,
                  GDALProgressFunc pfnProgress = nullptr,
                  void *pProgressArg = nullptr);
 
 private:
-    JSONObjectH m_poRootJsonObject;
+    mutable JSONObjectH m_poRootJsonObject;
 };
 
 CPL_C_END

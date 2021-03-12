@@ -14,6 +14,7 @@ Raster
    raster_driver_tut
    warp_tut
    gdal_grid_tut
+   geotransforms_tut
 
 Multidimensional raster
 -----------------------
@@ -31,6 +32,7 @@ Vector
 
    vector_api_tut
    vector_driver_tut
+   vector_python_driver
 
 Geographic Network Model
 ------------------------
@@ -40,7 +42,7 @@ Geographic Network Model
 
    gnm_api_tut
 
-Projections and Spatial Reference Systems tutorial (OSR - OGRSpatialReference) 
+Projections and Spatial Reference Systems tutorial (OSR - OGRSpatialReference)
 ------------------------------------------------------------------------------
 
 .. toctree::

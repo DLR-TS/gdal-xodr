@@ -9,14 +9,14 @@ GDAL
     :hidden:
 
     about
+    license
     download
+    faq
     programs/index
     drivers/raster/index
     drivers/vector/index
     User <user/index>
     api/index
     tutorials/index
-    community
+    community/index
     contributing/index
-    faq
-    license

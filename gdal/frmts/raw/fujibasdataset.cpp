@@ -39,7 +39,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class FujiBASDataset : public RawDataset
+class FujiBASDataset final: public RawDataset
 {
     VSILFILE        *fpImage;  // image data file.
     CPLString        osRawFilename{};
@@ -109,6 +109,9 @@ GDALDataset *FujiBASDataset::Open( GDALOpenInfo * poOpenInfo )
                          "[Raw data]")
         || strstr(reinterpret_cast<char *>(poOpenInfo->pabyHeader), "Fuji BAS")
         == nullptr )
+        return nullptr;
+
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("FUJIBAS") )
         return nullptr;
 
 /* -------------------------------------------------------------------- */
@@ -249,7 +252,7 @@ void GDALRegister_FujiBAS()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Fuji BAS Scanner Image" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#FujiBAS" );
+                               "drivers/raster/fujibas.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 
     poDriver->pfnOpen = FujiBASDataset::Open;

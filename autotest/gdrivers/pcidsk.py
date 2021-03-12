@@ -43,7 +43,7 @@ import pytest
 
 def test_pcidsk_1():
 
-    tst = gdaltest.GDALTest('PCIDSK', 'utm.pix', 1, 39576)
+    tst = gdaltest.GDALTest('PCIDSK', 'pcidsk/utm.pix', 1, 39576)
     return tst.testOpen()
 
 ###############################################################################
@@ -52,7 +52,7 @@ def test_pcidsk_1():
 
 def test_pcidsk_2():
 
-    tst = gdaltest.GDALTest('PCIDSK', 'rgba16.png', 2, 2042)
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042)
 
     return tst.testCreate()
 
@@ -62,7 +62,7 @@ def test_pcidsk_2():
 
 def test_pcidsk_3():
 
-    tst = gdaltest.GDALTest('PCIDSK', 'utm.pix', 1, 39576)
+    tst = gdaltest.GDALTest('PCIDSK', 'pcidsk/utm.pix', 1, 39576)
 
     return tst.testCreateCopy(check_gt=1, check_srs=1)
 
@@ -72,7 +72,7 @@ def test_pcidsk_3():
 
 def test_pcidsk_4():
 
-    ds = gdal.Open('data/utm.pix')
+    ds = gdal.Open('data/pcidsk/utm.pix')
 
     band = ds.GetRasterBand(1)
     assert band.GetOverviewCount() == 1, 'did not get expected overview count'
@@ -117,8 +117,12 @@ def test_pcidsk_5():
         print(mddef)
         gdaltest.post_reason('file default domain metadata broken. ')
 
-    if gdaltest.pcidsk_ds.GetMetadataItem('GHI') != 'JKL':
-        gdaltest.post_reason('GetMetadataItem() in default domain metadata broken. ')
+    assert gdaltest.pcidsk_ds.GetMetadataItem('GHI') == 'JKL'
+    assert gdaltest.pcidsk_ds.GetMetadataItem('GHI') == 'JKL'
+    gdaltest.pcidsk_ds.SetMetadataItem('GHI', 'JKL2')
+    assert gdaltest.pcidsk_ds.GetMetadataItem('GHI') == 'JKL2'
+    assert gdaltest.pcidsk_ds.GetMetadataItem('I_DONT_EXIST') is None
+    assert gdaltest.pcidsk_ds.GetMetadataItem('I_DONT_EXIST') is None
 
     mdalt = gdaltest.pcidsk_ds.GetMetadata('AltDomain')
     if mdalt['XYZ'] != '123':
@@ -154,6 +158,13 @@ def test_pcidsk_6():
     if mddef['GHI'] != 'JKL' or mddef['XXX'] != 'YYY':
         print(mddef)
         gdaltest.post_reason('channel default domain metadata broken. ')
+
+    assert band.GetMetadataItem('GHI') == 'JKL'
+    assert band.GetMetadataItem('GHI') == 'JKL'
+    band.SetMetadataItem('GHI', 'JKL2')
+    assert band.GetMetadataItem('GHI') == 'JKL2'
+    assert band.GetMetadataItem('I_DONT_EXIST') is None
+    assert band.GetMetadataItem('I_DONT_EXIST') is None
 
     mdalt = band.GetMetadata('AltDomain')
     if mdalt['XYZ'] != '123':
@@ -217,7 +228,7 @@ def test_pcidsk_7():
 
 def test_pcidsk_8():
 
-    tst = gdaltest.GDALTest('PCIDSK', 'rgba16.png', 2, 2042,
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
                             options=['INTERLEAVING=FILE'])
 
     return tst.testCreate()
@@ -283,8 +294,26 @@ def test_pcidsk_11():
     if gdaltest.pcidsk_new == 0:
         pytest.skip()
 
-    tst = gdaltest.GDALTest('PCIDSK', 'rgba16.png', 2, 2042,
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
                             options=['INTERLEAVING=TILED', 'TILESIZE=32'])
+
+    return tst.testCreate()
+
+def test_pcidsk_11_v1():
+    if gdaltest.pcidsk_new == 0:
+        pytest.skip()
+
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
+                            options=['INTERLEAVING=TILED', 'TILESIZE=32', 'TILEVERSION=1'])
+
+    return tst.testCreate()
+
+def test_pcidsk_11_v2():
+    if gdaltest.pcidsk_new == 0:
+        pytest.skip()
+
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
+                            options=['INTERLEAVING=TILED', 'TILESIZE=32', 'TILEVERSION=2'])
 
     return tst.testCreate()
 
@@ -296,8 +325,26 @@ def test_pcidsk_12():
     if gdaltest.pcidsk_new == 0:
         pytest.skip()
 
-    tst = gdaltest.GDALTest('PCIDSK', 'rgba16.png', 2, 2042,
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
                             options=['INTERLEAVING=TILED', 'TILESIZE=32', 'COMPRESSION=RLE'])
+
+    return tst.testCreate()
+
+def test_pcidsk_12_v1():
+    if gdaltest.pcidsk_new == 0:
+        pytest.skip()
+
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
+                            options=['INTERLEAVING=TILED', 'TILESIZE=32', 'COMPRESSION=RLE', 'TILEVERSION=1'])
+
+    return tst.testCreate()
+
+def test_pcidsk_12_v2():
+    if gdaltest.pcidsk_new == 0:
+        pytest.skip()
+
+    tst = gdaltest.GDALTest('PCIDSK', 'png/rgba16.png', 2, 2042,
+                            options=['INTERLEAVING=TILED', 'TILESIZE=32', 'COMPRESSION=RLE', 'TILEVERSION=2'])
 
     return tst.testCreate()
 
@@ -484,6 +531,44 @@ def test_pcidsk_online_1():
 
     md = band.GetMetadata('IMAGE_STRUCTURE')
     assert md['NBITS'] == '1', 'did not get expected NBITS=1 metadata.'
+
+###############################################################################
+# Read test of a PCIDSK TILED version 1 file.
+
+def test_pcidsk_tile_v1():
+
+    tst = gdaltest.GDALTest('PCIDSK', 'pcidsk/tile_v1.1.pix', 1, 49526)
+
+    return tst.testCreateCopy(check_gt=1, check_srs=1)
+
+def test_pcidsk_tile_v1_overview():
+
+    ds = gdal.Open('data/pcidsk/tile_v1.1.pix')
+
+    band = ds.GetRasterBand(1)
+    assert band.GetOverviewCount() == 1, 'did not get expected overview count'
+
+    cs = band.GetOverview(0).Checksum()
+    assert cs == 12003, ('wrong overview checksum (%d)' % cs)
+
+###############################################################################
+# Read test of a PCIDSK TILED version 2 file.
+
+def test_pcidsk_tile_v2():
+
+    tst = gdaltest.GDALTest('PCIDSK', 'pcidsk/tile_v2.pix', 1, 49526)
+
+    return tst.testCreateCopy(check_gt=1, check_srs=1)
+
+def test_pcidsk_tile_v2_overview():
+
+    ds = gdal.Open('data/pcidsk/tile_v2.pix')
+
+    band = ds.GetRasterBand(1)
+    assert band.GetOverviewCount() == 1, 'did not get expected overview count'
+
+    cs = band.GetOverview(0).Checksum()
+    assert cs == 12003, ('wrong overview checksum (%d)' % cs)
 
 ###############################################################################
 # Cleanup.

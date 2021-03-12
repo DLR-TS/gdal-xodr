@@ -575,7 +575,7 @@ static const GRIB2ParmTable MeteoTemp[] = {
    /* 4 */ {"TMAX", "Maximum temperature", "K", UC_K2F}, /* Need NDFD override MaxT */
    /* 5 */ {"TMIN", "Minimum temperature", "K", UC_K2F}, /* Need NDFD override MinT */
    /* 6 */ {"DPT", "Dew point temperature", "K", UC_K2F}, /* Need NDFD override Td */
-   /* 7 */ {"DEPR", "Dew point depression", "K", UC_K2F},
+   /* 7 */ {"DEPR", "Dew point depression", "K", UC_NONE}, // Changed by GDAL to UC_NONE
    /* 8 */ {"LAPR", "Lapse rate", "K/m", UC_NONE},
    /* 9 */ {"TMPA", "Temperature anomaly", "K", UC_K2F},
    /* 10 */ {"LHTFL", "Latent heat net flux", "W/(m^2)", UC_NONE},
@@ -588,6 +588,18 @@ static const GRIB2ParmTable MeteoTemp[] = {
    /* 15 */ {"VPTMP", "Virtual potential temperature", "K", UC_K2F},
    /* 16 */ {"SNOHF", "Snow phase change heat flux", "W/m^2", UC_NONE},
    /* 17 */ {"SKINT", "Skin temperature", "K", UC_K2F},
+   /* 18 */ {"SNOT", "Snow Temperature (top of snow)", "K", UC_K2F},
+   /* 19 */ {"TTCHT", "Turbulent Transfer Coefficient for Heat", "Numeric", UC_NONE},
+   /* 20 */ {"TDCHT", "Turbulent Diffusion Coefficient for Heat", "m^2/s", UC_NONE},
+   /* 21 */ {"APTMP", "Apparent Temperature", "K", UC_K2F},
+   /* 22 */ {"TTSWR", "Temperature Tendency due to Short-Wave Radiation", "K/s", UC_NONE},
+   /* 23 */ {"TTLWR", "Temperature Tendency due to Long-Wave Radiation", "K/s", UC_NONE},
+   /* 24 */ {"TTSWRCS", "Temperature Tendency due to Short-Wave Radiation, Clear Sky", "K/s", UC_NONE},
+   /* 25 */ {"TTLWRCS", "Temperature Tendency due to Long-Wave Radiation, Clear Sky", "K/s", UC_NONE},
+   /* 26 */ {"TTPARM", "Temperature Tendency due to parameterizations", "K/s", UC_NONE},
+   /* 27 */ {"WETBT", "Wet Bulb Temperature", "K", UC_K2F},
+   /* 28 */ {"UCTMP", "Unbalanced Component of Temperature", "K", UC_K2F},
+   /* 29 */ {"TMPADV", "Temperature Advection", "K/s", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.1 */
@@ -666,6 +678,69 @@ static const GRIB2ParmTable MeteoMoist[] = {
 /* 66 */    {"SPRATE", "Snow precipitation rate", "kg/(m^2*s)", UC_NONE},
 /* 67 */    {"FPRATE", "Freezing rain precipitation rate", "kg/(m^2*s)", UC_NONE},
 /* 68 */    {"IPRATE", "Ice pellets precipitation rate", "kg/(m^2*s)", UC_NONE},
+/* 69 */    {"TCOLW", "Total Column Integrate Cloud Water", "kg/m^2", UC_NONE},
+/* 70 */    {"TCOLI", "Total Column Integrate Cloud Ice", "kg/m^2", UC_NONE},
+/* 71 */    {"HAILMXR", "Hail Mixing Ratio", "kg/kg", UC_NONE},
+/* 72 */    {"TCOLH", "Total Column Integrate Hail", "kg/m^2", UC_NONE},
+/* 73 */    {"HAILPR", "Hail Prepitation Rate", "kg/(m^2*s)", UC_NONE},
+/* 74 */    {"TCOLG", "Total Column Integrate Graupel", "kg/m^2", UC_NONE},
+/* 75 */    {"GPRATE", "Graupel (Snow Pellets) Prepitation Rate", "kg/(m^2*s)", UC_NONE},
+/* 76 */    {"CRRATE", "Convective Rain Rate", "kg/(m^2*s)", UC_NONE},
+/* 77 */    {"LSRRATE", "Large Scale Rain Rate", "kg/(m^2*s)", UC_NONE},
+/* 78 */    {"TCOLWA", "Total Column Integrate Water (All components including precipitation)", "kg/m^2", UC_NONE},
+/* 79 */    {"EVARATE", "Evaporation Rate", "kg/(m^2*s)", UC_NONE},
+/* 80 */    {"TOTCON", "Total Condensate", "kg/kg", UC_NONE},
+/* 81 */    {"TCICON", "Total Column-Integrate Condensate", "kg/m^2", UC_NONE},
+/* 82 */    {"CIMIXR", "Cloud Ice Mixing Ratio", "kg/kg", UC_NONE},
+/* 83 */    {"SCLLWC", "Specific Cloud Liquid Water Content", "kg/kg", UC_NONE},
+/* 84 */    {"SCLIWC", "Specific Cloud Ice Water Content", "kg/kg", UC_NONE},
+/* 85 */    {"SRAINW", "Specific Rain Water Content", "kg/kg", UC_NONE},
+/* 86 */    {"SSNOWW", "Specific Snow Water Content", "kg/kg", UC_NONE},
+/* 87 */    {"SPRATE", "Stratiform Precipitation Rate", "kg/(m^2*s)", UC_NONE},
+/* 88 */    {"CATCP", "Categorical Convective Precipitation", "0=No; 1=Yes; "
+             "2-191=Reserved; 192-254=Reserved; 255=missing", UC_NONE},
+/* 89 */    {"", "Reserved", "-", UC_NONE},
+/* 90 */    {"TKMFLX", "Total Kinematic Moisture Flux", "kg/kg(m/s)", UC_NONE},
+/* 91 */    {"UKMFLX", "U-component (zonal) Kinematic Moisture Flux", "kg/kg(m/s)", UC_NONE},
+/* 92 */    {"VKMFLX", "V-component (meridional) Kinematic Moisture Flux", "kg/kg(m/s)", UC_NONE},
+/* 93 */    {"RHWATER", "Relative Humidity With Respect to Water", "%", UC_NONE},
+/* 94 */    {"RHICE", "Relative Humidity With Respect to Ice", "%", UC_NONE},
+/* 95 */    {"FZPRATE", "Freezing or Frozen Precipitation Rate", "kg/(m^2*s)", UC_NONE},
+/* 96 */    {"MASSDR", "Mass Density of Rain", "kg/m^3", UC_NONE},
+/* 97 */    {"MASSDS", "Mass Density of Snow", "kg/m^3", UC_NONE},
+/* 98 */    {"MASSDG", "Mass Density of Graupel", "kg/m^3", UC_NONE},
+/* 99 */    {"MASSDH", "Mass Density of Hail", "kg/m^3", UC_NONE},
+/* 100 */    {"SPNCR", "Specific Number Concentration of Rain", "kg^-1", UC_NONE},
+/* 101 */    {"SPNCS", "Specific Number Concentration of Snow", "kg^-1", UC_NONE},
+/* 102 */    {"SPNCG", "Specific Number Concentration of Graupel", "kg^-1", UC_NONE},
+/* 103 */    {"SPNCH", "Specific Number Concentration of Hail", "kg^-1", UC_NONE},
+/* 104 */    {"NUMDR", "Number Density of Rain", "m^-3", UC_NONE},
+/* 105 */    {"NUMDS", "Number Density of Snow", "m^-3", UC_NONE},
+/* 106 */    {"NUMDG", "Number Density of Graupel", "m^-3", UC_NONE},
+/* 107 */    {"NUMDH", "Number Density of Hail", "m^-3", UC_NONE},
+/* 108 */    {"SHTPRM", "Specific Humidity Tendency due to Parameterizations", "kg/kg(s)", UC_NONE},
+/* 109 */    {"MDLWHVA", "Mass Density of Liquid Water Coating on Hail Expressed as "
+              "Mass of Liquid Water per Unit Volume of Air", "kg/m^3", UC_NONE},
+/* 110 */    {"SMLWHMA", "Specific Mass of Liquid Water Coating on Hail Expressed as "
+              "Mass of Liquid Water per Unit Mass of Moist Air", "kg/kg", UC_NONE},
+/* 111 */    {"MMLWHDA", "Mass Mixing Ratio of Liquid Water Coating on Hail Expressed as "
+              "Mass of Liquid Water per Unit Mass of Dry Air", "kg/kg", UC_NONE}, 
+/* 112 */    {"MDLWGVA", "Mass Density of Liquid Water Coating on Graupel Expressed as "
+              "Mass of Liquid Water per Unit Volume of Air", "kg/m^3", UC_NONE},
+/* 113 */    {"SMLWGMA", "Specific Mass of Liquid Water Coating on Graupel Expressed as "
+              "Mass of Liquid Water per Unit Mass of Moist Air", "kg/kg", UC_NONE},
+/* 114 */    {"MMLWGDA", "Mass Mixing Ratio of Liquid Water Coating on Graupel Expressed as "
+              "Mass of Liquid Water per Unit Mass of Dry Air", "kg/kg", UC_NONE},
+/* 115 */    {"MDLWSVA", "Mass Density of Liquid Water Coating on Snow Expressed as "
+              "Mass of Liquid Water per Unit Volume of Air", "kg/m^3", UC_NONE},
+/* 116 */    {"SMLWSMA", "Specific Mass of Liquid Water Coating on Snow Expressed as "
+              "Mass of Liquid Water per Unit Mass of Moist Air", "kg/kg", UC_NONE},
+/* 117 */    {"MMLWSDA", "Mass Mixing Ratio of Liquid Water Coating on Snow Expressed as "
+              "Mass of Liquid Water per Unit Mass of Dry Air", "kg/kg", UC_NONE},
+/* 118 */    {"UNCSH", "Unbalanced Component of Specific Humidity", "kg/kg", UC_NONE},
+/* 119 */    {"UCSCLW", "Unbalanced Component of Specific Cloud Liquid Water content", "kg/kg", UC_NONE},
+/* 120 */    {"UCSCIW", "Unbalanced Component of Specific Cloud Ice Water content", "kg/kg", UC_NONE},
+/* 121 */    {"FSNOWC", "Fraction of Snow Cover", "Proportion", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.2 */
@@ -702,6 +777,22 @@ static const GRIB2ParmTable MeteoMoment[] = {
 /* 28 */    {"VSTM", "V-component storm motion", "m/s", UC_NONE},
 /* 29 */    {"CD", "Drag coefficient", "-", UC_NONE},
 /* 30 */    {"FRICV", "Frictional velocity", "m/s", UC_NONE},
+/* 31 */    {"TDCMOM", "Turbulent Diffusion Coefficient for Momentum", "(m^2)/s", UC_NONE},
+/* 32 */    {"ETACVV", "Eta Coordinate Vertical Velocity", "1/s", UC_NONE},
+/* 33 */    {"WINDF", "Wind Fetch", "m", UC_NONE},
+/* 34 */    {"NWIND", "Normal Wind Component", "m/s", UC_NONE},
+/* 35 */    {"TWIND", "Tangential Wind Component", "m/s", UC_NONE},
+/* 36 */    {"AFRWE", "Amplitude Function for Rossby Wave Envelope for Meridional Wind", "m/s", UC_NONE},
+/* 37 */    {"NTSS", "Northward Turbulent Surface Stress", "1/(m^2)", UC_NONE},
+/* 38 */    {"ETSS", "Eastward Turbulent Surface Stress", "1/(m^2)", UC_NONE},
+/* 39 */    {"EWTPARM", "Eastward Wind Tendency Due to Parameterizations", "m/(s^2)", UC_NONE},
+/* 40 */    {"NWTPARM", "Northward Wind Tendency Due to Parameterizations", "m/(s^2)", UC_NONE},
+/* 41 */    {"UGWIND", "U-Component of Geostrophic Wind", "m/s", UC_NONE},
+/* 42 */    {"VGWIND", "V-Component of Geostrophic Wind", "m/s", UC_NONE},
+/* 43 */    {"GEOWD", "Geostrophic Wind Direction", "deg true", UC_NONE},
+/* 44 */    {"GEOWS", "Geostrophic Wind Speed", "m/s", UC_NONE},
+/* 45 */    {"UNDIV", "Unbalanced Component of Divergence", "1/s", UC_NONE},
+/* 46 */    {"VORTADV", "Vorticity Advection", "1/(s^2)", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.3 */
@@ -731,6 +822,13 @@ static const GRIB2ParmTable MeteoMass[] = {
 /* 22 */    {"SSGSO", "Slope of sub-gridscale orography", "Numeric", UC_NONE},
 /* 23 */    {"GSGSO", "Gravity wave dissipation", "W/m^2", UC_NONE},
 /* 24 */    {"ASGSO", "Anisotrophy of sub-gridscale orography", "Numeric", UC_NONE},
+/* 25 */    {"NLPRES", "Natural Logarithm of Pressure in Pa", "Numeric", UC_NONE},
+/* 26 */    {"EXPRES", "Exner Pressure", "Numeric", UC_NONE},
+/* 27 */    {"UMFLX", "Updraught Mass Flux", "kg/(m^2*s)", UC_NONE},
+/* 28 */    {"DMFLX", "Downdraught Mass Flux", "kg/(m^2*s)", UC_NONE},
+/* 29 */    {"UDRATE", "Updraught Detrainment Rate", "kg/(m^3*s)", UC_NONE},
+/* 30 */    {"DDRATE", "Downdraught Detrainment Rate", "kg/(m^3*s)", UC_NONE},
+/* 31 */    {"UCLSPRS", "Unbalanced Component of Logarithm of Surface Pressure", "", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.4 */
@@ -749,8 +847,8 @@ static const GRIB2ParmTable MeteoShortRadiate[] = {
 /* 10 */   {"PHOTAR", "Photosynthetically active radiation", "W/(m^2)", UC_NONE},
 /* 11 */   {"NSWRFCS", "Net short-wave radiation flux; clear sky", "W/(m^2)", UC_NONE},
 /* 12 */   {"DWUVR", "Downward UV radiation", "W/(m^2)", UC_NONE},
-/* 13 */   {"", "Reserved", "-", UC_NONE},
-/* 14 */   {"", "Reserved", "-", UC_NONE},
+/* 13 */   {"DSWRFLX", "Direct Short Wave Radiation Flux", "W/(m^2)", UC_NONE},
+/* 14 */   {"DIFSWRF", "Diffuse Short Wave Radiation Flux", "W/(m^2)", UC_NONE},
 /* 15 */   {"", "Reserved", "-", UC_NONE},
 /* 16 */   {"", "Reserved", "-", UC_NONE},
 /* 17 */   {"", "Reserved", "-", UC_NONE},
@@ -788,6 +886,8 @@ static const GRIB2ParmTable MeteoShortRadiate[] = {
 /* 49 */   {"", "Reserved", "-", UC_NONE},
 /* 50 */   {"UVIUCS", "UV index (under clear sky)", "Numeric", UC_NONE},
 /* 51 */   {"UVI", "UV index", "W/(m^2)", UC_UVIndex},
+/* 52 */   {"DSWRFCS", "Downward Short-Wave Radiation Flux, Clear Sky", "W/(m^2)", UC_NONE},
+/* 53 */   {"USWRFCS", "Upward Short-Wave Radiation Flux, Clear Sky", "W/(m^2)", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.5 */
@@ -800,7 +900,9 @@ static const GRIB2ParmTable MeteoLongRadiate[] = {
 /* 4 */    {"ULWRF", "Upward long-wave radiation flux", "W/(m^2)", UC_NONE},
 /* 5 */    {"NLWRF", "Net long wave radiation flux", "W/(m^2)", UC_NONE},
 /* 6 */    {"NLWRCS", "Net long-wave radiation flux; clear sky", "W/(m^2)", UC_NONE},
-/* 7 */    {"BRTEMP", "Brightness Temperature", "K", UC_NONE},
+/* 7 */    {"BRTEMP", "Brightness Temperature", "K", UC_K2F},
+/* 8 */    {"DLWRFCS", "Downward Long-Wave Radiation Flux, Clear Sky", "W/(m^2)", UC_NONE},
+
 };
 
 /* GRIB2 Code table 4.2 : 0.6 */
@@ -840,15 +942,30 @@ static const GRIB2ParmTable MeteoCloud[] = {
 /* 23 */    {"CDCIMR", "Cloud ice mixing ratio", "kg/kg", UC_NONE},
 /* 24 */    {"SUNS", "Sunshine", "Numeric", UC_NONE},
 /* 25 */    {"CBHE", "Horizontal extent of cumulonimbus (CB)", "%", UC_NONE},
-/* 26 */   {"", "Reserved", "-", UC_NONE},
-/* 27 */   {"", "Reserved", "-", UC_NONE},
-/* 28 */   {"", "Reserved", "-", UC_NONE},
-/* 29 */   {"", "Reserved", "-", UC_NONE},
-/* 30 */   {"", "Reserved", "-", UC_NONE},
-/* 31 */   {"", "Reserved", "-", UC_NONE},
-/* 32 */   {"", "Reserved", "-", UC_NONE},
-/* 33 */    {"SUNSD", "SunShine Duration", "s", UC_NONE},
-
+/* 26 */   {"HCONCB", "Height of Convective Cloud Base", "m", UC_NONE},
+/* 27 */   {"HCONCT", "Height of Convective Cloud Top", "m", UC_NONE},
+/* 28 */   {"NCONCD", "Number Concentration of Cloud Droplets", "1/kg", UC_NONE},
+/* 29 */   {"NCCICE", "Number Concentration of Cloud Ice", "1/kg", UC_NONE},
+/* 30 */   {"NDENCD", "Number Density of Cloud Droplets", "1/(m^3)", UC_NONE},
+/* 31 */   {"NDCICE", "Number Density of Cloud Ice", "1/(m^3)", UC_NONE},
+/* 32 */   {"FRACCC", "Fraction of Cloud Cover", "Numeric", UC_NONE},
+/* 33 */   {"SUNSD", "SunShine Duration", "s", UC_NONE},
+/* 34 */   {"SLWTC", "Surface Long Wave Effective Total Cloudiness", "Numeric", UC_NONE},
+/* 35 */   {"SSWTC", "Surface Short Wave Effective Total Cloudiness", "Numeric", UC_NONE},
+/* 36 */   {"FSTRPC", "Fraction of Stratiform Precipitation Cover", "Proportion", UC_NONE},
+/* 37 */   {"FCONPC", "Fraction of Convective Precipitation Cover", "Proportion", UC_NONE},
+/* 38 */   {"MASSDCD", "Mass Density of Cloud Droplets", "kg/(m^3)", UC_NONE},
+/* 39 */   {"MASSDCI", "Mass Density of Cloud Ice", "kg/(m^3)", UC_NONE},
+/* 40 */   {"MDCCWD", "Mass Density of Convective Cloud Water Droplets", "kg/(m^3)", UC_NONE},
+/* 41 */   {"", "Reserved", "-", UC_NONE},
+/* 42 */   {"", "Reserved", "-", UC_NONE},
+/* 43 */   {"", "Reserved", "-", UC_NONE},
+/* 44 */   {"", "Reserved", "-", UC_NONE},
+/* 45 */   {"", "Reserved", "-", UC_NONE},
+/* 46 */   {"", "Reserved", "-", UC_NONE},
+/* 47 */   {"VFRCWD", "Volume Fraction of Cloud Water Droplets", "Numeric", UC_NONE},
+/* 48 */   {"VFRCICE", "Volume Fraction of Cloud Ice Particles", "Numeric", UC_NONE},
+/* 49 */   {"VFRCIW", "Volume Fraction of Cloud (Ice and/or Water)", "Numeric", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.7 */
@@ -867,11 +984,11 @@ static const GRIB2ParmTable MeteoStability[] = {
 /* 11 */   {"4LFTX", "Best (4-layer) lifted index", "K", UC_NONE},
 /* 12 */   {"RI", "Richardson number", "-", UC_NONE},
 /* 13 */   {"SHWINX", "Showalter Index", "K", UC_NONE},
-/* 14 */   {"-", "Reserved", "-", UC_NONE},
+/* 14 */   {"", "Reserved", "-", UC_NONE},
 /* 15 */   {"UPHL", "Updraft Helicity", "m^2/s^2", UC_NONE},
-/* 16 */   {"BLKRN", "Bulk Richardson Number", "Numeric", UC_NONE},
-/* 17 */   {"GRDRN", "Gradient Richardson Number", "Numeric", UC_NONE},
-/* 18 */   {"FLXRN", "Flux Richardson Number", "Numeric", UC_NONE},
+/* 16 */   {"BLKRN", "Bulk Richardson Number", "-", UC_NONE},
+/* 17 */   {"GRDRN", "Gradient Richardson Number", "-", UC_NONE},
+/* 18 */   {"FLXRN", "Flux Richardson Number", "-", UC_NONE},
 /* 19 */   {"CONAPES", "Convective Available Potential Energy Shear", "m^2/s^2", UC_NONE},
 /* 20 */   {"-", "Reserved", "-", UC_NONE},
 /* 21 */   {"-", "Reserved", "-", UC_NONE},
@@ -1080,6 +1197,14 @@ static const GRIB2ParmTable MeteoRadar[] = {
    /* 6 */ {"RDSP1", "Radar spectra (1)", "-", UC_NONE},
    /* 7 */ {"RDSP2", "Radar spectra (2)", "-", UC_NONE},
    /* 8 */ {"RDSP3", "Radar spectra (3)", "-", UC_NONE},
+   /* 9 */ {"RFCD", "Reflectivity of Cloud Droplets", "dB", UC_NONE},
+  /* 10 */ {"RFCI", "Reflectivity of Cloud Ice", "dB", UC_NONE},
+  /* 11 */ {"RFSNOW", "Reflectivity of Snow", "dB", UC_NONE},
+  /* 12 */ {"RFRAIN", "Reflectivity of Rain", "dB", UC_NONE},
+  /* 13 */ {"RFGRPL", "Reflectivity of Graupel", "dB", UC_NONE},
+  /* 14 */ {"RFHAIL", "Reflectivity of Hail", "dB", UC_NONE},
+  /* 15 */ {"HSR", "Hybrid Scan Reflectivity", "dB", UC_NONE},
+  /* 16 */ {"HSRHT", "Hybrid Scan Reflectivity Height", "m", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.16 */
@@ -1090,6 +1215,12 @@ static const GRIB2ParmTable MeteoRadarImagery[] = {
    /* 3 */ {"RETOP", "Echo Top", "m", UC_NONE},
    /* 4 */ {"REFD", "Reflectivity", "dB", UC_NONE},
    /* 5 */ {"REFC", "Composity reflectivity", "dB", UC_NONE},
+};
+
+/* GRIB2 Code table 4.2 : 0.17 */
+static const GRIB2ParmTable MeteoElectro[] = {
+/* 0 */ {"LTNGSD", "Lightning Strike Density", "m^2/s", UC_NONE},
+/* 1 */ {"LTPINX", "Lightning Potential Index (LPI) (see Note)", "J/kg", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.18 */
@@ -1106,6 +1237,16 @@ static const GRIB2ParmTable MeteoNuclear[] = {
             "(Bq s)/(m^3)", UC_NONE},
    /* 8 */ {"TIACRP", "Time-integrated air concentration of radioactive pollutant",
             "(Bq s)/(m^3)", UC_NONE},
+   /* 9 */ {"", "Reserved", "-", UC_NONE},
+  /* 10 */ {"AIRCON", "Air Concentration", "Bq/(m^3)", UC_NONE},
+  /* 11 */ {"WETDEP", "Wet Deposition", "Bq/(m^2)", UC_NONE},
+  /* 12 */ {"DRYDEP", "Dry Deposition", "Bq/(m^2)", UC_NONE},
+  /* 13 */ {"TOTLWD", "Total Deposition (Wet + Dry)", "Bq/(m^2)", UC_NONE},
+  /* 14 */ {"SACON", "Specific Activity Concentration", "Bq/kg", UC_NONE},
+  /* 15 */ {"MAXACON", "Maximum of Air Concentration in Layer", "Bq/(m^3)", UC_NONE},
+  /* 16 */ {"HMXACON", "Height of Maximum of Air Concentration", "m", UC_NONE},
+  /* 17 */ {"CIAIRC", "Column-Integrated Air Concentration", "Bq/(m^2)", UC_NONE},
+  /* 18 */ {"CAACL", "Column-Averaged Air Concentration in Layer", "Bq/(m^3)", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.19 */
@@ -1150,6 +1291,16 @@ static const GRIB2ParmTable MeteoAtmos[] = {
              "9-10=Reserved; 11=Dry Thunderstorm (Dry Lightning) Risk Area; "
              "12-13=Reserved; 14=Critical Risk Area; 15-17=Reserved"
              "18=Extremely Critical Risk Area; 255=missing", UC_NONE},
+/* 27 */    {"ICESC", "Icing Scenario", "0=None; 1=General, 2=Convective "
+             "3=Stratiform; 4=Freezing; 5-191=Reserved; 255=missing", UC_NONE},          	
+/* 28 */    {"MWTURB", "Mountain Wave Turbulence (Eddy Dissipation Rate)", "m^(2/3)/s" , UC_NONE},
+/* 29 */    {"CATEDR", "Clear Air Turbulence (CAT) (Eddy Dissipation Rate)", "m^(2/3)/s", UC_NONE},
+/* 30 */    {"EDPARM", "Eddy Dissipation Parameter", "m^(2/3)/s", UC_NONE},
+/* 31 */    {"MXEDPRM", "Maximum of Eddy Dissipation Parameter in Layer", "m^(2/3)/s", UC_NONE},
+/* 32 */    {"HIFREL", "Highest Freezing Level", "m", UC_NONE},
+/* 33 */    {"VISLFOG", "Visibility Through Liquid Fog", "m", UC_NONE},
+/* 34 */    {"VISIFOG", "Visibility Through Ice Fog", "m", UC_NONE},
+/* 35 */    {"VISBSN", "Visibility Through Blowing Snow", "m", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 0.20 */
@@ -1163,15 +1314,15 @@ static const GRIB2ParmTable MeteoAtmoChem[] = {
    /* 6 */  {"SDDMFLX", "Surface Dry Deposition Mass Flux", "kg/(m^2*s)", UC_NONE},
    /* 7 */  {"SWDMFLX", "Surface Wet Deposition Mass Flux", "kg/(m^2*s)", UC_NONE},
    /* 8 */  {"AREMFLX", "Atmosphere Re-Emission Mass Flux", "kg/(m^2*s)", UC_NONE},
-   /* 9 */  {"", "Reserved", "-", UC_NONE},
-  /* 10 */  {"", "Reserved", "-", UC_NONE},
-  /* 11 */  {"", "Reserved", "-", UC_NONE},
-  /* 12 */  {"", "Reserved", "-", UC_NONE},
-  /* 13 */  {"", "Reserved", "-", UC_NONE},
-  /* 14 */  {"", "Reserved", "-", UC_NONE},
-  /* 15 */  {"", "Reserved", "-", UC_NONE},
-  /* 16 */  {"", "Reserved", "-", UC_NONE},
-  /* 17 */  {"", "Reserved", "-", UC_NONE},
+   /* 9 */  {"WLSMFLX", "Wet Deposition by Large-Scale Precipitation Mass Flux", "kg/(m^2*s)", UC_NONE},
+  /* 10 */  {"WDCPMFLX", "Wet Deposition by Convective Precipitation Mass Flux", "kg/(m^2*s)", UC_NONE},
+  /* 11 */  {"SEDMFLX", "Sedimentation Mass Flux", "kg/(m^2*s)", UC_NONE},
+  /* 12 */  {"DDMFLX", "Dry Deposition Mass Flux", "kg/(m^2*s)", UC_NONE},
+  /* 13 */  {"TRANHH", "Transfer From Hydrophobic to Hydrophilic", "kg(kg*s)", UC_NONE},
+  /* 14 */  {"TRSDS", "Transfer From SO2 (Sulphur Dioxide) to SO4 (Sulphate)", "kg(kg*s)", UC_NONE},
+  /* 15 */  {"DDVEL", "Dry deposition velocity", "m/s", UC_NONE},
+  /* 16 */  {"MSSRDRYA", "Mass mixing ratio with respect to dry air", "kg/kg", UC_NONE},
+  /* 17 */  {"MSSRWETA", "Mass mixing ratio with respect to wet air", "kg/kg", UC_NONE},
   /* 18 */  {"", "Reserved", "-", UC_NONE},
   /* 19 */  {"", "Reserved", "-", UC_NONE},
   /* 20 */  {"", "Reserved", "-", UC_NONE},
@@ -1213,23 +1364,23 @@ static const GRIB2ParmTable MeteoAtmoChem[] = {
   /* 56 */  {"COAIA", "Changes of Amount in Atmosphere", "mol/s", UC_NONE},
   /* 57 */  {"TYABA", "Total Yearly Average Burden of the Atmosphere", "mol", UC_NONE},
   /* 58 */  {"TYAAL", "Total Yearly Average Atmospheric Loss", "mol/s", UC_NONE},
-  /* 59 */  {"", "Reserved", "-", UC_NONE},
-  /* 60 */  {"", "Reserved", "-", UC_NONE},
-  /* 61 */  {"", "Reserved", "-", UC_NONE},
-  /* 62 */  {"", "Reserved", "-", UC_NONE},
-  /* 63 */  {"", "Reserved", "-", UC_NONE},
-  /* 64 */  {"", "Reserved", "-", UC_NONE},
-  /* 65 */  {"", "Reserved", "-", UC_NONE},
-  /* 66 */  {"", "Reserved", "-", UC_NONE},
-  /* 67 */  {"", "Reserved", "-", UC_NONE},
-  /* 68 */  {"", "Reserved", "-", UC_NONE},
-  /* 69 */  {"", "Reserved", "-", UC_NONE},
-  /* 70 */  {"", "Reserved", "-", UC_NONE},
-  /* 71 */  {"", "Reserved", "-", UC_NONE},
-  /* 72 */  {"", "Reserved", "-", UC_NONE},
-  /* 73 */  {"", "Reserved", "-", UC_NONE},
-  /* 74 */  {"", "Reserved", "-", UC_NONE},
-  /* 75 */  {"", "Reserved", "-", UC_NONE},
+  /* 59 */  {"ANCON", "Aerosol Number Concentration", "1/(m^3)", UC_NONE},
+  /* 60 */  {"ASNCON", "Aerosol Specific Number Concentration", "1/kg", UC_NONE},
+  /* 61 */  {"MXMASSD", "Maximum of Mass Density", "kg(/m^3)", UC_NONE},
+  /* 62 */  {"HGTMD", "Height of Mass Density", "m", UC_NONE},
+  /* 63 */  {"CAVEMDL", "Column-Averaged Mass Density in Layer", "kg/(m^3)", UC_NONE},
+  /* 64 */  {"MOLRDRYA", "Mole fraction with respect to dry air", "mol/mol", UC_NONE},
+  /* 65 */  {"MOLRWETA", "Mole fraction with respect to dry air", "mol/mol", UC_NONE},
+  /* 66 */  {"CINCLDSP", "Column-integrated in-cloud scavenging rate by precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 67 */  {"CBLCLDSP", "Column-integrated below-cloud scavenging rate by precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 68 */  {"CIRELREP", "Column-integrated release rate from evaporating precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 69 */  {"CINCSLSP", "Column-integrated in-cloud scavenging rate by large-scale precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 70 */  {"CBECSLSP", "Column-integrated below-cloud scavenging rate by large-scale precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 71 */  {"CRERELSP", "Column-integrated release rate from evaporating large-scale precipitation", "kg/(m^2 s)-", UC_NONE},
+  /* 72 */  {"CINCSRCP", "Column-integrated in-cloud scavenging rate by convective precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 73 */  {"CBLCSRCP", "Column-integrated below-cloud scavenging rate by convective precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 74 */  {"CIRERECP", "Column-integrated release rate from evaporating convective precipitation", "kg/(m^2 s)", UC_NONE},
+  /* 75 */  {"WFIREFLX", "Wildfire flux", "kg/(m^2 s)", UC_NONE},
   /* 76 */  {"", "Reserved", "-", UC_NONE},
   /* 77 */  {"", "Reserved", "-", UC_NONE},
   /* 78 */  {"", "Reserved", "-", UC_NONE},
@@ -1255,18 +1406,18 @@ static const GRIB2ParmTable MeteoAtmoChem[] = {
   /* 98 */  {"", "Reserved", "-", UC_NONE},
   /* 99 */  {"", "Reserved", "-", UC_NONE},
  /* 100 */  {"SADEN", "Surface Area Density (Aerosol)", "1/m", UC_NONE},
- /* 101 */  {"AOTK", "Atmosphere Optical Thickness", "m", UC_NONE},
- /* 102 */  {"", "Reserved", "-", UC_NONE},
- /* 103 */  {"", "Reserved", "-", UC_NONE},
- /* 104 */  {"", "Reserved", "-", UC_NONE},
- /* 105 */  {"", "Reserved", "-", UC_NONE},
- /* 106 */  {"", "Reserved", "-", UC_NONE},
- /* 107 */  {"", "Reserved", "-", UC_NONE},
- /* 108 */  {"", "Reserved", "-", UC_NONE},
- /* 109 */  {"", "Reserved", "-", UC_NONE},
- /* 110 */  {"", "Reserved", "-", UC_NONE},
- /* 111 */  {"", "Reserved", "-", UC_NONE},
- /* 112 */  {"", "Reserved", "-", UC_NONE},
+ /* 101 */  {"ATMTK", "Vertical Visual Range", "m", UC_NONE},
+ /* 102 */  {"AOTK", "Atmosphere Optical Thickness", "Numeric", UC_NONE},
+ /* 103 */  {"SSALBK", "Single Scattering Albedo", "Numeric", UC_NONE},
+ /* 104 */  {"ASYSFK", "Asymmetry Factor", "Numeric", UC_NONE},
+ /* 105 */  {"AECOEF", "Aerosol Extinction Coefficient", "1/m", UC_NONE},
+ /* 106 */  {"AACOEF", "Aerosol Absorption Coefficient", "1/m", UC_NONE},
+ /* 107 */  {"ALBSAT", "Aerosol Lidar Backscatter from Satellite", "1/(m*sr)", UC_NONE},
+ /* 108 */  {"ALBGRD", "Aerosol Lidar Backscatter from the Ground", "1/(m*sr)", UC_NONE},
+ /* 109 */  {"ALESAT", "Aerosol Lidar Extinction from Satellite", "1/m", UC_NONE},
+ /* 110 */  {"ALEGRD", "Aerosol Lidar Extinction from the Ground", "1/m", UC_NONE},
+ /* 111 */  {"ANGSTEXP", "Angstrom Exponent", "Numeric", UC_NONE},
+ /* 112 */  {"SCTAOTK", "Scattering Aerosol Optical Thickness", "Numeric", UC_NONE},
  /* 113 */  {"", "Reserved", "-", UC_NONE},
  /* 114 */  {"", "Reserved", "-", UC_NONE},
  /* 115 */  {"", "Reserved", "-", UC_NONE},
@@ -1285,10 +1436,11 @@ static const GRIB2ParmTable MeteoAtmoChem[] = {
  /* 128 */  {"", "Reserved", "-", UC_NONE},
  /* 129 */  {"", "Reserved", "-", UC_NONE},
  /* 130 */  {"", "Reserved", "-", UC_NONE},
- /* 131 */  {"NO2TROP", "Nitrogen Dioxide (NO2) Tropospheric Column", "mol/(cm^2)", UC_NONE},
- /* 132 */  {"NO2VCD", "Nitrogen Dioxide (NO2) Vertical Column Density", "mol/(cm^2)", UC_NONE},
- /* 133 */  {"BROVCD", "Bromine Monoxide (BrO) Vertical Column Density", "mol/(cm^2)", UC_NONE},
- /* 134 */  {"HCHOVCD", "Formaldehyde (HCHO) Vertical Column Density", "mol/(cm^2)", UC_NONE},
+/* Not in Table as of 4/2018 */
+ /* 131 */ /*  {"NO2TROP", "Nitrogen Dioxide (NO2) Tropospheric Column", "mol/(cm^2)", UC_NONE}, */
+ /* 132 */ /* {"NO2VCD", "Nitrogen Dioxide (NO2) Vertical Column Density", "mol/(cm^2)", UC_NONE}, */
+ /* 133 */ /* {"BROVCD", "Bromine Monoxide (BrO) Vertical Column Density", "mol/(cm^2)", UC_NONE}, */
+ /* 134 */ /* {"HCHOVCD", "Formaldehyde (HCHO) Vertical Column Density", "mol/(cm^2)", UC_NONE}, */
 };
 
 /* GRIB2 Code table 4.2 : 0.190 */
@@ -1300,6 +1452,9 @@ static const GRIB2ParmTable MeteoText[] = {
 static const GRIB2ParmTable MeteoMisc[] = {
    /* 0 */ {"TSEC", "Seconds prior to initial reference time (defined in Section"
             " 1)", "s", UC_NONE},
+   /*  */ {"GEOLAT", "Geographical Latitude", "deg N", UC_NONE},
+   /*  */ {"GEOLON", "Geographical Longitude", "deg E", UC_NONE},
+   /*  */ {"DSLOBS", "Days Since Last Observation", "d", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 1.0 */
@@ -1357,6 +1512,37 @@ static const GRIB2ParmTable LandVeg[] = {
 /* 25 */   {"VSOILM", "Volumetric soil moisture", "m^3/m^3", UC_NONE},
 /* 26 */   {"WILT", "Wilting point", "kg/m^3", UC_NONE},
 /* 27 */   {"VWILTM", "Volumetric wilting moisture", "m^3/m^3", UC_NONE},
+/* 28 */   {"LEAINX", "Leaf Area Index", "Numeric", UC_NONE},
+/* 29 */   {"EVGFC", "Evergreen Forest Cover", "Proportion", UC_NONE},
+/* 30 */   {"DECFC", "Deciduous Forest Cover", "Proportion", UC_NONE},
+/* 31 */   {"NDVINX", "Normalized Differential Vegetation Index (NDVI)", "Numeric", UC_NONE},
+/* 32 */   {"RDVEG", "Root Depth of Vegetation", "m", UC_NONE},
+/* 33 */   {"WROD", "Water Runoff and Drainage", "kg/(m^2)", UC_NONE},
+/* 34 */   {"SFCWRO", "Surface Water Runoff", "kg/(m^2)", UC_NONE},
+/* 35 */   {"TCLASS", "Tile Class", "0=Reserved; 1=Evergreen broadleaved forest; "
+            "2=Deciduous broadleaved closed forest; 3=Deciduous broadleaved open forest; "
+            "4=Evergreen needle-leaf forest; 5=Deciduous needle-leaf forest; "
+            "6=Mixed leaf trees; 7=Fresh water flooded trees; 8=Saline water flooded trees; "
+            "9=Mosaic tree/natural vegetation; 10=Burnt tree cover; "
+            "11=Evergreen shurbs closed-open;  12=Deciduous shurbs closed-open; "
+            "13=Herbaceous vegetation closed-open; 14=Sparse herbaceous or grass; "
+            "15=Flooded shurbs or herbaceous; 16=Cultivated and managed areas; "
+            "17=Mosaic crop/tree/natural vegetation; 18=Mosaic crop/shrub/grass; "
+            "19=Bare areas; 20=Water; 21=Snow and ice; 22=Artificial surface; "
+            "23=Ocean; 24=Irrigated croplands; 25=Rain fed croplands; "
+            "26=Mosaic cropland (50-70%)-vegetation (20-50%); "
+            "27=Mosaic vegetation (50-70%)-cropland (20-50%); "
+            "28=Closed broadleaved evergreen forest; 29=Closed needle-leaved evergreen forest; "
+            "30=Open needle-leaved deciduous forest; 31=Mixed broadleaved and needle-leave forest; "
+            "32=Mosaic shrubland (50-70%)-grassland (20-50%); "
+            "33=Mosaic grassland (50-70%)-shrubland (20-50%); "
+            "34=Closed to open shrubland; 35=Sparse vegetation; "
+            "36=Closed to open forest regularly flooded; "
+            "37=Closed forest or shrubland permanently flooded; "
+            "38=Closed to open grassland regularly flooded; 39=Undefined; ", UC_NONE},
+/* 36 */   {"TFRCT", "Tile Fraction", "Proportion", UC_NONE},
+/* 37 */   {"TPERCT", "Tile Percentage", "%", UC_NONE},
+/* 38 */   {"SOILVIC", "Soil Volumetric Ice Content (Water Equivalent) ", "m^3/m^3", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 2.3 */
@@ -1383,6 +1569,16 @@ static const GRIB2ParmTable LandSoil[] = {
 /* 15 */ {"SOILP", "Soil porosity", "m^3/m^3", UC_NONE},
 /* 16 */ {"VSOSM", "Volumetric saturation of soil moisture", "m^3/m^3", UC_NONE},
 /* 17 */ {"SATOSM", "Saturation of soil moisture", "kg/m^3", UC_NONE},
+/* 18 */ {"SOILTMP", "Soil Temperature", "K", UC_NONE},
+/* 19 */ {"SOILMOI", "Soil Moisture", "kg/(m^3)", UC_NONE},
+/* 20 */ {"CISOILM", "Column-Integrated Soil Moisture", "kg/(m^2)", UC_NONE},
+/* 21 */ {"SOILICE", "Soil Ice", "kg/(m^3)", UC_NONE},
+/* 22 */ {"CISICE", "Column-Integrated Soil Ice", "kg/(m^2)", UC_NONE},
+/* 23 */ {"LWSNWP", "Liquid Water in Snow Pack", "kg/(m^2)", UC_NONE},
+/* 24 */ {"FRSTINX", "Frost Index", "kg/day", UC_NONE},
+/* 25 */ {"SNWDEB", "Snow Depth at Elevation Bands", "kg/(m^2)", UC_NONE},
+/* 26 */ {"SHFLX", "Soil Heat Flux", "W/(m^2)", UC_NONE},
+/* 27 */ {"SOILDEP", "Soil Depth", "m", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 3.0 */
@@ -1427,6 +1623,22 @@ static const GRIB2ParmTable SpaceQuantitative[] = {
 /* 11 */ {"RFL16", "Reflectance in 1.6 micron channel", "%", UC_NONE},
 /* 12 */ {"RFL39", "Reflectance in 3.9 micron channel", "%", UC_NONE},
 /* 13 */ {"ATMDIV", "Atmospheric divergence", "1/s", UC_NONE},
+/* 14 */ {"CBTMP", "Cloudy Brightness Temperature", "K", UC_NONE},
+/* 15 */ {"CSBTMP", "Clear Sky Brightness Temperature", "K", UC_NONE},
+/* 16 */ {"CLDRAD", "Cloudy Radiance (with respect to wave number)", "W/(m*sr)", UC_NONE},
+/* 17 */ {"CSKYRAD", "Clear Sky Radiance (with respect to wave number)", "W/(m*sr)", UC_NONE},
+/* 18 */ {"", "Reserved", "-", UC_NONE},
+/* 19 */ {"WINDS", "Wind Speed", "m/s", UC_NONE},
+/* 20 */ {"AOT06", "Aerosol Optical Thickness at 0.635 µm", "", UC_NONE},
+/* 21 */ {"AOT08", "Aerosol Optical Thickness at 0.810 µm", "", UC_NONE},
+/* 22 */ {"AOT16", "Aerosol Optical Thickness at 1.640 µm", "", UC_NONE},
+/* 23 */ {"ANGCOE", "Angstrom Coefficient", "", UC_NONE},
+/* 24 */ {"", "Reserved", "-", UC_NONE},
+/* 25 */ {"", "Reserved", "-", UC_NONE},
+/* 26 */ {"", "Reserved", "-", UC_NONE},
+/* 27 */ {"BRFLF", "Bidirectional Reflecance Factor", "Numeric", UC_NONE},
+/* 28 */ {"SPBRT", "Brightness Temperature", "K", UC_NONE},
+/* 29 */ {"SRAD", "Scaled Radiance", "Numeric", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 10.0 */
@@ -1434,7 +1646,7 @@ static const GRIB2ParmTable OceanWaves[] = {
    /* 0 */ {"WVSP1", "Wave spectra (1)", "-", UC_NONE},
    /* 1 */ {"WVSP2", "Wave spectra (2)", "-", UC_NONE},
    /* 2 */ {"WVSP3", "Wave spectra (3)", "-", UC_NONE},
-   /* 3 */ {"HTSGW", "Significant height of combined wind waves and swell", "m", UC_NONE}, /* NDFD override needed WaveHeight */
+   /* 3 */ {"HTSGW", "Significant height of combined wind waves and swell", "m", UC_M2Feet}, /* NDFD override needed WaveHeight */
    /* 4 */ {"WVDIR", "Direction of wind waves", "Degree true", UC_NONE},
    /* 5 */ {"WVHGT", "Significant height of wind waves", "m", UC_M2Feet}, /* NDFD override needed WaveHeight */
    /* 6 */ {"WVPER", "Mean period of wind waves", "s", UC_NONE},
@@ -1445,6 +1657,38 @@ static const GRIB2ParmTable OceanWaves[] = {
    /* 11 */ {"PERPW", "Primary wave mean period", "s", UC_NONE},
    /* 12 */ {"DIRSW", "Secondary wave direction", "Degree true", UC_NONE},
    /* 13 */ {"PERSW", "Secondary wave mean period", "s", UC_NONE},
+   /* 14 */ {"WWSDIR", "Direction of Combined Wind Waves and Swell", "Degree true", UC_NONE},
+   /* 15 */ {"MWSPER", "Mean Period of Combined Wind Waves and Swell", "s", UC_NONE},
+   /* 16 */ {"CDWW", "Coefficient of Drag With Waves", "-", UC_NONE},
+   /* 17 */ {"FRICV", "Friction Velocity", "m/s", UC_NONE},
+   /* 18 */ {"WSTR", "Wave Stress", "N/(m^2)", UC_NONE},
+   /* 19 */ {"NWSTR", "Normalised Waves Stress", "-", UC_NONE},
+   /* 20 */ {"MSSW", "Mean Square Slope of Waves", "-", UC_NONE},
+   /* 21 */ {"USSD", "U-component Surface Stokes Drift", "m/s", UC_NONE},
+   /* 22 */ {"VSSD", "V-component Surface Stokes Drift", "m/s", UC_NONE},
+   /* 23 */ {"PMAXWH", "Period of Maximum Individual Wave Height", "s", UC_NONE},
+   /* 24 */ {"MAXWH", "Maximum Individual Wave Height", "m", UC_NONE},
+   /* 25 */ {"IMWF", "Inverse Mean Wave Frequency", "s", UC_NONE},
+   /* 26 */ {"IMFWW", "Inverse Mean Frequency of The Wind Waves", "s", UC_NONE},
+   /* 27 */ {"IMFTSW", "Inverse Mean Frequency of The Total Swell", "s", UC_NONE},
+   /* 28 */ {"MZWPER", "Mean Zero-Crossing Wave Period", "s", UC_NONE},
+   /* 29 */ {"MZPWW", "Mean Zero-Crossing Period of The Wind Waves", "s", UC_NONE},
+   /* 30 */ {"MZPTSW", "Mean Zero-Crossing Period of The Total Swell", "s", UC_NONE},
+   /* 31 */ {"WDIRW", "Wave Directional Width", "-", UC_NONE},
+   /* 32 */ {"DIRWWW", "Directional Width of The Wind Waves", "-", UC_NONE},
+   /* 33 */ {"DIRWTS", "Directional Width of The Total Swell", "-", UC_NONE},
+   /* 34 */ {"PWPER", "Peak Wave Period", "s", UC_NONE},
+   /* 35 */ {"PPERWW", "Peak Period of The Wind Waves", "s", UC_NONE},
+   /* 36 */ {"PPERTS", "Peak Period of The Total Swell", "s", UC_NONE},
+   /* 37 */ {"ALTWH", "Altimeter Wave Height", "m", UC_NONE},
+   /* 38 */ {"ALCWH", "Altimeter Corrected Wave Height", "m", UC_NONE},
+   /* 39 */ {"ALRRC", "Altimeter Range Relative Correction", "-", UC_NONE},
+   /* 40 */ {"MNWSOW", "10 Metre Neutral Wind Speed Over Waves", "m/s", UC_NONE},
+   /* 41 */ {"MWDIRW", "10 Metre Wind Direction Over Waves", "Degree true", UC_NONE},
+   /* 42 */ {"WESP", "Wave Engery Spectrum", "s/((m^2)*rad)", UC_NONE},
+   /* 43 */ {"KSSEW", "Kurtosis of The Sea Surface Elevation Due to Waves", "-", UC_NONE},
+   /* 44 */ {"BENINX", "Benjamin-Feir Index", "-", UC_NONE},
+   /* 45 */ {"SPFTR", "Spectral Peakedness Factor", "1/s", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 10.1 */
@@ -1453,6 +1697,7 @@ static const GRIB2ParmTable OceanCurrents[] = {
    /* 1 */ {"SPC", "Current speed", "m/s", UC_NONE},
    /* 2 */ {"UOGRD", "u-component of current", "m/s", UC_NONE},
    /* 3 */ {"VOGRD", "v-component of current", "m/s", UC_NONE},
+   /* 4 */ {"RIPCOP", "Rip Current Occurrence Probability", "%", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 10.2 */
@@ -1466,12 +1711,17 @@ static const GRIB2ParmTable OceanIce[] = {
    /* 6 */ {"ICEG", "Ice growth rate", "m/s", UC_NONE},
    /* 7 */ {"ICED", "Ice divergence", "1/s", UC_NONE},
    /* 8 */ {"ICET", "Ice temperature", "K", UC_NONE},
+   /* 9 */ {"ICEPRS", "Module of Ice Internal Pressure", "Pa*m", UC_NONE},
+   /* 10 */ {"ZVCICEP", "Zonal Vector Component of Vertically Integrated Ice Internal Pressure", "Pa*m", UC_NONE},
+   /* 11 */ {"MVCICEP", "Meridional Vector Component of Vertically Integrated Ice Internal Pressure", "Pa*m", UC_NONE},
+   /* 12 */ {"CICES", "Compressive Ice Strength", "N/m", UC_NONE},
 };
 
 /* GRIB2 Code table 4.2 : 10.3 */
 static const GRIB2ParmTable OceanSurface[] = {
    /* 0 */ {"WTMP", "Water temperature", "K", UC_NONE},
    /* 1 */ {"DSLM", "Deviation of sea level from mean", "m", UC_NONE},
+   /* 2 */ {"CH", "Heat Exchange Coefficient", "", UC_NONE},
 };
 
 #ifdef unused
@@ -1481,6 +1731,18 @@ static const GRIB2ParmTable OceanSubSurface[] = {
    /* 1 */ {"MTHA", "Main thermocline anomaly", "m", UC_NONE},
    /* 2 */ {"TTHDP", "Transient thermocline depth", "m", UC_NONE},
    /* 3 */ {"SALTY", "Salinity", "kg/kg", UC_NONE},
+   /* 4 */ {"OVHD", "Ocean Vertical Heat Diffusivity", "m^2/s", UC_NONE},
+   /* 5 */ {"OVSD", "Ocean Vertical Salt Diffusivity", "m^2/s", UC_NONE},
+   /* 6 */ {"OVMD", "Ocean Vertical Momentum Diffusivity", "m^2/s", UC_NONE},
+   /* 7 */ {"BATHY", "Bathymetry", "m", UC_NONE},
+   /* 8 */ {"", "Reserved", "-", UC_NONE},
+   /* 9 */ {"", "Reserved", "-", UC_NONE},
+   /* 10 */ {"", "Reserved", "-", UC_NONE},
+   /* 11 */ {"SFSALP", "Shape Factor With Respect To Salinity Profile", "", UC_NONE},
+   /* 12 */ {"SFTMPP", "Shape Factor With Respect To Temperature Profile In Thermocline", "", UC_NONE},
+   /* 13 */ {"ACWSRD", "Attenuation Coefficient Of Water With Respect to Solar Radiation", "1/m", UC_NONE},
+   /* 14 */ {"WDEPTH", "Water Depth", "m", UC_NONE},
+   /* 15 */ {"WTMPSS", "Water Temperature", "K", UC_NONE},
 };
 #endif
 
@@ -1489,6 +1751,8 @@ static const GRIB2ParmTable OceanMisc[] = {
    /* 0 */ {"TSEC", "Seconds prior to initial reference time (defined in Section"
             " 1)", "s", UC_NONE},
    /* 1 */ {"MOSF", "Meridonal Overturning Stream Function", "m^3/s", UC_NONE},
+   /* 2 */ {"", "Reserved", "-", UC_NONE},
+   /* 3 */ {"DSLOBS", "Days Since Last Observation", "d", UC_NONE},
 };
 
 /* *INDENT-ON* */
@@ -1585,8 +1849,8 @@ static const GRIB2ParmTable *Choose_GRIB2ParmTable (int prodType, int cat,
                *tableLen = sizeof (MeteoRadarImagery) / sizeof (GRIB2ParmTable);
                return &MeteoRadarImagery[0];
             case METEO_ELECTRO:
-               *tableLen = 0;
-               return nullptr;
+               *tableLen = sizeof (MeteoElectro) / sizeof (GRIB2ParmTable);
+               return &MeteoElectro[0];
             case METEO_NUCLEAR:
                *tableLen = sizeof (MeteoNuclear) / sizeof (GRIB2ParmTable);
                return &MeteoNuclear[0];
@@ -1692,6 +1956,7 @@ static const NDFD_AbrevOverrideTable NDFD_Override[] = {
 
 static const GRIB2LocalTable NDFD_LclTable[] = {
    /* 0 */ {0, 0, 193, "ApparentT", "Apparent Temperature", "K", UC_K2F},
+           {0, 0, 205, "WBGT", "Wet Bulb Globe Temperature", "K", UC_K2F},
    /* 1 */ {0, 1, 192, "Wx", "Weather string", "-", UC_NONE},
            {0, 1, 193, "PPI", "Precipitation Potential Index", "%", UC_NONE},
            {0, 1, 227, "IceAccum", "Ice Accumulation", "kg/m^2", UC_InchWater},
@@ -1721,6 +1986,7 @@ static const GRIB2LocalTable NDFD_LclTable[] = {
            {0, 19, 236, "TCSurge", "Tropical Cyclone Storm Surge Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},          
            {0, 19, 238, "TCRain", "Tropical Cyclone Flooding Rain Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},
            {0, 19, 239, "TCTornado", "Tropical Cyclone Tornado Threat", "0=none; 4=low; 6=moderate; 8=high; 10=extreme", UC_NONE},
+           {0, 19, 246, "SNOWLVL", "Snow Level", "m", UC_M2Feet},
 /* Leaving next two lines in for grandfathering sake. 9/19/2007... Probably can remove in future. */
            {0, 19, 203, "TotalSvrProb", "Total Probability of Severe Thunderstorms", "%", UC_NONE},
            {0, 19, 204, "TotalXtrmProb", "Total Probability of Extreme Severe Thunderstorms", "%", UC_NONE},
@@ -1741,119 +2007,195 @@ static const GRIB2LocalTable HPC_LclTable[] = {
    /* 0 */ {0, 1, 192, "HPC-Wx", "HPC Code", "-", UC_NONE},
 };
 
-/* See ./degrib/MRMS folder (specifically run ./reformat.tcl > degribtab.c) */
-/* 10/21/2014 */
+
+static const GRIB2LocalTable Canada_LclTable[] = {
+   /* 0 */ {0, 4, 192, "DSWRF_SFC_0", "Downward incident solar flux", "W/m^2", UC_NONE},
+   /* 0 */ {0, 4, 193, "USWRF_SFC_0", "Upward short wave radiative flux", "W/m^2", UC_NONE},
+   /* 0 */ {0, 5, 192, "DLWRF_SFC_0", "Downward Long Wave Radiative Flux", "W/m^2", UC_NONE},
+   /* 0 */ {0, 5, 193, "ULWRF_0", "Outgoing Long Wave Radiative Flux", "W/m^2", UC_NONE}
+};
+
+
+
+/*
+Updated 12/28/2020
+Documentation: https://www.nssl.noaa.gov/projects/mrms/operational/tables.php
+*/
 static const GRIB2LocalTable MRMS_LclTable[] = {
-   /* 0 */ {209, 2, 0, "LightningDensityNLDN1min", "CG Lightning Density 1-min - NLDN", "flashes/km^2/min", UC_NONE},
-   /* 1 */ {209, 2, 1, "LightningDensityNLDN5min", "CG Lightning Density 5-min - NLDN", "flashes/km^2/min", UC_NONE},
-   /* 2 */ {209, 2, 2, "LightningDensityNLDN15min", "CG Lightning Density 15-min - NLDN", "flashes/km^2/min", UC_NONE},
-   /* 3 */ {209, 2, 3, "LightningDensityNLDN30min", "CG Lightning Density 30-min - NLDN", "flashes/km^2/min", UC_NONE},
-   /* 4 */ {209, 2, 4, "LightningProbabilityNext30min", "Lightning Probability 0-30 minutes - NLDN", "%", UC_NONE},
-   /* 5 */ {209, 3, 0, "MergedAzShear0to2kmAGL", "Azimuth Shear 0-2km AGL", ".001/s", UC_NONE},
-   /* 6 */ {209, 3, 1, "MergedAzShear3to6kmAGL", "Azimuth Shear 3-6km AGL", ".001/s", UC_NONE},
-   /* 7 */ {209, 3, 2, "RotationTrack30min", "Rotation Track 0-2km AGL 30-min", ".001/s", UC_NONE},
-   /* 8 */ {209, 3, 3, "RotationTrack60min", "Rotation Track 0-2km AGL 60-min", ".001/s", UC_NONE},
-   /* 9 */ {209, 3, 4, "RotationTrack120min", "Rotation Track 0-2km AGL 120-min", ".001/s", UC_NONE},
-   /* 10 */ {209, 3, 5, "RotationTrack240min", "Rotation Track 0-2km AGL 240-min", ".001/s", UC_NONE},
-   /* 11 */ {209, 3, 6, "RotationTrack360min", "Rotation Track 0-2km AGL 360-min", ".001/s", UC_NONE},
-   /* 12 */ {209, 3, 7, "RotationTrack1440min", "Rotation Track 0-2km AGL 1440-min", ".001/s", UC_NONE},
-   /* 13 */ {209, 3, 14, "RotationTrackML30min", "Rotation Track 0-2km AGL 30-min", ".001/s", UC_NONE},
-   /* 14 */ {209, 3, 15, "RotationTrackML60min", "Rotation Track 0-2km AGL 60-min", ".001/s", UC_NONE},
-   /* 15 */ {209, 3, 16, "RotationTrackML120min", "Rotation Track 0-2km AGL 120-min", ".001/s", UC_NONE},
-   /* 16 */ {209, 3, 17, "RotationTrackML240min", "Rotation Track 0-2km AGL 240-min", ".001/s", UC_NONE},
-   /* 17 */ {209, 3, 18, "RotationTrackML360min", "Rotation Track 0-2km AGL 360-min", ".001/s", UC_NONE},
-   /* 18 */ {209, 3, 19, "RotationTrackML1440min", "Rotation Track 0-2km AGL 1440-min", ".001/s", UC_NONE},
-   /* 19 */ {209, 3, 26, "SHI", "Severe Hail Index", "index", UC_NONE},
-   /* 20 */ {209, 3, 27, "POSH", "Prob of Severe Hail", "%", UC_NONE},
-   /* 21 */ {209, 3, 28, "MESH", "Maximum Estimated Size of Hail (MESH)", "mm", UC_NONE},
-   /* 22 */ {209, 3, 29, "MESHMax30min", "MESH Hail Swath 30-min", "mm", UC_NONE},
-   /* 23 */ {209, 3, 30, "MESHMax60min", "MESH Hail Swath 60-min", "mm", UC_NONE},
-   /* 24 */ {209, 3, 31, "MESHMax120min", "MESH Hail Swath 120-min", "mm", UC_NONE},
-   /* 25 */ {209, 3, 32, "MESHMax240min", "MESH Hail Swath 240-min", "mm", UC_NONE},
-   /* 26 */ {209, 3, 33, "MESHMax360min", "MESH Hail Swath 360-min", "mm", UC_NONE},
-   /* 27 */ {209, 3, 34, "MESHMax1440min", "MESH Hail Swath 1440-min", "mm", UC_NONE},
-   /* 28 */ {209, 3, 41, "VIL", "Vertically Integrated Liquid", "kg/m^2", UC_NONE},
-   /* 29 */ {209, 3, 42, "VILDensity", "Vertically Integrated Liquid Density", "g/m^3", UC_NONE},
-   /* 30 */ {209, 3, 43, "VII", "Vertically Integrated Ice", "kg/m^2", UC_NONE},
-   /* 31 */ {209, 3, 44, "EchoTop18", "Echo Top - 18 dBZ", "km", UC_NONE},
-   /* 32 */ {209, 3, 45, "EchoTop30", "Echo Top - 30 dBZ", "km", UC_NONE},
-   /* 33 */ {209, 3, 46, "EchoTop50", "Echo Top - 50 dBZ", "km", UC_NONE},
-   /* 34 */ {209, 3, 47, "EchoTop60", "Echo Top - 60 dBZ", "km", UC_NONE},
-   /* 35 */ {209, 3, 48, "H50AboveM20C", "Thickness [50 dBZ top - (-20C)]", "km", UC_NONE},
-   /* 36 */ {209, 3, 49, "H50Above0C", "Thickness [50 dBZ top - 0C]", "km", UC_NONE},
-   /* 37 */ {209, 3, 50, "H60AboveM20C", "Thickness [60 dBZ top - (-20C)]", "km", UC_NONE},
-   /* 38 */ {209, 3, 51, "H60Above0C", "Thickness [60 dBZ top - 0C]", "km", UC_NONE},
-   /* 39 */ {209, 3, 52, "Reflectivity0C", "Isothermal Reflectivity at 0C", "dBZ", UC_NONE},
-   /* 40 */ {209, 3, 53, "ReflectivityM5C", "Isothermal Reflectivity at -5C", "dBZ", UC_NONE},
-   /* 41 */ {209, 3, 54, "ReflectivityM10C", "Isothermal Reflectivity at -10C", "dBZ", UC_NONE},
-   /* 42 */ {209, 3, 55, "ReflectivityM15C", "Isothermal Reflectivity at -15C", "dBZ", UC_NONE},
-   /* 43 */ {209, 3, 56, "ReflectivityM20C", "Isothermal Reflectivity at -20C", "dBZ", UC_NONE},
-   /* 44 */ {209, 3, 57, "ReflectivityAtLowestAltitude", "ReflectivityAtLowestAltitude", "dBZ", UC_NONE},
-   /* 45 */ {209, 3, 58, "MergedReflectivityAtLowestAltitude", "Non Quality Controlled Reflectivity At Lowest Altitude", "dBZ", UC_NONE},
-   /* 46 */ {209, 4, 0, "IRband4", "Infrared (E/W blend)", "K", UC_NONE},
-   /* 47 */ {209, 4, 1, "Visible", "Visible (E/W blend)", "non-dim", UC_NONE},
-   /* 48 */ {209, 4, 2, "WaterVapor", "Water Vapor (E/W blend)", "K", UC_NONE},
-   /* 49 */ {209, 4, 3, "CloudCover", "Cloud Cover", "K", UC_NONE},
-   /* 50 */ {209, 6, 0, "PrecipFlag", "Surface Precipitation Type (Convective; Stratiform; Tropical; Hail; Snow)", "flag", UC_NONE},
-   /* 51 */ {209, 6, 1, "PrecipRate", "Radar Precipitation Rate", "mm/hr", UC_NONE},
-   /* 52 */ {209, 6, 2, "RadarOnlyQPE01H", "Radar Precipitation Accumulation 1-hour", "mm", UC_NONE},
-   /* 53 */ {209, 6, 3, "RadarOnlyQPE03H", "Radar Precipitation Accumulation 3-hour", "mm", UC_NONE},
-   /* 54 */ {209, 6, 4, "RadarOnlyQPE06H", "Radar Precipitation Accumulation 6-hour", "mm", UC_NONE},
-   /* 55 */ {209, 6, 5, "RadarOnlyQPE12H", "Radar Precipitation Accumulation 12-hour", "mm", UC_NONE},
-   /* 56 */ {209, 6, 6, "RadarOnlyQPE24H", "Radar Precipitation Accumulation 24-hour", "mm", UC_NONE},
-   /* 57 */ {209, 6, 7, "RadarOnlyQPE48H", "Radar Precipitation Accumulation 48-hour", "mm", UC_NONE},
-   /* 58 */ {209, 6, 8, "RadarOnlyQPE72H", "Radar Precipitation Accumulation 72-hour", "mm", UC_NONE},
-   /* 59 */ {209, 6, 9, "GaugeCorrQPE01H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 1-hour", "mm", UC_NONE},
-   /* 60 */ {209, 6, 10, "GaugeCorrQPE03H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 3-hour", "mm", UC_NONE},
-   /* 61 */ {209, 6, 11, "GaugeCorrQPE06H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 6-hour", "mm", UC_NONE},
-   /* 62 */ {209, 6, 12, "GaugeCorrQPE12H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 12-hour", "mm", UC_NONE},
-   /* 63 */ {209, 6, 13, "GaugeCorrQPE24H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 24-hour", "mm", UC_NONE},
-   /* 64 */ {209, 6, 14, "GaugeCorrQPE48H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 48-hour", "mm", UC_NONE},
-   /* 65 */ {209, 6, 15, "GaugeCorrQPE72H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 72-hour", "mm", UC_NONE},
-   /* 66 */ {209, 6, 16, "GaugeOnlyQPE01H", "Gauge Only Precipitation Accumulation 1-hour", "mm", UC_NONE},
-   /* 67 */ {209, 6, 17, "GaugeOnlyQPE03H", "Gauge Only Precipitation Accumulation 3-hour", "mm", UC_NONE},
-   /* 68 */ {209, 6, 18, "GaugeOnlyQPE06H", "Gauge Only Precipitation Accumulation 6-hour", "mm", UC_NONE},
-   /* 69 */ {209, 6, 19, "GaugeOnlyQPE12H", "Gauge Only Precipitation Accumulation 12-hour", "mm", UC_NONE},
-   /* 70 */ {209, 6, 20, "GaugeOnlyQPE24H", "Gauge Only Precipitation Accumulation 24-hour", "mm", UC_NONE},
-   /* 71 */ {209, 6, 21, "GaugeOnlyQPE48H", "Gauge Only Precipitation Accumulation 48-hour", "mm", UC_NONE},
-   /* 72 */ {209, 6, 22, "GaugeOnlyQPE72H", "Gauge Only Precipitation Accumulation 72-hour", "mm", UC_NONE},
-   /* 73 */ {209, 6, 23, "MountainMapperQPE01H", "Mountain Mapper Precipitation Accumulation 1-hour", "mm", UC_NONE},
-   /* 74 */ {209, 6, 24, "MountainMapperQPE03H", "Mountain Mapper Precipitation Accumulation 3-hour", "mm", UC_NONE},
-   /* 75 */ {209, 6, 25, "MountainMapperQPE06H", "Mountain Mapper Precipitation Accumulation 6-hour", "mm", UC_NONE},
-   /* 76 */ {209, 6, 26, "MountainMapperQPE12H", "Mountain Mapper Precipitation Accumulation 12-hour", "mm", UC_NONE},
-   /* 77 */ {209, 6, 27, "MountainMapperQPE24H", "Mountain Mapper Precipitation Accumulation 24-hour", "mm", UC_NONE},
-   /* 78 */ {209, 6, 28, "MountainMapperQPE48H", "Mountain Mapper Precipitation Accumulation 48-hour", "mm", UC_NONE},
-   /* 79 */ {209, 6, 29, "MountainMapperQPE72H", "Mountain Mapper Precipitation Accumulation 72-hour", "mm", UC_NONE},
-   /* 80 */ {209, 7, 0, "ModelSurfaceTemp", "Model Surface Temperature [RAP 13km]", "C", UC_NONE},
-   /* 81 */ {209, 7, 1, "ModelWetBulbTemp", "Model Surface Wet Bulb Temperature [RAP 13km]", "C", UC_NONE},
-   /* 82 */ {209, 7, 2, "WarmRainProbability", "Probability of Warm Rain [RAP 13km derived]", "%", UC_NONE},
-   /* 83 */ {209, 7, 3, "ModelHeight0C", "Model Freezing Level Height [RAP 13km]", "m", UC_NONE},
-   /* 84 */ {209, 7, 4, "BrightBandTopHeight", "Brightband Top Radar [RAP 13km derived]", "m", UC_NONE},
-   /* 85 */ {209, 7, 5, "BrightBandBottomHeight", "Brightband Bottom Radar [RAP 13km derived]", "m", UC_NONE},
-   /* 86 */ {209, 8, 0, "RadarQualityIndex", "Radar Quality Index", "non-dim", UC_NONE},
-   /* 87 */ {209, 8, 1, "GaugeInflIndex01H", "Gauge Influence Index for 1-hour QPE", "non-dim", UC_NONE},
-   /* 88 */ {209, 8, 2, "GaugeInflIndex03H", "Gauge Influence Index for 3-hour QPE", "non-dim", UC_NONE},
-   /* 89 */ {209, 8, 3, "GaugeInflIndex06H", "Gauge Influence Index for 6-hour QPE", "non-dim", UC_NONE},
-   /* 90 */ {209, 8, 4, "GaugeInflIndex12H", "Gauge Influence Index for 12-hour QPE", "non-dim", UC_NONE},
-   /* 91 */ {209, 8, 5, "GaugeInflIndex24H", "Gauge Influence Index for 24-hour QPE", "non-dim", UC_NONE},
-   /* 92 */ {209, 8, 6, "GaugeInflIndex48H", "Gauge Influence Index for 48-hour QPE", "non-dim", UC_NONE},
-   /* 93 */ {209, 8, 7, "GaugeInflIndex72H", "Gauge Influence Index for 72-hour QPE", "non-dim", UC_NONE},
-   /* 94 */ {209, 8, 8, "SeamlessHSR", "Seamless Hybrid Scan Reflectivity with VPR Correction", "dBZ", UC_NONE},
-   /* 95 */ {209, 8, 9, "SeamlessHSRHeight", "Height of Seamless Hybrid Scan Reflectivity", "km", UC_NONE},
-   /* 96 */ {209, 9, 0, "CONUSMergedReflectivityQC", "WSR-88D 3D Reflectivity Mosaic - 33 CAPPIS (500-19000m)", "dBZ", UC_NONE},
-   /* 97 */ {209, 9, 1, "CONUSPlusMergedReflectivityQC", "All Radar 3D Reflectivity Mosaic - 33 CAPPIS (500-19000m)", "dBZ", UC_NONE},
-   /* 98 */ {209, 10, 0, "MergedReflectivityQCComposite", "Composite Reflectivity Mosaic (optimal method)", "dBZ", UC_NONE},
-   /* 99 */ {209, 10, 1, "HeightCompositeReflectivity", "Height of Composite Reflectivity Mosaic (optimal method)", "m", UC_NONE},
-   /* 100 */ {209, 10, 2, "LowLevelCompositeReflectivity", "Low-Level Composite Reflectivity Mosaic (0-4 km)", "dBZ", UC_NONE},
-   /* 101 */ {209, 10, 3, "HeightLowLevelCompositeReflectivity", "Height of Low-Level Composite Reflectivity Mosaic (0-4 km)", "m", UC_NONE},
-   /* 102 */ {209, 10, 4, "LayerCompositeReflectivity_Low", "Layer Composite Reflectivity Mosaic 0-24kft (low altitude)", "dBZ", UC_NONE},
-   /* 103 */ {209, 10, 5, "LayerCompositeReflectivity_High", "Layer Composite Reflectivity Mosaic 24-60kft (highest altitude)", "dBZ", UC_NONE},
-   /* 104 */ {209, 10, 6, "LayerCompositeReflectivity_Super", "Layer Composite Reflectivity Mosaic 33-60kft (super high altitude)", "dBZ", UC_NONE},
-   /* 105 */ {209, 10, 7, "ReflectivityCompositeHourlyMax", "Composite Reflectivity Hourly Maximum", "dBZ", UC_NONE},
-   /* 106 */ {209, 10, 8, "ReflectivityMaxAboveM10C", "Maximum Reflectivity at -10 deg C height and above", "dBZ", UC_NONE},
-   /* 107 */ {209, 11, 0, "MergedBaseReflectivityQC", "Mosaic Base Reflectivity (optimal method)", "dBZ", UC_NONE},
-   /* 108 */ {209, 11, 1, "MergedReflectivityComposite", "UnQC'd Composite Reflectivity Mosaic (max ref)", "dBZ", UC_NONE},
-   /* 109 */ {209, 11, 2, "MergedReflectivityQComposite", "Composite Reflectivity Mosaic (max ref)", "dBZ", UC_NONE},
+   /* 209 */ {209, 2, 0, "NLDN_CG_001min_AvgDensity", "CG Average Lightning Density 1-min - NLDN", "flashes/km^2/min", UC_NONE},
+             {209, 2, 1, "NLDN_CG_005min_AvgDensity", "CG Average Lightning Density 5-min - NLDN", "flashes/km^2/min", UC_NONE},
+             {209, 2, 2, "NLDN_CG_015min_AvgDensity", "CG Average Lightning Density 15-min - NLDN", "flashes/km^2/min", UC_NONE},
+             {209, 2, 3, "NLDN_CG_030min_AvgDensity", "CG Average Lightning Density 30-min - NLDN", "flashes/km^2/min", UC_NONE},
+             {209, 2, 4, "LightningProbabilityNext30min", "Lightning Probability 0-30 minutes - NLDN", "%", UC_NONE},
+             {209, 2, 5, "LightningProbabilityNext30minGrid", "Lightning Probability 0-30 minutes - NLDN", "%", UC_NONE},
+             {209, 2, 6, "LightningProbabilityNext60minGrid", "Lightning Probability 0-30 minutes - NLDN", "%", UC_NONE},
+             {209, 2, 7, "LightningJumpGrid", "Rapid lightning increases and decreases ", "non-dim", UC_NONE},
+             {209, 2, 8, "LightningJumpGrid_Max_005min", "Rapid lightning increases and decreases over 5-minutes ", "non-dim", UC_NONE},
+             {209, 3, 0, "MergedAzShear0to2kmAGL", "Azimuth Shear 0-2km AGL", "0.001/s", UC_NONE},
+             {209, 3, 1, "MergedAzShear3to6kmAGL", "Azimuth Shear 3-6km AGL", "0.001/s", UC_NONE},
+             {209, 3, 2, "RotationTrack30min", "Rotation Track 0-2km AGL 30-min", "0.001/s", UC_NONE},
+             {209, 3, 3, "RotationTrack60min", "Rotation Track 0-2km AGL 60-min", "0.001/s", UC_NONE},
+             {209, 3, 4, "RotationTrack120min", "Rotation Track 0-2km AGL 120-min", "0.001/s", UC_NONE},
+             {209, 3, 5, "RotationTrack240min", "Rotation Track 0-2km AGL 240-min", "0.001/s", UC_NONE},
+             {209, 3, 6, "RotationTrack360min", "Rotation Track 0-2km AGL 360-min", "0.001/s", UC_NONE},
+             {209, 3, 7, "RotationTrack1440min", "Rotation Track 0-2km AGL 1440-min", "0.001/s", UC_NONE},
+             {209, 3, 14, "RotationTrackML30min", "Rotation Track 3-6km AGL 30-min", "0.001/s", UC_NONE},
+             {209, 3, 15, "RotationTrackML60min", "Rotation Track 3-6km AGL 60-min", "0.001/s", UC_NONE},
+             {209, 3, 16, "RotationTrackML120min", "Rotation Track 3-6km AGL 120-min", "0.001/s", UC_NONE},
+             {209, 3, 17, "RotationTrackML240min", "Rotation Track 3-6km AGL 240-min", "0.001/s", UC_NONE},
+             {209, 3, 18, "RotationTrackML360min", "Rotation Track 3-6km AGL 360-min", "0.001/s", UC_NONE},
+             {209, 3, 19, "RotationTrackML1440min", "Rotation Track 3-6km AGL 1440-min", "0.001/s", UC_NONE},
+             {209, 3, 26, "SHI", "Severe Hail Index", "index", UC_NONE},
+             {209, 3, 27, "POSH", "Prob of Severe Hail", "%", UC_NONE},
+             {209, 3, 28, "MESH", "Maximum Estimated Size of Hail (MESH)", "mm", UC_NONE},
+             {209, 3, 29, "MESHMax30min", "MESH Hail Swath 30-min", "mm", UC_NONE},
+             {209, 3, 30, "MESHMax60min", "MESH Hail Swath 60-min", "mm", UC_NONE},
+             {209, 3, 31, "MESHMax120min", "MESH Hail Swath 120-min", "mm", UC_NONE},
+             {209, 3, 32, "MESHMax240min", "MESH Hail Swath 240-min", "mm", UC_NONE},
+             {209, 3, 33, "MESHMax360min", "MESH Hail Swath 360-min", "mm", UC_NONE},
+             {209, 3, 34, "MESHMax1440min", "MESH Hail Swath 1440-min", "mm", UC_NONE},
+             {209, 3, 37, "VIL_Max_120min", "VIL Swath 120-min", "kg/m^2", UC_NONE},
+             {209, 3, 40, "VIL_Max_1440min", "VIL Swath 1440-min", "kg/m^2", UC_NONE},
+             {209, 3, 41, "VIL", "Vertically Integrated Liquid", "kg/m^2", UC_NONE},
+             {209, 3, 42, "VIL_Density", "Vertically Integrated Liquid Density", "g/m^3", UC_NONE},
+             {209, 3, 43, "VII", "Vertically Integrated Ice", "kg/m^2", UC_NONE},
+             {209, 3, 44, "EchoTop_18", "Echo Top - 18 dBZ", "km MSL", UC_NONE},
+             {209, 3, 45, "EchoTop_30", "Echo Top - 30 dBZ", "km MSL", UC_NONE},
+             {209, 3, 46, "EchoTop_50", "Echo Top - 50 dBZ", "km MSL", UC_NONE},
+             {209, 3, 47, "EchoTop_60", "Echo Top - 60 dBZ", "km MSL", UC_NONE},
+             {209, 3, 48, "H50AboveM20C", "Thickness [50 dBZ top - (-20C)]", "km", UC_NONE},
+             {209, 3, 49, "H50Above0C", "Thickness [50 dBZ top - 0C]", "km", UC_NONE},
+             {209, 3, 50, "H60AboveM20C", "Thickness [60 dBZ top - (-20C)]", "km", UC_NONE},
+             {209, 3, 51, "H60Above0C", "Thickness [60 dBZ top - 0C]", "km", UC_NONE},
+             {209, 3, 52, "Reflectivity_0C", "Isothermal Reflectivity at 0C", "dBZ", UC_NONE},
+             {209, 3, 53, "Reflectivity_-5C", "Isothermal Reflectivity at -5C", "dBZ", UC_NONE},
+             {209, 3, 54, "Reflectivity_-10C", "Isothermal Reflectivity at -10C", "dBZ", UC_NONE},
+             {209, 3, 55, "Reflectivity_-15C", "Isothermal Reflectivity at -15C", "dBZ", UC_NONE},
+             {209, 3, 56, "Reflectivity_-20C", "Isothermal Reflectivity at -20C", "dBZ", UC_NONE},
+             {209, 3, 57, "ReflectivityAtLowestAltitude", "ReflectivityAtLowestAltitude", "dBZ", UC_NONE},
+             {209, 3, 58, "MergedReflectivityAtLowestAltitude", "Non Quality Controlled Reflectivity At Lowest Altitude", "dBZ", UC_NONE},
+             {209, 4, 0, "IRband4", "Infrared (E/W blend)", "K", UC_NONE},
+             {209, 4, 1, "Visible", "Visible (E/W blend)", "non-dim", UC_NONE},
+             {209, 4, 2, "WaterVapor", "Water Vapor (E/W blend)", "K", UC_NONE},
+             {209, 4, 3, "CloudCover", "Cloud Cover", "K", UC_NONE},
+             {209, 6, 0, "PrecipFlag", "Surface Precipitation Type", "flag", UC_NONE},
+             {209, 6, 1, "PrecipRate", "Radar Precipitation Rate", "mm/hr", UC_NONE},
+             {209, 6, 2, "RadarOnly_QPE_01H", "Radar precipitation accumulation 1-hour", "mm", UC_NONE},
+             {209, 6, 3, "RadarOnly_QPE_03H", "Radar precipitation accumulation 3-hour", "mm", UC_NONE},
+             {209, 6, 4, "RadarOnly_QPE_06H", "Radar precipitation accumulation 6-hour", "mm", UC_NONE},
+             {209, 6, 5, "RadarOnly_QPE_12H", "Radar precipitation accumulation 12-hour", "mm", UC_NONE},
+             {209, 6, 6, "RadarOnly_QPE_24H", "Radar precipitation accumulation 24-hour", "mm", UC_NONE},
+             {209, 6, 7, "RadarOnly_QPE_48H", "Radar precipitation accumulation 48-hour", "mm", UC_NONE},
+             {209, 6, 8, "RadarOnly_QPE_72H", "Radar precipitation accumulation 72-hour", "mm", UC_NONE},
+             {209, 6, 9, "GaugeCorrQPE01H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 1-hour", "mm", UC_NONE},
+             {209, 6, 10, "GaugeCorrQPE03H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 3-hour", "mm", UC_NONE},
+             {209, 6, 11, "GaugeCorrQPE06H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 6-hour", "mm", UC_NONE},
+             {209, 6, 12, "GaugeCorrQPE12H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 12-hour", "mm", UC_NONE},
+             {209, 6, 13, "GaugeCorrQPE24H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 24-hour", "mm", UC_NONE},
+             {209, 6, 14, "GaugeCorrQPE48H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 48-hour", "mm", UC_NONE},
+             {209, 6, 15, "GaugeCorrQPE72H", "Local Gauge Bias Corrected Radar Precipitation Accumulation 72-hour", "mm", UC_NONE},
+             {209, 6, 16, "GaugeOnlyQPE01H", "Gauge Only Precipitation Accumulation 1-hour", "mm", UC_NONE},
+             {209, 6, 17, "GaugeOnlyQPE03H", "Gauge Only Precipitation Accumulation 3-hour", "mm", UC_NONE},
+             {209, 6, 18, "GaugeOnlyQPE06H", "Gauge Only Precipitation Accumulation 6-hour", "mm", UC_NONE},
+             {209, 6, 19, "GaugeOnlyQPE12H", "Gauge Only Precipitation Accumulation 12-hour", "mm", UC_NONE},
+             {209, 6, 20, "GaugeOnlyQPE24H", "Gauge Only Precipitation Accumulation 24-hour", "mm", UC_NONE},
+             {209, 6, 21, "GaugeOnlyQPE48H", "Gauge Only Precipitation Accumulation 48-hour", "mm", UC_NONE},
+             {209, 6, 22, "GaugeOnlyQPE72H", "Gauge Only Precipitation Accumulation 72-hour", "mm", UC_NONE},
+             {209, 6, 23, "MountainMapperQPE01H", "Mountain Mapper Precipitation Accumulation 1-hour", "mm", UC_NONE},
+             {209, 6, 24, "MountainMapperQPE03H", "Mountain Mapper Precipitation Accumulation 3-hour", "mm", UC_NONE},
+             {209, 6, 25, "MountainMapperQPE06H", "Mountain Mapper Precipitation Accumulation 6-hour", "mm", UC_NONE},
+             {209, 6, 26, "MountainMapperQPE12H", "Mountain Mapper Precipitation Accumulation 12-hour", "mm", UC_NONE},
+             {209, 6, 27, "MountainMapperQPE24H", "Mountain Mapper Precipitation Accumulation 24-hour", "mm", UC_NONE},
+             {209, 6, 28, "MountainMapperQPE48H", "Mountain Mapper Precipitation Accumulation 48-hour", "mm", UC_NONE},
+             {209, 6, 29, "MountainMapperQPE72H", "Mountain Mapper Precipitation Accumulation 72-hour", "mm", UC_NONE},
+             {209, 6, 30, "MultiSensor_QPE_01H_Pass1", "Multi-sensor accumulation 1-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 31, "MultiSensor_QPE_03H_Pass1", "Multi-sensor accumulation 3-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 32, "MultiSensor_QPE_06H_Pass1", "Multi-sensor accumulation 6-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 33, "MultiSensor_QPE_12H_Pass1", "Multi-sensor accumulation 12-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 34, "MultiSensor_QPE_24H_Pass1", "Multi-sensor accumulation 24-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 35, "MultiSensor_QPE_48H_Pass1", "Multi-sensor accumulation 48-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 36, "MultiSensor_QPE_72H_Pass1", "Multi-sensor accumulation 72-hour (1-hour latency)", "mm", UC_NONE},
+             {209, 6, 37, "MultiSensor_QPE_01H_Pass2", "Multi-sensor accumulation 1-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 38, "MultiSensor_QPE_03H_Pass2", "Multi-sensor accumulation 3-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 39, "MultiSensor_QPE_06H_Pass2", "Multi-sensor accumulation 6-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 40, "MultiSensor_QPE_12H_Pass2", "Multi-sensor accumulation 12-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 41, "MultiSensor_QPE_24H_Pass2", "Multi-sensor accumulation 24-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 42, "MultiSensor_QPE_48H_Pass2", "Multi-sensor accumulation 48-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 43, "MultiSensor_QPE_72H_Pass2", "Multi-sensor accumulation 72-hour (2-hour latency)", "mm", UC_NONE},
+             {209, 6, 44, "SyntheticPrecipRateID", "Method IDs for blended single and dual-pol derived precip rates ", "flag", UC_NONE},
+             {209, 6, 45, "RadarOnly_QPE_15M", "Radar precipitation accumulation 15-minute", "mm", UC_NONE},
+             {209, 7, 0, "Model_SurfaceTemp", "Model Surface temperature", "C", UC_NONE},
+             {209, 7, 1, "Model_WetBulbTemp", "Model Surface wet bulb temperature", "C", UC_NONE},
+             {209, 7, 2, "WarmRainProbability", "Probability of warm rain", "%", UC_NONE},
+             {209, 7, 3, "Model_0degC_Height", "Model Freezing Level Height", "m MSL", UC_NONE},
+             {209, 7, 4, "BrightBandTopHeight", "Brightband Top Height", "m AGL", UC_NONE},
+             {209, 7, 5, "BrightBandBottomHeight", "Brightband Bottom Height", "m AGL", UC_NONE},
+             {209, 8, 0, "RadarQualityIndex", "Radar Quality Index", "non-dim", UC_NONE},
+             {209, 8, 1, "GaugeInflIndex_01H_Pass1", "Gauge Influence Index for 1-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 2, "GaugeInflIndex_03H_Pass1", "Gauge Influence Index for 3-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 3, "GaugeInflIndex_06H_Pass1", "Gauge Influence Index for 6-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 4, "GaugeInflIndex_12H_Pass1", "Gauge Influence Index for 12-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 5, "GaugeInflIndex_24H_Pass1", "Gauge Influence Index for 24-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 6, "GaugeInflIndex_48H_Pass1", "Gauge Influence Index for 48-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 7, "GaugeInflIndex_72H_Pass1", "Gauge Influence Index for 72-hour QPE (1-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 8, "SeamlessHSR", "Seamless Hybrid Scan Reflectivity with VPR correction", "dBZ", UC_NONE},
+             {209, 8, 9, "SeamlessHSRHeight", "Height of Seamless Hybrid Scan Reflectivity", "km AGL", UC_NONE},
+             {209, 8, 10, "RadarAccumulationQualityIndex_01H", "Radar 1-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 11, "RadarAccumulationQualityIndex_03H", "Radar 3-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 12, "RadarAccumulationQualityIndex_06H", "Radar 6-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 13, "RadarAccumulationQualityIndex_12H", "Radar 12-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 14, "RadarAccumulationQualityIndex_24H", "Radar 24-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 15, "RadarAccumulationQualityIndex_48H", "Radar 48-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 16, "RadarAccumulationQualityIndex_72H", "Radar 72-hour QPE Accumulation Quality", "non-dim", UC_NONE},
+             {209, 8, 17, "GaugeInflIndex_01H_Pass2", "Gauge Influence Index for 1-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 18, "GaugeInflIndex_03H_Pass2", "Gauge Influence Index for 3-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 19, "GaugeInflIndex_06H_Pass2", "Gauge Influence Index for 6-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 20, "GaugeInflIndex_12H_Pass2", "Gauge Influence Index for 12-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 21, "GaugeInflIndex_24H_Pass2", "Gauge Influence Index for 24-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 22, "GaugeInflIndex_48H_Pass2", "Gauge Influence Index for 48-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 8, 23, "GaugeInflIndex_72H_Pass2", "Gauge Influence Index for 72-hour QPE (2-hour latency)", "non-dim", UC_NONE},
+             {209, 9, 0, "MergedReflectivityQC", "3D Reflectivty Mosaic - 33 CAPPIS (500-19000m)", "dBZ", UC_NONE},
+             {209, 9, 1, "CONUSPlusMergedReflectivityQC", "All Radar 3D Reflectivity Mosaic - 33 CAPPIS (500-19000m)", "dBZ", UC_NONE},
+             {209, 9, 3, "MergedRhoHV,5-min", "33 levels (one file per level)", "-99", UC_NONE},
+             {209, 9, 4, "MergedZdr,5-min", "33 levels (one file per level)", "-99", UC_NONE},
+             {209, 10, 0, "MergedReflectivityQCComposite", "Composite Reflectivity Mosaic (optimal method)", "dBZ", UC_NONE},
+             {209, 10, 1, "HeightCompositeReflectivity", "Height of Composite Reflectivity Mosaic (optimal method)", "m MSL", UC_NONE},
+             {209, 10, 2, "LowLevelCompositeReflectivity", "Low-Level Composite Reflectivity Mosaic (0-4km)", "dBZ", UC_NONE},
+             {209, 10, 3, "HeightLowLevelCompositeReflectivity", "Height of Low-Level Composite Reflectivity Mosaic (0-4km)", "m MSL", UC_NONE},
+             {209, 10, 4, "LayerCompositeReflectivity_Low", "Layer Composite Reflectivity Mosaic 0-24kft (low altitude)", "dBZ", UC_NONE},
+             {209, 10, 5, "LayerCompositeReflectivity_High", "Layer Composite Reflectivity Mosaic 24-60 kft (highest altitude)", "dBZ", UC_NONE},
+             {209, 10, 6, "LayerCompositeReflectivity_Super", "Layer Composite Reflectivity Mosaic 33-60 kft (super high altitude)", "dBZ", UC_NONE},
+             {209, 10, 7, "CREF_1HR_MAX", "Composite Reflectivity Hourly Maximum", "dBZ", UC_NONE},
+             {209, 10, 8, "ReflectivityMaxAboveM10C", "Maximum Reflectivity at -10 deg C height and above", "dBZ", UC_NONE},
+             {209, 10, 9, "LayerCompositeReflectivity_ANC", "Layer Composite Reflectivity Mosaic (2-4.5km) (for ANC)", "dBZ", UC_NONE},
+             {209, 10, 10, "BREF_1HR_MAX", "Base Reflectivity Hourly Maximum", "dBZ", UC_NONE},
+             {209, 11, 0, "MergedBaseReflectivityQC", "Base Reflectivity Mosaic (optimal method)", "dBZ", UC_NONE},
+             {209, 11, 1, "MergedReflectivityComposite", "Raw Composite Reflectivity Mosaic (max ref)", "dBZ", UC_NONE},
+             {209, 11, 2, "MergedReflectivityQComposite", "Composite Reflectivity Mosaic (max ref)", "dBZ", UC_NONE},
+             {209, 11, 3, "MergedBaseReflectivity", "Raw Base Reflectivity Mosaic (optimal method)", "dBZ", UC_NONE},
+             {209, 12, 0, "FLASH_CREST_MAXUNITSTREAMFLOW", "FLASH QPE-CREST Unit Streamflow", "m^3/s/km^2", UC_NONE},
+             {209, 12, 1, "FLASH_CREST_MAXSTREAMFLOW", "FLASH QPE-CREST Streamflow", "m^3/s", UC_NONE},
+             {209, 12, 2, "FLASH_CREST_MAXSOILSAT", "FLASH QPE-CREST Soil Saturation", "%", UC_NONE},
+             {209, 12, 4, "FLASH_SAC_MAXUNITSTREAMFLOW", "FLASH QPE-SAC Unit Streamflow", "m^3/s/km^2", UC_NONE},
+             {209, 12, 5, "FLASH_SAC_MAXSTREAMFLOW", "FLASH QPE-SAC Streamflow", "m^3/s", UC_NONE},
+             {209, 12, 6, "FLASH_SAC_MAXSOILSAT", "FLASH QPE-SAC Soil Saturation", "%", UC_NONE},
+             {209, 12, 14, "FLASH_QPE_ARI30M", "FLASH QPE Average Recurrence Interval 30-min", "years", UC_NONE},
+             {209, 12, 15, "FLASH_QPE_ARI01H", "FLASH QPE Average Recurrence Interval 01H", "years", UC_NONE},
+             {209, 12, 16, "FLASH_QPE_ARI03H", "FLASH QPE Average Recurrence Interval 03H", "years", UC_NONE},
+             {209, 12, 17, "FLASH_QPE_ARI06H", "FLASH QPE Average Recurrence Interval 06H", "years", UC_NONE},
+             {209, 12, 18, "FLASH_QPE_ARI12H", "FLASH QPE Average Recurrence Interval 12H", "years", UC_NONE},
+             {209, 12, 19, "FLASH_QPE_ARI24H", "FLASH QPE Average Recurrence Interval 24H", "years", UC_NONE},
+             {209, 12, 20, "FLASH_QPE_ARIMAX", "FLASH QPE Average Recurrence Interval Maximum", "years", UC_NONE},
+             {209, 12, 26, "FLASH_QPE_FFG01H", "FLASH QPE-to-FFG Ratio 01H", "non-dim", UC_NONE},
+             {209, 12, 27, "FLASH_QPE_FFG03H", "FLASH QPE-to-FFG Ratio 03H", "non-dim", UC_NONE},
+             {209, 12, 28, "FLASH_QPE_FFG06H", "FLASH QPE-to-FFG Ratio 06H", "non-dim", UC_NONE},
+             {209, 12, 29, "FLASH_QPE_FFGMAX", "FLASH QPE-to-FFG Ratio Maximum", "non-dim", UC_NONE},
+             {209, 12, 39, "FLASH_HP_MAXUNITSTREAMFLOW", "FLASH QPE-Hydrophobic Unit Streamflow", "m^3/s/km^2", UC_NONE},
+             {209, 12, 40, "FLASH_HP_MAXSTREAMFLOW", "FLASH QPE-Hydrophobic Streamflow", "m^3/s", UC_NONE},
+             {209, 13, 0, "ANC_ConvectiveLikelihood", "Likelihood of convection over the next 01H", "non-dim", UC_NONE},
+             {209, 13, 1, "ANC_FinalForecast", "01H reflectivity forecast", "dBZ", UC_NONE},
+             {209, 14, 0, "LVL3_HREET", "Level III High Resolution Enhanced Echo Top mosaic", "kft", UC_NONE},
+             {209, 14, 1, "LVL3_HighResVIL", "Level III High Resouion VIL mosaic", "kg/m^2", UC_NONE},
 };
 
 /*
@@ -1926,6 +2268,15 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
  * descriptor, but the NDFD 'Weather String' seems quite reasonable. */
 /*            {0, 1, 226, "PWTHER", "Predominant Weather", "-", UC_NONE},*/
             {0, 1, 226, "Wx", "Weather String", "-", UC_NONE},
+            {0, 1, 227, "FROZR", "Frozen Rain", "kg/(m^2)", UC_NONE},
+            {0, 1, 228, "FICEAC", "Flat Ice Accumulation (FRAM)", "kg/(m^2)", UC_NONE},
+            {0, 1, 229, "LICEAC", "Line Ice Accumulation (FRAM)", "kg/(m^2)", UC_NONE},
+            {0, 1, 230, "SLACC", "Sleet Accumulation", "kg/(m^2)", UC_NONE},
+            {0, 1, 231, "PPINDX", "Precipitation Potential Index", "%", UC_NONE},
+            {0, 1, 232, "PROBCIP", "Probability Cloud Ice Present", "%", UC_NONE},
+            {0, 1, 233, "SNOWLR", "Snow Liquid ratio", "kg/kg", UC_NONE},
+            {0, 1, 241, "TSNOW", "Total Snow", "kg/(m^2)", UC_NONE},
+            {0, 1, 242, "RHPW", "Relative Humidity with Respect to Precipitable Water", "%", UC_NONE},
 
    /* 15 */ {0, 2, 192, "VWSH", "Vertical speed sheer", "1/s", UC_NONE},
    /* 16 */ {0, 2, 193, "MFLX", "Horizontal Momentum Flux", "N/(m^2)", UC_NONE},
@@ -1955,6 +2306,17 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
             {0, 2, 217, "CNGWDV", "Convective Gravity wave drag meridional acceleration", "m/s^2", UC_NONE},
             {0, 2, 218, "LMV", "Velocity point model surface", "-", UC_NONE},
             {0, 2, 219, "PVMWW", "Potential vorticity (mass-weighted)", "1/(s/m)", UC_NONE},
+            {0, 2, 220, "MAXUVV", "Hourly Maximum of Downward Vertical Velocity in the lowest 400hPa", "m/s", UC_NONE},
+            {0, 2, 221, "MAXDVV", "Hourly Maximum of Downward Vertical Velocity", "m/s", UC_NONE}, 
+            {0, 2, 222, "MAXUW", "U Component of Hourly Maximum 10m Wind Speed", "m/s", UC_NONE}, 
+            {0, 2, 223, "MAXVW", "V Component of Hourly Maximum 10m Wind Speed", "m/s", UC_NONE}, 
+            {0, 2, 224, "VRATE", "Ventilation Rate", "m^2/s", UC_NONE}, 
+            {0, 2, 225, "TRWSPD", "Transport Wind Speed", "m/s", UC_NONE}, 
+            {0, 2, 226, "TRWDIR", "Transport Wind Direction", "deg", UC_NONE}, 
+            {0, 2, 227, "TOA10", "Earliest Reasonable Arrival Time (10% exceedance)", "s", UC_NONE}, 
+            {0, 2, 228, "TOA50", "Most Likely Arrival Time (50% exceedance)", "s", UC_NONE}, 
+            {0, 2, 229, "TOD50", "Most Likely Departure Time (50% exceedance)", "s", UC_NONE}, 
+            {0, 2, 230, "TOD90", "Latest Reasonable Departure Time (90% exceedance)", "s", UC_NONE}, 
 /* Removed 8/19/2008 */ /*           {0, 2, 220, "MFLX", "Momentum flux", "N/m^2", UC_NONE},*/
 
    /* 21 */ {0, 3, 192, "MSLET", "MSLP (Eta model reduction)", "Pa", UC_NONE},
@@ -1978,6 +2340,15 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
             {0, 3, 210, "LMH", "Mass point model surface", "-", UC_NONE},
             {0, 3, 211, "HGTN", "Geopotential height (nearest grid point)", "gpm", UC_NONE},
             {0, 3, 212, "PRESN", "Pressure (nearest grid point)", "Pa", UC_NONE},
+            {0, 3, 213, "ORCONV", "Orographic Convexity", "", UC_NONE},
+            {0, 3, 214, "ORASW", "Orographic Asymmetry, W Component", "", UC_NONE},
+            {0, 3, 215, "ORASS", "Orographic Asymmetry, S Component", "", UC_NONE},
+            {0, 3, 216, "ORASSW", "Orographic Asymmetry, SW Component", "", UC_NONE},
+            {0, 3, 217, "ORASNW", "Orographic Asymmetry, NW Component", "", UC_NONE},
+            {0, 3, 218, "ORLSW", "Orographic Length Scale, W Component", "", UC_NONE},
+            {0, 3, 219, "ORLSS", "Orographic Length Scale, S Component", "", UC_NONE},
+            {0, 3, 220, "ORLSSW", "Orographic Length Scale, SW Component", "", UC_NONE},
+            {0, 3, 221, "ORLSNW", "Orographic Length Scale, NW Component", "", UC_NONE},
 
    /* 27 */ {0, 4, 192, "DSWRF", "Downward Short-Wave Rad. Flux", "W/(m^2)", UC_NONE},
    /* 28 */ {0, 4, 193, "USWRF", "Upward Short-Wave Rad. Flux", "W/(m^2)", UC_NONE},
@@ -2019,6 +2390,10 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
             {0, 7, 196, "UVI", "Ultra Violet Index", "W/(m^2)", UC_UVIndex},
             {0, 7, 197, "UPHL", "Updraft Helicity", "m^2/s^2", UC_NONE},
             {0, 7, 198, "LAI", "Leaf area index", "-", UC_NONE},
+            {0, 7, 199, "MXUPHL", "Hourly Maximum of Updraft Helicity over Layer 2km to 5 km AGL", "m^2/s^2", UC_NONE},
+            {0, 7, 200, "MNUPHL", "Hourly Minimum of Updraft Helicity", "m^2/s^2", UC_NONE},
+            {0, 7, 201, "BNEGLAY", "Bourgoiun Negative Energy Layer (surface to freezing level)", "J/kg", UC_NONE},
+            {0, 7, 202, "BPOSELAY", "Bourgoiun Positive Energy Layer (2k ft AGL to 400 hPa)", "J/kg", UC_NONE},
 
             {0, 13, 192, "PMTC", "Particulate matter (coarse)", "10^-6g/m^3", UC_NONE},
             {0, 13, 193, "PMTF", "Particulate matter (fine)", "10^-6g/m^3", UC_NONE},
@@ -2046,6 +2421,7 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
             {0, 16, 195, "REFD", "Derived radar reflectivity", "dB", UC_NONE},
             {0, 16, 196, "REFC", "Maximum / Composite radar reflectivity", "dB", UC_NONE},
             {0, 16, 197, "RETOP", "Radar Echo Top (18.3 DBZ)", "m", UC_NONE},
+            {0, 16, 198, "MAXREF", "Hourly Maximum of Simulated Reflectivity at 1 km AGL", "dB", UC_NONE},
 
             {0, 17, 192, "LTNG", "Lightning", "-", UC_NONE},
 
@@ -2114,7 +2490,10 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
 */
             {0, 19, 232, "VAFTD", "Volcanic Ash Forecast Transport and Dispersion", "log10(kg/m^3)", UC_NONE},
             {0, 19, 233, "ICPRB", "Icing probability", "-", UC_NONE},
-            {0, 19, 234, "ICSEV", "Icing severity", "-", UC_NONE},
+            {0, 19, 234, "ICSEV", "Icing severity", "-", UC_NONE}, 
+            {0, 19, 235, "JFWPRB", "Joint Fire Weather Probability", "%", UC_NONE}, 
+            {0, 19, 236, "SNOWLVL", "Snow Level", "m", UC_NONE}, 
+            {0, 19, 237, "DRYTPROB", "Dry Thunderstorm Probability", "%", UC_NONE}, 
 
    /* 47 */ {0, 191, 192, "NLAT", "Latitude (-90 to 90)", "deg", UC_NONE},
    /* 48 */ {0, 191, 193, "ELON", "East Longitude (0 to 360)", "deg", UC_NONE},
@@ -2204,6 +2583,7 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
 /* ScatEstUWind -> USCT, ScatEstVWind -> VSCT as of 7/5/2006 (pre 1.80) */
    /* 72 */ {3, 1, 192, "USCT", "Scatterometer Estimated U Wind", "m/s", UC_NONE},
    /* 73 */ {3, 1, 193, "VSCT", "Scatterometer Estimated V Wind", "m/s", UC_NONE},
+            {3, 1, 194, "SWQI", "Scatterometer Wind Quality", "", UC_NONE},
 
 /* table 4.2 : 3.192 according to NCEP is "Forecast Satellite Imagery". */
             {3, 192, 0, "SBT122", "Simulated Brightness Temperature for GOES 12, Channel 2", "K", UC_NONE},
@@ -2212,8 +2592,49 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
             {3, 192, 3, "SBT125", "Simulated Brightness Temperature for GOES 12, Channel 5", "K", UC_NONE},
             {3, 192, 4, "SBC123", "Simulated Brightness Counts for GOES 12, Channel 3", "numeric", UC_NONE},
             {3, 192, 5, "SBC124", "Simulated Brightness Counts for GOES 12, Channel 4", "numeric", UC_NONE},
+            {3, 192, 6, "SBT112", "Simulated Brightness Temperature for GOES 11, Channel 2", "K", UC_NONE},
+            {3, 192, 7, "SBT113", "Simulated Brightness Temperature for GOES 11, Channel 3", "K", UC_NONE},
+            {3, 192, 8, "SBT114", "Simulated Brightness Temperature for GOES 11, Channel 4", "K", UC_NONE},
+            {3, 192, 9, "SBT115", "Simulated Brightness Temperature for GOES 11, Channel 5", "K", UC_NONE},
+            {3, 192, 10, "AMSRE9", "Simulated Brightness Temperature for AMSRE on Aqua, Channel 9", "K", UC_NONE},
+            {3, 192, 11, "AMSRE10", "Simulated Brightness Temperature for AMSRE on Aqua, Channel 10", "K", UC_NONE},
+            {3, 192, 12, "AMSRE11", "Simulated Brightness Temperature for AMSRE on Aqua, Channel 11", "K", UC_NONE},
+            {3, 192, 13, "AMSRE12", "Simulated Brightness Temperature for AMSRE on Aqua, Channel 12", "K", UC_NONE},
+            {3, 192, 14, "SRFA161", "Simulated Reflectance Factor for ABI GOES-16, Band-1", "", UC_NONE},
+            {3, 192, 15, "SRFA162", "Simulated Reflectance Factor for ABI GOES-16, Band-2", "", UC_NONE},
+            {3, 192, 16, "SRFA163", "Simulated Reflectance Factor for ABI GOES-16, Band-3", "", UC_NONE},
+            {3, 192, 17, "SRFA164", "Simulated Reflectance Factor for ABI GOES-16, Band-4", "", UC_NONE},
+            {3, 192, 18, "SRFA165", "Simulated Reflectance Factor for ABI GOES-16, Band-5", "", UC_NONE},
+            {3, 192, 19, "SRFA166", "Simulated Reflectance Factor for ABI GOES-16, Band-6", "", UC_NONE},
+            {3, 192, 20, "SBTA167", "Simulated Brightness Temperature for ABI GOES-16, Band-7", "K", UC_NONE},
+            {3, 192, 21, "SBTA168", "Simulated Brightness Temperature for ABI GOES-16, Band-8", "K", UC_NONE},
+            {3, 192, 22, "SBTA169", "Simulated Brightness Temperature for ABI GOES-16, Band-9", "K", UC_NONE},
+            {3, 192, 23, "SBTA1610", "Simulated Brightness Temperature for ABI GOES-16, Band-10", "K", UC_NONE},
+            {3, 192, 24, "SBTA1611", "Simulated Brightness Temperature for ABI GOES-16, Band-11", "K", UC_NONE},
+            {3, 192, 25, "SBTA1612", "Simulated Brightness Temperature for ABI GOES-16, Band-12", "K", UC_NONE},
+            {3, 192, 26, "SBTA1613", "Simulated Brightness Temperature for ABI GOES-16, Band-13", "K", UC_NONE},
+            {3, 192, 27, "SBTA1614", "Simulated Brightness Temperature for ABI GOES-16, Band-14", "K", UC_NONE},
+            {3, 192, 28, "SBTA1615", "Simulated Brightness Temperature for ABI GOES-16, Band-15", "K", UC_NONE},
+            {3, 192, 29, "SBTA1616", "Simulated Brightness Temperature for ABI GOES-16, Band-16", "K", UC_NONE},
+            {3, 192, 30, "SRFA171", "Simulated Reflectance Factor for ABI GOES-17, Band-1", "", UC_NONE},
+            {3, 192, 31, "SRFA172", "Simulated Reflectance Factor for ABI GOES-17, Band-2", "", UC_NONE},
+            {3, 192, 32, "SRFA173", "Simulated Reflectance Factor for ABI GOES-17, Band-3", "", UC_NONE},
+            {3, 192, 33, "SRFA174", "Simulated Reflectance Factor for ABI GOES-17, Band-4", "", UC_NONE},
+            {3, 192, 34, "SRFA175", "Simulated Reflectance Factor for ABI GOES-17, Band-5", "", UC_NONE},
+            {3, 192, 35, "SRFA176", "Simulated Reflectance Factor for ABI GOES-17, Band-6", "", UC_NONE},
+            {3, 192, 36, "SBTA177", "Simulated Brightness Temperature for ABI GOES-17, Band-7", "K", UC_NONE},
+            {3, 192, 37, "SBTA178", "Simulated Brightness Temperature for ABI GOES-17, Band-8", "K", UC_NONE},
+            {3, 192, 38, "SBTA179", "Simulated Brightness Temperature for ABI GOES-17, Band-9", "K", UC_NONE},
+            {3, 192, 39, "SBTA1710", "Simulated Brightness Temperature for ABI GOES-17, Band-10", "K", UC_NONE},
+            {3, 192, 40, "SBTA1711", "Simulated Brightness Temperature for ABI GOES-17, Band-11", "K", UC_NONE},
+            {3, 192, 41, "SBTA1712", "Simulated Brightness Temperature for ABI GOES-17, Band-12", "K", UC_NONE},
+            {3, 192, 42, "SBTA1713", "Simulated Brightness Temperature for ABI GOES-17, Band-13", "K", UC_NONE},
+            {3, 192, 43, "SBTA1714", "Simulated Brightness Temperature for ABI GOES-17, Band-14", "K", UC_NONE},
+            {3, 192, 44, "SBTA1715", "Simulated Brightness Temperature for ABI GOES-17, Band-15", "K", UC_NONE},
+            {3, 192, 45, "SBTA1716", "Simulated Brightness Temperature for ABI GOES-17, Band-16", "K", UC_NONE},
 
            {10, 0, 192, "WSTP", "Wave Steepness", "0", UC_NONE},
+           {10, 0, 193, "WLENG", "Wave Length", "0", UC_NONE},
 
 /* The following entry was moved to 10,3,196 */
 /*
@@ -2241,6 +2662,7 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
            {10, 3, 200, "SSST", "Surface Salinity Trend", "psu/day", UC_NONE},
            {10, 3, 201, "KENG", "Kinetic Energy", "J/kg", UC_NONE},
            {10, 3, 202, "SLTFL", "Salt Flux", "kg/(m^2*s)", UC_NONE},
+           {10, 3, 203, "LCH", "Heat Exchange Coefficient", "", UC_NONE},
 
            {10, 3, 242, "TCSRG20", "20% Tropical Cyclone Storm Surge Exceedance", "m", UC_M2Feet},
            {10, 3, 243, "TCSRG30", "30% Tropical Cyclone Storm Surge Exceedance", "m", UC_M2Feet},
@@ -2250,6 +2672,10 @@ static const GRIB2LocalTable NCEP_LclTable[] = {
            {10, 3, 247, "TCSRG70", "70% Tropical Cyclone Storm Surge Exceedance", "m", UC_M2Feet},
            {10, 3, 248, "TCSRG80", "80% Tropical Cyclone Storm Surge Exceedance", "m", UC_M2Feet},
            {10, 3, 249, "TCSRG90", "90% Tropical Cyclone Storm Surge Exceedance", "m", UC_M2Feet},
+           {10, 3, 250, "ETCWL", "Extra Tropical Storm Surge Combined Surge and Tide", "m", UC_M2Feet},
+           {10, 3, 251, "TIDE", "Tide", "m", UC_M2Feet},
+           {10, 3, 252, "EROSNP", "Erosion Occurrence Probability", "%", UC_NONE},
+           {10, 3, 253, "OWASHP", "Overwash Occurrence Probability", "%", UC_NONE},
 
            {10, 4, 192, "WTMPC", "3-D Temperature", "deg C", UC_NONE},
            {10, 4, 193, "SALIN", "3-D Salinity", "", UC_NONE},
@@ -2331,6 +2757,9 @@ static const GRIB2LocalTable *Choose_LocalParmTable (unsigned short int center,
                *tableLen = 0;
                return nullptr;
          }
+      case 54:
+         *tableLen = sizeof (Canada_LclTable) / sizeof (GRIB2LocalTable);
+         return &Canada_LclTable[0];
       case 161:
          *tableLen = sizeof (MRMS_LclTable) / sizeof (GRIB2LocalTable);
          return &MRMS_LclTable[0];
@@ -2436,7 +2865,6 @@ static void ElemNameProb (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
                mallocSprintf (name, "ProbPrcpBlw");
                mallocSprintf (comment, "Prob of precip below average");
             }
-            *convert = UC_NONE;
          } else if (probType == 3) {
             if (lenTime > 0) {
                if (timeRangeUnit == 3) {
@@ -2453,7 +2881,6 @@ static void ElemNameProb (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
                mallocSprintf (name, "ProbPrcpAbv");
                mallocSprintf (comment, "Prob of precip above average");
             }
-            *convert = UC_NONE;
          } else {
             myAssert (probType == 1);
             if (lenTime > 0) {
@@ -2495,7 +2922,6 @@ static void ElemNameProb (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
                }
                mallocSprintf (comment, "Prob of Precip > %g In.", upperProb / 25.4);
             }
-            *convert = UC_NONE;
          }
          *convert = UC_NONE;
          return;
@@ -2771,6 +3197,24 @@ static void ElemNamePerc (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
              IsData_MOS (center, subcenter)) {
             for (i = 0; i < (sizeof (NDFD_Override) /
                              sizeof (NDFD_AbrevOverrideTable)); i++) {
+               if (strcmp (table[subcat].name, "ASNOW") == 0) {
+                 if (timeRangeUnit == 3) {
+                    mallocSprintf (name, "%s%02dm%s%02dm", "Snow", lenTime, "e", percentile);
+                    mallocSprintf (comment, "%02d mon %s Percentile(%d)", lenTime,
+                                 table[subcat].comment, percentile);
+                 } else if (timeRangeUnit == 4) {
+                    mallocSprintf (name, "%s%02dy%s%02dy", "Snow", lenTime, "e", percentile);
+                    mallocSprintf (comment, "%02d yr %s Percentile(%d)", lenTime,
+                                   table[subcat].comment, percentile);
+                 } else {
+                    mallocSprintf (name, "%s%02d%s%02d", "Snow", lenTime, "e", percentile);
+                    mallocSprintf (comment, "%02d hr %s Percentile(%d)", lenTime,
+                                   table[subcat].comment, percentile);
+                 }
+                 mallocSprintf (unit, "[%s]", table[subcat].unit);
+                 *convert = table[subcat].convert;
+                 return;
+               }
                if (strcmp (NDFD_Override[i].GRIB2name, table[subcat].name) ==
                    0) {
                   mallocSprintf (name, "%s%02d", NDFD_Override[i].NDFDname,
@@ -3138,7 +3582,9 @@ void ParseElemName (CPL_UNUSED uChar mstrVersion, uShort2 center, uShort2 subcen
                     int templat, int cat, int subcat, sInt4 lenTime,
                     uChar timeRangeUnit, CPL_UNUSED uChar statProcessID,
                     uChar timeIncrType, uChar genID, uChar probType,
-                    double lowerProb, double upperProb, char **name,
+                    double lowerProb, double upperProb,
+                    uChar derivedFcst,
+                    char **name,
                     char **comment, char **unit, int *convert,
                     sChar percentile, uChar genProcess,
                     sChar f_fstValue, double fstSurfValue,
@@ -3172,6 +3618,34 @@ void ParseElemName (CPL_UNUSED uChar mstrVersion, uShort2 center, uShort2 subcen
                     upperProb, name, comment, unit, convert, f_fstValue, fstSurfValue,
                        f_sndValue, sndSurfValue);
    }
+
+   // https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-7.shtml
+   if( derivedFcst == 2 // Standard Deviation with respect to Cluster Mean
+       || derivedFcst == 3 // Standard Deviation with respect to Cluster Mean, Normalized
+       || derivedFcst == 4 // Spread of All Members
+       || derivedFcst == 5 // Large Anomaly Index of All Members
+       || derivedFcst == 7 // Interquartile Range (Range between the 25th and 75th quantile)
+   )
+   {
+        const char* overrideUnit = nullptr;
+        switch( derivedFcst )
+        {
+            case 2: overrideUnit = "[stddev]"; break;
+            case 3: overrideUnit = "[stddev normalized]"; break;
+            case 4: overrideUnit = "[spread]"; break;
+            case 5: overrideUnit = "[large anomaly index]"; break;
+            case 7: overrideUnit = "[interquantile range]"; break;
+            default: break;
+        }
+        if( overrideUnit )
+        {
+            free(*unit);
+            *unit = (char *) malloc (strlen (overrideUnit) + 1);
+            strcpy (*unit, overrideUnit);
+        }
+        *convert = UC_NONE;
+   }
+
    if ((genProcess == 6) || (genProcess == 7)) {
       *convert = UC_NONE;
       reallocSprintf (name, "ERR");
@@ -3598,49 +4072,56 @@ static int ComputeUnit2 (int prodType, int templat, int cat, int subcat,
 
 /* GRIB2 Code Table 4.5 */
 /* *INDENT-OFF* */
-static const GRIB2SurfTable Surface[] = {
-   /* 0 */ {"RESERVED", "Reserved", "-"},
-   /* 1 */ {"SFC", "Ground or water surface", "-"},
-   /* 2 */ {"CBL", "Cloud base level", "-"},
-   /* 3 */ {"CTL", "Level of cloud tops", "-"},
-   /* 4 */ {"0DEG", "Level of 0 degree C isotherm", "-"},
-   /* 5 */ {"ADCL", "Level of adiabatic condensation lifted from the surface", "-"},
-   /* 6 */ {"MWSL", "Maximum wind level", "-"},
-   /* 7 */ {"TRO", "Tropopause", "-"},
-   /* 8 */ {"NTAT", "Nominal top of atmosphere", "-"},
-   /* 9 */ {"SEAB", "Sea bottom", "-"},
-   /* 10: 10-19 */ {"RESERVED", "Reserved", "-"},
-   /* 11: 20 */ {"TMPL", "Isothermal level", "K"},
-   /* 12: 21-99 */ {"RESERVED", "Reserved", "-"},
-   /* 13: 100 */ {"ISBL", "Isobaric surface", "Pa"},
-   /* 14: 101 */ {"MSL", "Mean sea level", "-"},
-   /* 15: 102 */ {"GPML", "Specific altitude above mean sea level", "m"},
-   /* 16: 103 */ {"HTGL", "Specified height level above ground", "m"},
-   /* 17: 104 */ {"SIGL", "Sigma level", "'sigma' value"},
-   /* 18: 105 */ {"HYBL", "Hybrid level", "-"},
-   /* 19: 106 */ {"DBLL", "Depth below land surface", "m"},
-   /* 20: 107 */ {"THEL", "Isentropic (theta) level", "K"},
-   /* 21: 108 */ {"SPDL", "Level at specified pressure difference from ground to level", "Pa"},
-   /* 22: 109 */ {"PVL", "Potential vorticity surface", "(K m^2)/(kg s)"},
-   /* 23: 110 */ {"RESERVED", "Reserved", "-"},
-   /* 24: 111 */ {"EtaL", "Eta* level", "-"},
-   /* 25: 112-116 */ {"RESERVED", "Reserved", "-"},
-   /* 26: 117 */ {"unknown", "Mixed layer depth", "m"}, /* unknown abbrev */
-   /* 27: 118-159 */ {"RESERVED", "Reserved", "-"},
-   /* 28: 160 */ {"DBSL", "Depth below sea level", "m"},
-   /* 29: 161-191 */ {"RESERVED", "Reserved", "-"},
-   /* 30: 192-254 */ {"RESERVED", "Reserved Local use", "-"},
-   /* 31: 255 */ {"MISSING", "Missing", "-"},
-};
+
 
 typedef struct {
    int index;
    GRIB2SurfTable surface;
-} GRIB2LocalSurface;
+} GRIB2SurfTableWithIdx;
 
-/* based on http://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_table4-5.shtml
- * updated last on 3/14/2006 */
-static const GRIB2LocalSurface NCEP_Surface[] = {
+// Substantially changed by GDAL
+static const GRIB2SurfTableWithIdx Surface[] = {
+   {0, {"RESERVED", "Reserved", "-"}},
+   {1, {"SFC", "Ground or water surface", "-"}},
+   {2, {"CBL", "Cloud base level", "-"}},
+   {3, {"CTL", "Level of cloud tops", "-"}},
+   {4, {"0DEG", "Level of 0 degree C isotherm", "-"}},
+   {5, {"ADCL", "Level of adiabatic condensation lifted from the surface", "-"}},
+   {6, {"MWSL", "Maximum wind level", "-"}},
+   {7, {"TRO", "Tropopause", "-"}},
+   {8, {"NTAT", "Nominal top of atmosphere", "-"}},
+   {9, {"SEAB", "Sea bottom", "-"}},
+   {10, {"EATM", "Entire Atmosphere", "-"}},
+   {11, {"CB", "Cumulonimbus Base", "m"}},
+   {12, {"CT", "Cumulonimbus Top", "m"}},
+   {13, {"unknown", "Lowest level where vertically integrated cloud cover exceeds the specified percentage (cloud base for a given percentage cloud cover)", "%"}},
+   {14, {"LFC", "Level of free convection", "-"}},
+   {15, {"CCL", "Convection condensation level", "-"}},
+   {16, {"LNB", "Level of neutral buoyancy or equilibrium", "-"}},
+   {17, {"RESERVED", "Reserved", "-"}},
+   {20, {"TMPL", "Isothermal level", "K"}},
+   {21, {"RESERVED", "Reserved", "-"}},
+   {100, {"ISBL", "Isobaric surface", "Pa"}},
+   {101, {"MSL", "Mean sea level", "-"}},
+   {102, {"GPML", "Specific altitude above mean sea level", "m"}},
+   {103, {"HTGL", "Specified height level above ground", "m"}},
+   {104, {"SIGL", "Sigma level", "'sigma' value"}},
+   {105, {"HYBL", "Hybrid level", "-"}},
+   {106, {"DBLL", "Depth below land surface", "m"}},
+   {107, {"THEL", "Isentropic (theta) level", "K"}},
+   {108, {"SPDL", "Level at specified pressure difference from ground to level", "Pa"}},
+   {109, {"PVL", "Potential vorticity surface", "(K m^2)/(kg s)"}},
+   {110, {"RESERVED", "Reserved", "-"}},
+   {111, {"EtaL", "Eta* level", "-"}},
+   {112, {"RESERVED", "Reserved", "-"}},
+   {114, {"SNOWLVL", "Snow Level", "m"}},
+   {115, {"RESERVED", "Reserved", "-"}},
+   {117, {"unknown", "Mixed layer depth", "m"}}, /* unknown abbrev */
+   {118, {"RESERVED", "Reserved", "-"}},
+   {150, {"GVHC", "Generalized Vertical Height Coordinate", "-"}},
+   {160, {"DBSL", "Depth below sea level", "m"}},
+   {161, {"RESERVED", "Reserved", "-"}},
+   {192, {"RESERVED", "Reserved Local use", "-"}},
    {200, {"EATM", "Entire atmosphere (considered as a single layer)", "-"}},
    {201, {"EOCN", "Entire ocean (considered as a single layer)", "-"}},
    {204, {"HTFL", "Highest tropospheric freezing level", "-"}},
@@ -3675,6 +4156,7 @@ static const GRIB2LocalSurface NCEP_Surface[] = {
    {252, {"DCTL", "Deep convective cloud top level", "-"}},
    {253, {"LBLSW", "Lowest bottom level of supercooled liquid water layer", "-"}},
    {254, {"HTLSW", "Highest top level of supercooled liquid water layer", "-"}},
+   {255, {"MISSING", "Missing", "-"}},
 };
 /* *INDENT-ON* */
 
@@ -3713,59 +4195,33 @@ GRIB2SurfTable Table45Index (int i,
 #ifdef DEBUG
       printf ("Surface index is out of 0..255 range?\n");
 #endif
-      return Surface[0];
+      return Surface[0].surface;
    }
-   if (i == 255)
-      return Surface[31];
-   if (i > 191) {
-      if (center == 7) {
-         for (j = 0; j < sizeof (NCEP_Surface) / sizeof (NCEP_Surface[0]);
-              j++) {
-            if (i == NCEP_Surface[j].index) {
-               *f_reserved = 0;
-               return (NCEP_Surface[j].surface);
-            }
-         }
-      }
-      return Surface[30];
+
+   // Substantially changed by GDAL
+   *f_reserved = 0;
+   if( i > 191 && i < 255 &&center != 7) {
+        *f_reserved = 1;
+        return Surface[0].surface;
    }
-   if (i > 160)
-      return Surface[29];
-   if (i == 160) {
-      *f_reserved = 0;
-      return Surface[28];
+   for( j = sizeof(Surface) / sizeof(Surface[0]); j > 0; )
+   {
+       --j;
+       if( i >= Surface[j].index )
+       {
+           if( i > 191 && i < 255 )
+           {
+               if( i != Surface[j].index )
+               {
+                   *f_reserved = 1;
+                    return Surface[0].surface;
+               }
+           }
+           return Surface[j].surface;
+       }
    }
-   if (i > 117)
-      return Surface[27];
-   if (i == 117) {
-      *f_reserved = 0;
-      return Surface[26];
-   }
-   if (i > 111)
-      return Surface[25];
-   if (i == 111) {
-      *f_reserved = 0;
-      return Surface[i - 87];
-   }
-   if (i == 110)
-      return Surface[i - 87];
-   if (i > 99) {
-      *f_reserved = 0;
-      return Surface[i - 87];
-   }
-   if (i > 20)
-      return Surface[12];
-   if (i == 20) {
-      *f_reserved = 0;
-      return Surface[11];
-   }
-   if (i > 9)
-      return Surface[10];
-   if (i > 0) {
-      *f_reserved = 0;
-      return Surface[i];
-   }
-   return Surface[0];
+   myAssert(false);
+   return Surface[0].surface;
 }
 
 void ParseLevelName (unsigned short int center, unsigned short int subcenter,

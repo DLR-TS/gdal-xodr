@@ -330,47 +330,17 @@ OGRFeatureDefn* OGRWFSLayer::BuildLayerDefnFromFeatureClass(GMLFeatureClass* poC
     for( int iField = 0; iField < poGMLFeatureClass->GetPropertyCount(); iField++ )
     {
         GMLPropertyDefn *poProperty = poGMLFeatureClass->GetProperty( iField );
-        OGRFieldType eFType;
-
-        if( poProperty->GetType() == GMLPT_Untyped )
-            eFType = OFTString;
-        else if( poProperty->GetType() == GMLPT_String )
-            eFType = OFTString;
-        else if( poProperty->GetType() == GMLPT_Integer ||
-                 poProperty->GetType() == GMLPT_Boolean ||
-                 poProperty->GetType() == GMLPT_Short  )
-            eFType = OFTInteger;
-        else if( poProperty->GetType() == GMLPT_Integer64 )
-            eFType = OFTInteger64;
-        else if( poProperty->GetType() == GMLPT_Real ||
-                 poProperty->GetType() == GMLPT_Float )
-            eFType = OFTReal;
-        else if( poProperty->GetType() == GMLPT_StringList )
-            eFType = OFTStringList;
-        else if( poProperty->GetType() == GMLPT_IntegerList ||
-                 poProperty->GetType() == GMLPT_BooleanList )
-            eFType = OFTIntegerList;
-        else if( poProperty->GetType() == GMLPT_Integer64List )
-            eFType = OFTInteger64List;
-        else if( poProperty->GetType() == GMLPT_RealList )
-            eFType = OFTRealList;
-        else
-            eFType = OFTString;
+        OGRFieldSubType eSubType = OFSTNone;
+        const OGRFieldType eFType = GML_GetOGRFieldType(poProperty->GetType(), eSubType);
 
         OGRFieldDefn oField( poProperty->GetName(), eFType );
+        oField.SetSubType(eSubType);
         if ( STARTS_WITH_CI(oField.GetNameRef(), "ogr:") )
             oField.SetName(poProperty->GetName()+4);
         if( poProperty->GetWidth() > 0 )
             oField.SetWidth( poProperty->GetWidth() );
         if( poProperty->GetPrecision() > 0 )
             oField.SetPrecision( poProperty->GetPrecision() );
-        if( poProperty->GetType() == GMLPT_Boolean ||
-            poProperty->GetType() == GMLPT_BooleanList )
-            oField.SetSubType(OFSTBoolean);
-        else if( poProperty->GetType() == GMLPT_Short)
-            oField.SetSubType(OFSTInt16);
-        else if( poProperty->GetType() == GMLPT_Float)
-            oField.SetSubType(OFSTFloat32);
         if( !poDS->IsEmptyAsNull() )
             oField.SetNullable(poProperty->IsNullable());
 
@@ -702,84 +672,115 @@ GDALDataset* OGRWFSLayer::FetchGetFeature(int nRequestMaxFeatures)
 
     CPLString osOutputFormat = CPLURLGetValue(osURL, "OUTPUTFORMAT");
 
-    /* Try streaming when the output format is GML and that we have a .xsd */
-    /* that we are able to understand */
-    CPLString osXSDFileName = CPLSPrintf("/vsimem/tempwfs_%p/file.xsd", this);
-    VSIStatBufL sBuf;
-    if (CPLTestBool(CPLGetConfigOption("OGR_WFS_USE_STREAMING", "YES")) &&
-        (osOutputFormat.empty() || osOutputFormat.ifind("GML") != std::string::npos) &&
-        VSIStatL(osXSDFileName, &sBuf) == 0 && GDALGetDriverByName("GML") != nullptr)
-    {
-        const char* pszStreamingName = CPLSPrintf("/vsicurl_streaming/%s",
-                                                    osURL.c_str());
+    if (CPLTestBool(CPLGetConfigOption("OGR_WFS_USE_STREAMING", "YES"))) {
+        CPLString osStreamingName;
         if( STARTS_WITH(osURL, "/vsimem/") &&
-            CPLTestBool(CPLGetConfigOption("CPL_CURL_ENABLE_VSIMEM", "FALSE")) )
+                CPLTestBool(CPLGetConfigOption("CPL_CURL_ENABLE_VSIMEM", "FALSE")) )
         {
-            pszStreamingName = osURL.c_str();
+            osStreamingName = osURL;
+        }
+        else
+        {
+            osStreamingName += "/vsicurl_streaming/";
+            osStreamingName += osURL;
         }
 
-        const char* const apszAllowedDrivers[] = { "GML", nullptr };
-        const char* apszOpenOptions[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
-        apszOpenOptions[0] = CPLSPrintf("XSD=%s", osXSDFileName.c_str());
-        apszOpenOptions[1] = CPLSPrintf("EMPTY_AS_NULL=%s", poDS->IsEmptyAsNull() ? "YES" : "NO");
-        int iGMLOOIdex = 2;
-        if( CPLGetConfigOption("GML_INVERT_AXIS_ORDER_IF_LAT_LONG", nullptr) == nullptr )
-        {
-            apszOpenOptions[iGMLOOIdex] = CPLSPrintf("INVERT_AXIS_ORDER_IF_LAT_LONG=%s",
-                                    poDS->InvertAxisOrderIfLatLong() ? "YES" : "NO");
-            iGMLOOIdex ++;
-        }
-        if( CPLGetConfigOption("GML_CONSIDER_EPSG_AS_URN", nullptr) == nullptr )
-        {
-            apszOpenOptions[iGMLOOIdex] = CPLSPrintf("CONSIDER_EPSG_AS_URN=%s",
-                                            poDS->GetConsiderEPSGAsURN().c_str());
-            iGMLOOIdex ++;
-        }
-        if( CPLGetConfigOption("GML_EXPOSE_GML_ID", nullptr) == nullptr )
-        {
-            apszOpenOptions[iGMLOOIdex] = CPLSPrintf("EXPOSE_GML_ID=%s",
-                                            poDS->ExposeGMLId() ? "YES" : "NO");
-            iGMLOOIdex ++;
-        }
+        GDALDataset* poOutputDS = nullptr;
 
-        GDALDataset* poGML_DS = (GDALDataset*)
-                GDALOpenEx(pszStreamingName, GDAL_OF_VECTOR, apszAllowedDrivers,
-                           apszOpenOptions, nullptr);
-        if( poGML_DS )
+        /* Try streaming when the output format is GML and that we have a .xsd */
+        /* that we are able to understand */
+        CPLString osXSDFileName = CPLSPrintf("/vsimem/tempwfs_%p/file.xsd", this);
+        VSIStatBufL sBuf;
+        if ((osOutputFormat.empty() || osOutputFormat.ifind("GML") != std::string::npos) &&
+            VSIStatL(osXSDFileName, &sBuf) == 0 && GDALGetDriverByName("GML") != nullptr)
         {
             bStreamingDS = true;
-            return poGML_DS;
-        }
-
-        /* In case of failure, read directly the content to examine */
-        /* it, if it is XML error content */
-        char szBuffer[2048];
-        int nRead = 0;
-        VSILFILE* fp = VSIFOpenL(pszStreamingName, "rb");
-        if (fp)
-        {
-            nRead = (int)VSIFReadL(szBuffer, 1, sizeof(szBuffer) - 1, fp);
-            szBuffer[nRead] = '\0';
-            VSIFCloseL(fp);
-        }
-
-        if (nRead != 0)
-        {
-            if( MustRetryIfNonCompliantServer(szBuffer) )
-                return FetchGetFeature(nRequestMaxFeatures);
-
-            if (strstr(szBuffer, "<ServiceExceptionReport") != nullptr ||
-                strstr(szBuffer, "<ows:ExceptionReport") != nullptr)
+            const char* const apszAllowedDrivers[] = { "GML", nullptr };
+            const char* apszOpenOptions[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+            apszOpenOptions[0] = CPLSPrintf("XSD=%s", osXSDFileName.c_str());
+            apszOpenOptions[1] = CPLSPrintf("EMPTY_AS_NULL=%s", poDS->IsEmptyAsNull() ? "YES" : "NO");
+            int iGMLOOIdex = 2;
+            if( CPLGetConfigOption("GML_INVERT_AXIS_ORDER_IF_LAT_LONG", nullptr) == nullptr )
             {
-                if( poDS->IsOldDeegree(szBuffer) )
-                {
-                    return FetchGetFeature(nRequestMaxFeatures);
-                }
+                apszOpenOptions[iGMLOOIdex] = CPLSPrintf("INVERT_AXIS_ORDER_IF_LAT_LONG=%s",
+                                        poDS->InvertAxisOrderIfLatLong() ? "YES" : "NO");
+                iGMLOOIdex ++;
+            }
+            if( CPLGetConfigOption("GML_CONSIDER_EPSG_AS_URN", nullptr) == nullptr )
+            {
+                apszOpenOptions[iGMLOOIdex] = CPLSPrintf("CONSIDER_EPSG_AS_URN=%s",
+                                                poDS->GetConsiderEPSGAsURN().c_str());
+                iGMLOOIdex ++;
+            }
+            if( CPLGetConfigOption("GML_EXPOSE_GML_ID", nullptr) == nullptr )
+            {
+                apszOpenOptions[iGMLOOIdex] = CPLSPrintf("EXPOSE_GML_ID=%s",
+                                                poDS->ExposeGMLId() ? "YES" : "NO");
+                // iGMLOOIdex ++;
+            }
 
-                CPLError(CE_Failure, CPLE_AppDefined,
-                         "Error returned by server : %s",
-                         szBuffer);
-                return nullptr;
+            poOutputDS = (GDALDataset*)
+                    GDALOpenEx(osStreamingName, GDAL_OF_VECTOR, apszAllowedDrivers,
+                            apszOpenOptions, nullptr);
+
+        }
+        /* Try streaming when the output format is FlatGeobuf */
+        else if ((osOutputFormat.empty() || osOutputFormat.ifind("flatgeobuf") != std::string::npos) &&
+            VSIStatL(osXSDFileName, &sBuf) == 0 && GDALGetDriverByName("FlatGeobuf") != nullptr)
+        {
+            bStreamingDS = true;
+            const char* const apszAllowedDrivers[] = { "FlatGeobuf", nullptr };
+
+            GDALDataset* poFlatGeobuf_DS = (GDALDataset*)
+                    GDALOpenEx(osStreamingName, GDAL_OF_VECTOR, apszAllowedDrivers,
+                            nullptr, nullptr);
+            if( poFlatGeobuf_DS )
+            {
+                bStreamingDS = true;
+                return poFlatGeobuf_DS;
+            }
+        }
+        else
+        {
+            bStreamingDS = false;
+        }
+
+        if( poOutputDS )
+        {
+            return poOutputDS;
+        }
+
+        if  (bStreamingDS) {
+            /* In case of failure, read directly the content to examine */
+            /* it, if it is XML error content */
+            char szBuffer[2048];
+            int nRead = 0;
+            VSILFILE* fp = VSIFOpenL(osStreamingName, "rb");
+            if (fp)
+            {
+                nRead = (int)VSIFReadL(szBuffer, 1, sizeof(szBuffer) - 1, fp);
+                szBuffer[nRead] = '\0';
+                VSIFCloseL(fp);
+            }
+
+            if (nRead != 0)
+            {
+                if( MustRetryIfNonCompliantServer(szBuffer) )
+                    return FetchGetFeature(nRequestMaxFeatures);
+
+                if (strstr(szBuffer, "<ServiceExceptionReport") != nullptr ||
+                    strstr(szBuffer, "<ows:ExceptionReport") != nullptr)
+                {
+                    if( poDS->IsOldDeegree(szBuffer) )
+                    {
+                        return FetchGetFeature(nRequestMaxFeatures);
+                    }
+
+                    CPLError(CE_Failure, CPLE_AppDefined,
+                            "Error returned by server : %s",
+                            szBuffer);
+                    return nullptr;
+                }
             }
         }
     }
@@ -841,6 +842,7 @@ GDALDataset* OGRWFSLayer::FetchGetFeature(int nRequestMaxFeatures)
     bool bCSV = false;
     bool bKML = false;
     bool bKMZ = false;
+    bool bFlatGeobuf = false;
     bool bZIP = false;
     bool bGZIP = false;
 
@@ -865,6 +867,11 @@ GDALDataset* OGRWFSLayer::FetchGetFeature(int nRequestMaxFeatures)
              FindSubStringInsensitive(pszOutputFormat, "kmz"))
     {
         bKMZ = true;
+    }
+    else if (FindSubStringInsensitive(pszContentType, "flatgeobuf") ||
+             FindSubStringInsensitive(pszOutputFormat, "flatgeobuf"))
+    {
+        bFlatGeobuf = true;
     }
     else if (strstr(pszContentType, "application/zip") != nullptr)
     {
@@ -910,6 +917,8 @@ GDALDataset* OGRWFSLayer::FetchGetFeature(int nRequestMaxFeatures)
             osTmpFileName = osTmpDirName + "/file.kml";
         else if( bKMZ )
             osTmpFileName = osTmpDirName + "/file.kmz";
+        else if( bFlatGeobuf )
+            osTmpFileName = osTmpDirName + "/file.fgb";
         /* GML is a special case. It needs the .xsd file that has been saved */
         /* as file.xsd, so we cannot used the attachment filename */
         else if (pszAttachmentFilename &&
@@ -968,7 +977,7 @@ GDALDataset* OGRWFSLayer::FetchGetFeature(int nRequestMaxFeatures)
     {
         apszGMLOpenOptions[iGMLOOIdex] = CPLSPrintf("EXPOSE_GML_ID=%s",
                                         poDS->ExposeGMLId() ? "YES" : "NO");
-        iGMLOOIdex ++;
+        // iGMLOOIdex ++;
     }
 
     GDALDriverH hDrv = GDALIdentifyDriver(osTmpFileName, nullptr);
@@ -1827,7 +1836,7 @@ OGRErr OGRWFSLayer::ICreateFeature( OGRFeature *poFeature )
                 if (poGeom->getSpatialReference() == nullptr)
                     poGeom->assignSpatialReference(poSRS);
                 char* pszGML = nullptr;
-                if (strcmp(poDS->GetVersion(), "1.1.0") == 0)
+                if (strcmp(poDS->GetVersion(), "1.1.0") == 0 || atoi(poDS->GetVersion()) >= 2)
                 {
                     char** papszOptions = CSLAddString(nullptr, "FORMAT=GML3");
                     pszGML = OGR_G_ExportToGMLEx((OGRGeometryH)poGeom, papszOptions);
@@ -1976,22 +1985,25 @@ OGRErr OGRWFSLayer::ICreateFeature( OGRFeature *poFeature )
     }
     else
     {
+        const char *pszFeatureIdElt = atoi(poDS->GetVersion()) >= 2 ?
+            "InsertResults.Feature.ResourceId" : "InsertResults.Feature.FeatureId";
         psFeatureID =
-            CPLGetXMLNode( psRoot, "InsertResults.Feature.FeatureId");
+            CPLGetXMLNode( psRoot, pszFeatureIdElt);
         if (psFeatureID == nullptr)
         {
             CPLError(CE_Failure, CPLE_AppDefined,
-                    "Cannot find InsertResults.Feature.FeatureId");
+                    "Cannot find %s", pszFeatureIdElt);
             CPLDestroyXMLNode( psXML );
             CPLHTTPDestroyResult(psResult);
             return OGRERR_FAILURE;
         }
     }
 
-    const char* pszFID = CPLGetXMLValue(psFeatureID, "fid", nullptr);
+    const char *pszFIDAttr = atoi(poDS->GetVersion()) >= 2 ? "rid" : "fid";
+    const char* pszFID = CPLGetXMLValue(psFeatureID, pszFIDAttr, nullptr);
     if (pszFID == nullptr)
     {
-        CPLError(CE_Failure, CPLE_AppDefined, "Cannot find fid");
+        CPLError(CE_Failure, CPLE_AppDefined, "Cannot find %s", pszFIDAttr);
         CPLDestroyXMLNode( psXML );
         CPLHTTPDestroyResult(psResult);
         return OGRERR_FAILURE;
@@ -2076,7 +2088,7 @@ OGRErr OGRWFSLayer::ISetFeature( OGRFeature *poFeature )
             if (poGeom->getSpatialReference() == nullptr)
                 poGeom->assignSpatialReference(poSRS);
             char* pszGML = nullptr;
-            if (strcmp(poDS->GetVersion(), "1.1.0") == 0)
+            if (strcmp(poDS->GetVersion(), "1.1.0") == 0 || atoi(poDS->GetVersion()) >= 2)
             {
                 char** papszOptions = CSLAddString(nullptr, "FORMAT=GML3");
                 pszGML = OGR_G_ExportToGMLEx((OGRGeometryH)poGeom, papszOptions);

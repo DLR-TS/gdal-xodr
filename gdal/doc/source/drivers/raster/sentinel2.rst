@@ -6,6 +6,8 @@ SENTINEL2 -- Sentinel-2 Products
 
 .. shortname:: SENTINEL2
 
+.. built_in_by_default::
+
 Driver for Sentinel-2 Level-1B, Level-1C and Level-2A products.
 Starting with GDAL 2.1.3, Level-1C with "Safe Compact" encoding
 are also supported.
@@ -54,7 +56,7 @@ Level-1B
 Level-1B products are composed of several "granules" of ~ 25 km
 across-track x ~ 23km along-track, in sensor geometry (i.e. non
 ortho-rectified). Each granule correspond to the imagery captured by one
-of the 12 detectors accros-track (for a total 290 km swath width). The
+of the 12 detectors across-track (for a total 290 km swath width). The
 imagery of each band is put in a separate JPEG2000 file.
 
 Level-1B products are aimed at advanced users.

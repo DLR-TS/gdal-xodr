@@ -36,6 +36,7 @@
 #if HAVE_FCNTL_H
 #  include <fcntl.h>
 #endif
+#include <limits>
 
 #include "cpl_conv.h"
 #include "cpl_multiproc.h"
@@ -50,7 +51,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class VSISubFileHandle : public VSIVirtualHandle
+class VSISubFileHandle final: public VSIVirtualHandle
 {
     CPL_DISALLOW_COPY_ASSIGN(VSISubFileHandle)
 
@@ -61,7 +62,7 @@ class VSISubFileHandle : public VSIVirtualHandle
     bool          bAtEOF = false;
 
     VSISubFileHandle() = default;
-    ~VSISubFileHandle() override = default;
+    ~VSISubFileHandle() override;
 
     int Seek( vsi_l_offset nOffset, int nWhence ) override;
     vsi_l_offset Tell() override;
@@ -77,7 +78,7 @@ class VSISubFileHandle : public VSIVirtualHandle
 /* ==================================================================== */
 /************************************************************************/
 
-class VSISubFileFilesystemHandler : public VSIFilesystemHandler
+class VSISubFileFilesystemHandler final: public VSIFilesystemHandler
 {
     CPL_DISALLOW_COPY_ASSIGN(VSISubFileFilesystemHandler)
 
@@ -92,7 +93,8 @@ class VSISubFileFilesystemHandler : public VSIFilesystemHandler
 
     VSIVirtualHandle *Open( const char *pszFilename,
                             const char *pszAccess,
-                            bool bSetError ) override;
+                            bool bSetError,
+                            CSLConstList /* papszOptions */ ) override;
     int Stat( const char *pszFilename, VSIStatBufL *pStatBuf,
               int nFlags ) override;
     int Unlink( const char *pszFilename ) override;
@@ -107,6 +109,11 @@ class VSISubFileFilesystemHandler : public VSIFilesystemHandler
 /* ==================================================================== */
 /************************************************************************/
 
+VSISubFileHandle::~VSISubFileHandle()
+{
+    VSISubFileHandle::Close();
+}
+
 /************************************************************************/
 /*                               Close()                                */
 /************************************************************************/
@@ -114,6 +121,8 @@ class VSISubFileFilesystemHandler : public VSIFilesystemHandler
 int VSISubFileHandle::Close()
 
 {
+    if( fp == nullptr )
+        return -1;
     int nRet = VSIFCloseL( fp );
     fp = nullptr;
 
@@ -130,7 +139,11 @@ int VSISubFileHandle::Seek( vsi_l_offset nOffset, int nWhence )
     bAtEOF = false;
 
     if( nWhence == SEEK_SET )
+    {
+        if( nOffset > std::numeric_limits<vsi_l_offset>::max() - nSubregionOffset )
+            return -1;
         nOffset += nSubregionOffset;
+    }
     else if( nWhence == SEEK_CUR )
     {
         // handle normally.
@@ -291,7 +304,7 @@ VSISubFileFilesystemHandler::DecomposePath( const char *pszPath,
         {
             // -1 is sometimes passed to mean that we don't know the file size
             // for example when creating a JPEG2000 datastream in a NITF file
-            // Transform it into 0 for correct behaviour of Read(), Write() and
+            // Transform it into 0 for correct behavior of Read(), Write() and
             // Eof().
             if( pszPath[i + 1] == '-' )
                 nSubFileSize = 0;
@@ -322,7 +335,8 @@ VSISubFileFilesystemHandler::DecomposePath( const char *pszPath,
 VSIVirtualHandle *
 VSISubFileFilesystemHandler::Open( const char *pszFilename,
                                    const char *pszAccess,
-                                   bool /* bSetError */ )
+                                   bool /* bSetError */,
+                                   CSLConstList /* papszOptions */ )
 
 {
     if( !STARTS_WITH_CI(pszFilename, "/vsisubfile/") )
@@ -337,7 +351,7 @@ VSISubFileFilesystemHandler::Open( const char *pszFilename,
         errno = ENOENT;
         return nullptr;
     }
-    if( nOff + nSize < nOff )
+    if( nOff > std::numeric_limits<vsi_l_offset>::max() - nSize )
     {
         return nullptr;
     }
@@ -430,8 +444,10 @@ int VSISubFileFilesystemHandler::Stat( const char * pszFilename,
     {
         if( nSize != 0 )
             psStatBuf->st_size = nSize;
-        else
+        else if( static_cast<vsi_l_offset>(psStatBuf->st_size) >= nOff )
             psStatBuf->st_size -= nOff;
+        else
+            psStatBuf->st_size = 0;
     }
 
     return nResult;

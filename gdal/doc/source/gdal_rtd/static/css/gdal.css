@@ -282,3 +282,45 @@ footer .logo-link .osgeo-logo
 	width: 24px;
 	display: inline-block;
 }
+
+.shortname .admonition-title::before{
+    content: '';
+}
+
+/*
+div[class ^= "admonition shortname"] > p.admonition-title {
+}*/
+
+/* Cf https://astronautweb.co/snippet/font-awesome/ */
+.built_in_by_default .admonition-title::before{
+    content: '\f00c'; /* checkbox */
+}
+
+/* Cf https://astronautweb.co/snippet/font-awesome/ */
+.build_dependencies .admonition-title::before{
+    content: '\f129'; /* info */
+}
+
+/* For service_providers.rst */
+img.img-logos {
+    float: left;
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+/* For service_providers.rst */
+div.service-provider {
+    margin: 50px;
+}
+
+/* For service_providers.rst */
+div.service-provider::after {
+    content: "";
+    clear: both;
+    display: table;
+}
+
+/* For service_providers.rst */
+div.service-provider-description {
+    display: table;
+}

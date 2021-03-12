@@ -73,11 +73,33 @@ constexpr double DEFAULT_PIX_ERR_THRESHOLD = 0.1;
 /*      Turn an RPCInfo structure back into its metadata format.        */
 /************************************************************************/
 
-char ** RPCInfoToMD( GDALRPCInfo *psRPCInfo )
+char ** RPCInfoV1ToMD( GDALRPCInfoV1 *psRPCInfo )
+
+{
+    GDALRPCInfoV2 sRPCInfo;
+    memcpy(&sRPCInfo, psRPCInfo, sizeof(GDALRPCInfoV1));
+    sRPCInfo.dfERR_BIAS = std::numeric_limits<double>::quiet_NaN();
+    sRPCInfo.dfERR_RAND = std::numeric_limits<double>::quiet_NaN();
+    return RPCInfoV2ToMD(&sRPCInfo);
+}
+
+char ** RPCInfoV2ToMD( GDALRPCInfoV2 *psRPCInfo )
 
 {
     char **papszMD = nullptr;
     CPLString osField, osMultiField;
+
+    if( !std::isnan(psRPCInfo->dfERR_BIAS) )
+    {
+        osField.Printf( "%.15g", psRPCInfo->dfERR_BIAS );
+        papszMD = CSLSetNameValue( papszMD, RPC_ERR_BIAS, osField );
+    }
+
+    if( !std::isnan(psRPCInfo->dfERR_RAND) )
+    {
+        osField.Printf( "%.15g", psRPCInfo->dfERR_RAND );
+        papszMD = CSLSetNameValue( papszMD, RPC_ERR_RAND, osField );
+    }
 
     osField.Printf( "%.15g", psRPCInfo->dfLINE_OFF );
     papszMD = CSLSetNameValue( papszMD, RPC_LINE_OFF, osField );
@@ -216,7 +238,7 @@ typedef struct {
 
     GDALTransformerInfo sTI;
 
-    GDALRPCInfo sRPC;
+    GDALRPCInfoV2 sRPC;
 
     double      adfPLToLatLongGeoTransform[6];
     double      dfRefZ;
@@ -235,6 +257,7 @@ typedef struct {
 
     int         bHasDEMMissingValue;
     double      dfDEMMissingValue;
+    char        *pszDEMSRS;
     int         bApplyDEMVDatumShift;
 
     GDALDataset *poDS;
@@ -481,8 +504,8 @@ void* GDALCreateSimilarRPCTransformer( void *hTransformArg,
     GDALRPCTransformInfo *psInfo =
         static_cast<GDALRPCTransformInfo *>(hTransformArg);
 
-    GDALRPCInfo sRPC;
-    memcpy(&sRPC, &(psInfo->sRPC), sizeof(GDALRPCInfo));
+    GDALRPCInfoV2 sRPC;
+    memcpy(&sRPC, &(psInfo->sRPC), sizeof(GDALRPCInfoV2));
 
     if( dfRatioX != 1.0 || dfRatioY != 1.0 )
     {
@@ -516,7 +539,7 @@ void* GDALCreateSimilarRPCTransformer( void *hTransformArg,
                                    CPLSPrintf("%d", psInfo->nMaxIterations));
 
     GDALRPCTransformInfo* psNewInfo =
-        static_cast<GDALRPCTransformInfo*>(GDALCreateRPCTransformer(
+        static_cast<GDALRPCTransformInfo*>(GDALCreateRPCTransformerV2(
             &sRPC, psInfo->bReversed, psInfo->dfPixErrThreshold, papszOptions));
     CSLDestroy(papszOptions);
 
@@ -625,6 +648,20 @@ retry:
 /*                      GDALCreateRPCTransformer()                      */
 /************************************************************************/
 
+
+void *GDALCreateRPCTransformerV1( GDALRPCInfoV1 *psRPCInfo, int bReversed,
+                                double dfPixErrThreshold,
+                                char **papszOptions )
+
+{
+    GDALRPCInfoV2 sRPCInfo;
+    memcpy(&sRPCInfo, psRPCInfo, sizeof(GDALRPCInfoV1));
+    sRPCInfo.dfERR_BIAS = std::numeric_limits<double>::quiet_NaN();
+    sRPCInfo.dfERR_RAND = std::numeric_limits<double>::quiet_NaN();
+    return GDALCreateRPCTransformerV2(&sRPCInfo, bReversed, dfPixErrThreshold,
+                                      papszOptions);
+}
+
 /**
  * Create an RPC based transformer.
  *
@@ -711,24 +748,28 @@ retry:
  * <li> RPC_HEIGHT: a fixed height offset to be applied to all points passed
  * in.  In this situation the Z passed into the transformation function is
  * assumed to be height above ground, and the RPC_HEIGHT is assumed to be
- * an average height above sea level for ground in the target scene.
+ * an average height above sea level for ground in the target scene.</li>
  *
  * <li> RPC_HEIGHT_SCALE: a factor used to multiply heights above ground.
- * Useful when elevation offsets of the DEM are not expressed in meters. (GDAL
- * >= 1.8.0)
+ * Useful when elevation offsets of the DEM are not expressed in meters.</li>
  *
  * <li> RPC_DEM: the name of a GDAL dataset (a DEM file typically) used to
  * extract elevation offsets from. In this situation the Z passed into the
  * transformation function is assumed to be height above ground. This option
  * should be used in replacement of RPC_HEIGHT to provide a way of defining
- * a non uniform ground for the target scene (GDAL >= 1.8.0)
+ * a non uniform ground for the target scene</li>
  *
- * <li> RPC_DEMINTERPOLATION: the DEM interpolation (near, bilinear or cubic)
+ * <li> RPC_DEMINTERPOLATION: the DEM interpolation ("near", "bilinear" or "cubic").
+ *      Default is "bilinear".</li>
  *
  * <li> RPC_DEM_MISSING_VALUE: value of DEM height that must be used in case
  * the DEM has nodata value at the sampling point, or if its extent does not
  * cover the requested coordinate. When not specified, missing values will cause
- * a failed transform. (GDAL >= 1.11.2)
+ * a failed transform.</li>
+ *
+ * <li> RPC_DEM_SRS: (GDAL >= 3.2) WKT SRS, or any string recognized by
+ * OGRSpatialReference::SetFromUserInput(), to be used as an override for DEM SRS.
+ * Useful if DEM SRS does not have an explicit vertical component. </li>
  *
  * <li> RPC_DEM_APPLY_VDATUM_SHIFT: whether the vertical component of a compound
  * SRS for the DEM should be used (when it is present). This is useful so as to
@@ -736,24 +777,24 @@ retry:
  * a geoid to the heights with respect to the WGS84 ellipsoid. When this is
  * enabled, the GTIFF_REPORT_COMPD_CS configuration option will be also set
  * temporarily so as to get the vertical information from GeoTIFF
- * files. Defaults to TRUE. (GDAL >= 2.1.0)
+ * files. Defaults to TRUE. (GDAL >= 2.1.0)</li>
  *
  * <li> RPC_PIXEL_ERROR_THRESHOLD: overrides the dfPixErrThreshold parameter, ie
   the error (measured in pixels) allowed in the
  * iterative solution of pixel/line to lat/long computations (the other way
- * is always exact given the equations).  (GDAL >= 2.1.0)
+ * is always exact given the equations).  (GDAL >= 2.1.0)</li>
  *
  * <li> RPC_MAX_ITERATIONS: maximum number of iterations allowed in the
  * iterative solution of pixel/line to lat/long computations. Default value is
- * 10 in the absence of a DEM, or 20 if there is a DEM.  (GDAL >= 2.1.0)
- * 
+ * 10 in the absence of a DEM, or 20 if there is a DEM.  (GDAL >= 2.1.0)</li>
+ *
  * <li> RPC_FOOTPRINT: WKT or GeoJSON polygon (in long / lat coordinate space)
  * with a validity footprint for the RPC. Any coordinate transformation that
  * goes from or arrive outside this footprint will be considered invalid. This
  * is useful in situations where the RPC values become highly unstable outside
  * of the area on which they have been computed for, potentially leading to
  * undesirable "echoes" / false positives. This requires GDAL to be built against
- * GEOS.
+ * GEOS.</li>
  *
  * </ul>
  *
@@ -773,7 +814,7 @@ retry:
  * @return transformer callback data (deallocate with GDALDestroyTransformer()).
  */
 
-void *GDALCreateRPCTransformer( GDALRPCInfo *psRPCInfo, int bReversed,
+void *GDALCreateRPCTransformerV2( const GDALRPCInfoV2 *psRPCInfo, int bReversed,
                                 double dfPixErrThreshold,
                                 char **papszOptions )
 
@@ -784,7 +825,7 @@ void *GDALCreateRPCTransformer( GDALRPCInfo *psRPCInfo, int bReversed,
     GDALRPCTransformInfo *psTransform = static_cast<GDALRPCTransformInfo *>(
         CPLCalloc(sizeof(GDALRPCTransformInfo), 1));
 
-    memcpy( &(psTransform->sRPC), psRPCInfo, sizeof(GDALRPCInfo) );
+    memcpy( &(psTransform->sRPC), psRPCInfo, sizeof(GDALRPCInfoV2) );
     psTransform->bReversed = bReversed;
     const char* pszPixErrThreshold =
         CSLFetchNameValue( papszOptions, "RPC_PIXEL_ERROR_THRESHOLD" );
@@ -887,6 +928,16 @@ void *GDALCreateRPCTransformer( GDALRPCInfo *psRPCInfo, int bReversed,
     }
 
 /* -------------------------------------------------------------------- */
+/*                        The DEM SRS override                          */
+/* -------------------------------------------------------------------- */
+    const char *pszDEMSRS =
+        CSLFetchNameValue(papszOptions, "RPC_DEM_SRS");
+    if ( pszDEMSRS != nullptr )
+    {
+        psTransform->pszDEMSRS = CPLStrdup(pszDEMSRS);
+    }
+
+/* -------------------------------------------------------------------- */
 /*      Whether to apply vdatum shift                                   */
 /* -------------------------------------------------------------------- */
     psTransform->bApplyDEMVDatumShift =
@@ -926,7 +977,7 @@ void *GDALCreateRPCTransformer( GDALRPCInfo *psRPCInfo, int bReversed,
             if( OGRHasPreparedGeometrySupport() )
             {
                 psTransform->poRPCFootprintPreparedGeom =
-                    OGRCreatePreparedGeometry(psTransform->poRPCFootprintGeom);
+                    OGRCreatePreparedGeometry(OGRGeometry::ToHandle(psTransform->poRPCFootprintGeom));
             }
             else
             {
@@ -1061,6 +1112,7 @@ void GDALDestroyRPCTransformer( void *pTransformAlg )
         static_cast<GDALRPCTransformInfo *>(pTransformAlg);
 
     CPLFree( psTransform->pszDEMPath );
+    CPLFree( psTransform->pszDEMSRS );
 
     if( psTransform->poDS )
         GDALClose(psTransform->poDS);
@@ -1138,7 +1190,6 @@ RPCInverseTransformPoint( GDALRPCTransformInfo *psTransform,
     double dfLastResultY = 0.0;
     double dfLastPixelDeltaX = 0.0;
     double dfLastPixelDeltaY = 0.0;
-    double dfDEMH = 0.0;
     bool bLastPixelDeltaValid = false;
     const int nMaxIterations =
         (psTransform->nMaxIterations > 0) ? psTransform->nMaxIterations :
@@ -1152,7 +1203,7 @@ RPCInverseTransformPoint( GDALRPCTransformInfo *psTransform,
         double dfBackLine = 0.0;
 
         // Update DEMH.
-        dfDEMH = 0.0;
+        double dfDEMH = 0.0;
         double dfDEMPixel = 0.0;
         double dfDEMLine = 0.0;
         if( !GDALRPCGetHeightAtLongLat(psTransform, dfResultX, dfResultY,
@@ -1635,7 +1686,7 @@ static bool RPCIsValidLongLat( const GDALRPCTransformInfo *psTransform,
     OGRPoint p(dfLong, dfLat);
     return CPL_TO_BOOL(
         OGRPreparedGeometryContains(psTransform->poRPCFootprintPreparedGeom,
-                                       &p));
+                                    OGRGeometry::ToHandle(&p)));
 }
 
 /************************************************************************/
@@ -1910,7 +1961,15 @@ static bool GDALRPCOpenDEM( GDALRPCTransformInfo* psTransform )
         psTransform->nBufferHeight = -1;
         psTransform->nLastQueriedX = -1;
         psTransform->nLastQueriedY = -1;
-        auto poDSSpaRefSrc = psTransform->poDS->GetSpatialRef();
+
+        OGRSpatialReference oDEMSRS;
+        if ( psTransform->pszDEMSRS != nullptr )
+        {
+            oDEMSRS.SetFromUserInput(psTransform->pszDEMSRS);
+            oDEMSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        }
+
+        auto poDSSpaRefSrc = psTransform->pszDEMSRS != nullptr ? &oDEMSRS : psTransform->poDS->GetSpatialRef();
         if( poDSSpaRefSrc )
         {
             auto poDSSpaRef = poDSSpaRefSrc->Clone();
@@ -2271,6 +2330,16 @@ CPLXMLNode *GDALSerializeRPCTransformer( void *pTransformArg )
         CPLCreateXMLElementAndValue(
                 psTree, "DEMApplyVDatumShift",
                 psInfo->bApplyDEMVDatumShift ? "true" : "false" );
+
+/* -------------------------------------------------------------------- */
+/*      Serialize DEM SRS                                               */
+/* -------------------------------------------------------------------- */
+        if( psInfo->pszDEMSRS != nullptr )
+        {
+            CPLCreateXMLElementAndValue(
+                psTree, "DEMSRS",
+                psInfo->pszDEMSRS );
+        }
     }
 
 /* -------------------------------------------------------------------- */
@@ -2283,7 +2352,7 @@ CPLXMLNode *GDALSerializeRPCTransformer( void *pTransformArg )
 /* -------------------------------------------------------------------- */
 /*      RPC metadata.                                                   */
 /* -------------------------------------------------------------------- */
-    char **papszMD = RPCInfoToMD( &(psInfo->sRPC) );
+    char **papszMD = RPCInfoV2ToMD( &(psInfo->sRPC) );
     CPLXMLNode *psMD= CPLCreateXMLNode( psTree, CXT_Element,
                                         "Metadata" );
 
@@ -2343,8 +2412,8 @@ void *GDALDeserializeRPCTransformer( CPLXMLNode *psTree )
                              psMDI->psChild->psNext->pszValue );
     }
 
-    GDALRPCInfo sRPC;
-    if( !GDALExtractRPCInfo( papszMD, &sRPC ) )
+    GDALRPCInfoV2 sRPC;
+    if( !GDALExtractRPCInfoV2( papszMD, &sRPC ) )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
                   "Failed to reconstitute RPC transformer." );
@@ -2390,12 +2459,16 @@ void *GDALDeserializeRPCTransformer( CPLXMLNode *psTree )
         papszOptions = CSLSetNameValue(papszOptions,
                                        "RPC_DEM_APPLY_VDATUM_SHIFT",
                                        pszDEMApplyVDatumShift);
+    const char* pszDEMSRS =
+        CPLGetXMLValue(psTree, "DEMSRS", nullptr);
+    if( pszDEMSRS != nullptr )
+        papszOptions = CSLSetNameValue(papszOptions, "RPC_DEM_SRS", pszDEMSRS);
 
 /* -------------------------------------------------------------------- */
 /*      Generate transformation.                                        */
 /* -------------------------------------------------------------------- */
     void *pResult =
-        GDALCreateRPCTransformer( &sRPC, bReversed, dfPixErrThreshold,
+        GDALCreateRPCTransformerV2( &sRPC, bReversed, dfPixErrThreshold,
                                   papszOptions );
 
     CSLDestroy( papszOptions );

@@ -6,7 +6,9 @@ GPKG -- GeoPackage raster
 
 .. shortname:: GPKG
 
-Starting with GDAL 2.0, this driver implements full read/creation/update
+.. build_dependencies:: libsqlite3 (and any or all of PNG, JPEG, WEBP drivers)
+
+This driver implements full read/creation/update
 of tables containing raster tiles in the `OGC GeoPackage format
 standard <http://www.geopackage.org/spec/>`__. The GeoPackage standard
 uses a SQLite database file as a generic container, and the standard
@@ -100,7 +102,7 @@ The following open options are available:
    existing tiles at the zoom level of the full resolution dataset.
    Defaults to NO.
 -  **TILE_FORMAT**\ =PNG_JPEG/PNG/PNG8/JPEG/WEBP: Format used to store
-   tiles. See `Tile format <#tile_format>`__ section. Only used in
+   tiles. See :ref:`raster.gpkg.tile_formats`. Only used in
    update mode. Defaults to PNG_JPEG.
 -  **QUALITY**\ =1-100: Quality setting for JPEG and WEBP compression.
    Only used in update mode. Default to 75.
@@ -152,6 +154,17 @@ and for all the bands (or the dataset is closed or explicitly flushed
 with FlushCache()), those uncompressed tiles are definitely transferred
 to the GeoPackage file with the appropriate compression. All of this is
 transparent to the user of GDAL API/utilities
+
+The driver updates the GeoPackage ``last_change`` timestamp when the file is
+created or modified. If consistent binary output is required for
+reproducibility, the timestamp can be forced to a specific value by setting the
+:decl_configoption:`OGR_CURRENT_DATE` global configuration option.
+When setting the option, take care to meet the specific time format
+requirement of the GeoPackage standard, 
+e.g. `for version 1.2 <https://www.geopackage.org/spec120/#r15>`__.
+
+
+.. _raster.gpkg.tile_formats:
 
 Tile formats
 ~~~~~~~~~~~~
@@ -221,6 +234,8 @@ offsetting will be automatically computed for each tile.
     with the final extension. GDAL 2.3 can open those GDAL 2.2-generated
     files.
 
+.. _raster.gpkg.tiling_schemes:
+
 Tiling schemes
 ~~~~~~~~~~~~~~
 
@@ -289,6 +304,21 @@ schemes are :
 In all the above tiling schemes, consecutive zoom levels defer by a
 resolution of a factor of two.
 
+Starting with GDAL 3.2, it is also possible to use a Tile Matrix Set definition,
+encoded as a JSon file, according to the `OGC Two Dimensional Tile Matrix Set standard`_
+Examples of such files can be found at http://schemas.opengis.net/tms/1.0/json/examples/
+The GDAL data directory also contains files prefixed with ``tms_`` and with a ``.json``
+extension. If there is a ``tms_FOO.json`` file, then ``FOO`` can be used as the
+value of the TILING_SCHEME creation option. There are restrictions on the types
+of tile matrix set supported:
+
+* all zoom levels must have the same origin
+* consecutive zoom levels defer by a resolution of a factor of two.
+* all zoom levels must have the same tile dimension
+* variable matrix width tile set are not supported.
+
+.. _`OGC Two Dimensional Tile Matrix Set standard`: http://docs.opengeospatial.org/is/17-083r2/17-083r2.html
+
 Nodata value
 ~~~~~~~~~~~~
 
@@ -302,7 +332,7 @@ null_value in the GeoPackage internals perfectly match.
 For Int16, UInt16 or Float32 with PNG tiles, GDAL will generally remap
 the input nodata value to another value.
 
-On writing, for PNG tiles, the behaviour is the following one:
+On writing, for PNG tiles, the behavior is the following one:
 
 ============== =================================================== =====================================================
 GDAL data type Input GDAL nodata value                             null_value in GPKG gpkg_2d_gridded_coverage_ancillary
@@ -311,7 +341,7 @@ UInt16         X (if coverage offset == 0 and coverage scale == 1) X
 Float32        Any                                                 65535
 ============== =================================================== =====================================================
 
-On reading, for PNG tiles, the behaviour is the following one:
+On reading, for PNG tiles, the behavior is the following one:
 
 ============== ===================================================== =========================
 GDAL data type null_value in GPKG gpkg_2d_gridded_coverage_ancillary Exposed GDAL nodata value
@@ -353,7 +383,7 @@ The following creation options are available:
 -  **BLOCKYSIZE**\ =integer. Block height in pixels. Defaults to 256.
    Maximum supported is 4096.
 -  **TILE_FORMAT**\ =PNG_JPEG/PNG/PNG8/JPEG/WEBP/TIFF/AUTO: Format used
-   to store tiles. See `Tile formats <#tile_formats>`__ section.
+   to store tiles. See :ref:`raster.gpkg.tile_formats`.
    Defaults to AUTO.
 -  **QUALITY**\ =1-100: Quality setting for JPEG and WEBP compression.
    Default to 75.
@@ -361,8 +391,12 @@ The following creation options are available:
    6.
 -  **DITHER**\ =YES/NO: Whether to use Floyd-Steinberg dithering (for
    TILE_FORMAT=PNG8). Defaults to NO.
--  **TILING_SCHEME**\ =CUSTOM/GoogleCRS84Quad/GoogleMapsCompatible/InspireCRS84Quad/PseudoTMS_GlobalGeodetic/PseudoTMS_GlobalMercator.
-   See `Tiling schemes <#tiling_schemes>`__ section. Defaults to CUSTOM.
+-  **TILING_SCHEME**\ =CUSTOM/GoogleCRS84Quad/GoogleMapsCompatible/InspireCRS84Quad/PseudoTMS_GlobalGeodetic/PseudoTMS_GlobalMercator/other.
+   See :ref:`raster.gpkg.tiling_schemes`. Defaults to CUSTOM.
+   Starting with GDAL 3.2, the value of TILING_SCHEME can also be the filename
+   of a JSON file according to the `OGC Two Dimensional Tile Matrix Set standard`_,
+   a URL to such file, the radical of a definition file in the GDAL data directory
+   (e.g. ``FOO`` for a file named ``tms_FOO.json``) or the inline JSON definition.
    Note: the TILING_SCHEME option with a non-CUSTOM value is best used
    with the gdal_translate utility / CreateCopy() API operation. If used
    with gdalwarp, it requires setting the -tr switch to the exact value
@@ -460,13 +494,13 @@ Level of support of GeoPackage Extensions
      - Supported by GDAL?
    * - `Zoom Other intervals <http://www.geopackage.org/guidance/extensions/zoom_other_intervals.html>`__
      - Yes
-     - Yes, since GDAL 2.0
+     - Yes
    * - `Tiles Encoding WebP <http://www.geopackage.org/guidance/extensions/tiles_encoding_webp.html>`__
      - Yes
-     - Yes, since GDAL 2.0
+     - Yes
    * - `Metadata <http://www.geopackage.org/guidance/extensions/metadata.html>`__
      - Yes
-     - Yes, since GDAL 1.11
+     - Yes
    * - `WKT for Coordinate Reference Systems <http://www.geopackage.org/guidance/extensions/wkt_for_crs.md>`__ (WKT v2)
      - Yes
      - Partially, since GDAL 2.2. GDAL can read databases using this extension. GDAL 3.0 brings support for the WKT v2 entry.

@@ -41,7 +41,7 @@ CPL_CVSID("$Id$")
 
 class CEOSRasterBand;
 
-class CEOSDataset : public GDALPamDataset
+class CEOSDataset final: public GDALPamDataset
 {
     friend class CEOSRasterBand;
 
@@ -59,7 +59,7 @@ class CEOSDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class CEOSRasterBand : public GDALPamRasterBand
+class CEOSRasterBand final: public GDALPamRasterBand
 {
     friend class CEOSDataset;
 
@@ -232,7 +232,7 @@ void GDALRegister_CEOS()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "CEOS Image" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#CEOS" );
+                               "drivers/raster/ceos.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 
     poDriver->pfnOpen = CEOSDataset::Open;

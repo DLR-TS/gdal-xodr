@@ -5,6 +5,8 @@ PostgreSQL / PostGIS
 
 .. shortname:: PostgreSQL
 
+.. build_dependencies:: PostgreSQL client library (libpq)
+
 This driver implements support for access to spatial tables in
 PostgreSQL extended with the `PostGIS <http://postgis.net/>`__ spatial
 data support. Some support exists in the driver for use with PostgreSQL
@@ -28,7 +30,9 @@ Connecting to a database
 ------------------------
 
 | To connect to a Postgres datasource, use a connection string
-  specifying the database name, with additional parameters as necessary
+  specifying the database name, with additional parameters as necessary.
+  The PG: prefix is used to mark the name as a postgres connection
+  string.
 
    ::
 
@@ -39,16 +43,25 @@ Connecting to a database
    ::
 
       PG:"dbname='databasename' host='addr' port='5432' user='x' password='y'"
+      
+   In this syntax each parameter setting is in the form keyword = value. 
+   Spaces around the equal sign are optional. To write an empty value, or a 
+   value containing spaces, surround it with single quotes, e.g., 
+   keyword = 'a value'. Single quotes and backslashes within the value must 
+   be escaped with a backslash, i.e., \' and \\.
+  
+
+   Starting with GDAL 3.1 also this syntax is supported:
+
+   ::
+
+      PG:service=servicename
 
 | It's also possible to omit the database name and connect to a
   *default* database, with the same name as the user name.
-| **Note**: We use PQconnectdb() to make the connection, so any other
-  options and defaults that would apply to it, apply to the name here
-  (refer to the documentation of the PostgreSQL server. Here for
-  `PostgreSQL
-  8.4 <http://www.postgresql.org/docs/8.4/interactive/libpq-connect.html>`__).
-  The PG: prefix is used to mark the name as a postgres connection
-  string.
+| **Note**: We use PQconnectdb() to make the connection. See details from
+  `PostgreSQL libpq documentation <https://www.postgresql.org/docs/12/libpq-connect.html>`__).
+  
 
 Geometry columns
 ----------------
@@ -59,11 +72,11 @@ accessed database), then all tables and named views listed in the
 (PostGIS disabled for the accessed database), all regular user tables
 and named views will be treated as layers.
 
-Starting with GDAL 1.7.0, the driver also supports the
+The driver also supports the
 `geography <http://postgis.net/docs/manual-1.5/ch04.html#PostGIS_Geography>`__
 column type introduced in PostGIS 1.5.
 
-Starting with GDAL 2.0, the driver also supports reading and writing the
+The driver also supports reading and writing the
 following non-linear geometry types :CIRCULARSTRING, COMPOUNDCURVE,
 CURVEPOLYGON, MULTICURVE and MULTISURFACE
 
@@ -75,9 +88,9 @@ default, rather than evaluating them internally when using the
 ExecuteSQL() call on the OGRDataSource, or the -sql command option to
 ogr2ogr. Attribute query expressions are also passed directly through to
 PostgreSQL. It's also possible to request the ogr Pg driver to handle
-SQL commands with the `OGR SQL <ogr_sql.html>`__ engine, by passing
-**"OGRSQL"** string to the ExecuteSQL() method, as the name of the SQL
-dialect.
+SQL commands with the :ref:`OGR SQL <ogr_sql_dialect>` engine, by
+passing **"OGRSQL"** string to the ExecuteSQL() method, as the name of
+the SQL dialect.
 
 The PostgreSQL driver in OGR supports the
 OGRDataSource::StartTransaction(), OGRDataSource::CommitTransaction()
@@ -112,13 +125,13 @@ this command with a CPLPushErrorHandler()/CPLPopErrorHandler() pair.
 Dataset open options
 ~~~~~~~~~~~~~~~~~~~~
 
-(GDAL >= 2.0)
-
 -  **DBNAME**\ =string: Database name.
 -  **PORT**\ =integer: Port.
 -  **USER**\ =string: User name.
 -  **PASSWORD**\ =string: Password.
 -  **HOST**\ =string: Server hostname.
+-  **DBNAME**\ =string: Database name.
+-  **SERVICE**\ =string: Service name (GDAL >= 3.1)
 -  **ACTIVE_SCHEMA**\ =string: Active schema.
 -  **SCHEMAS**\ =string: Restricted sets of schemas to explore (comma
    separated).
@@ -128,7 +141,7 @@ Dataset open options
    including non-spatial ones, to be listed.
 -  **PRELUDE_STATEMENTS**\ =string (GDAL >= 2.1). SQL statement(s) to
    send on the PostgreSQL client connection before any other ones. In
-   case of several statement, they must be separated with the
+   case of several statements, they must be separated with the
    semi-column (;) sign. The driver will specifically recognize BEGIN as
    the first statement to avoid emitting BEGIN/COMMIT itself. This
    option may be useful when using the driver with pg_bouncer in
@@ -136,7 +149,7 @@ Dataset open options
    "1h";'
 -  **CLOSING_STATEMENTS**\ =string (GDAL >= 2.1). SQL statement(s) to
    send on the PostgreSQL client connection after any other ones. In
-   case of several statement, they must be separated with the
+   case of several statements, they must be separated with the
    semi-column (;) sign. With the above example value for
    PRELUDE_STATEMENTS, the appropriate CLOSING_STATEMENTS would be
    "COMMIT".
@@ -184,28 +197,28 @@ Layer Creation Options
    (GDAL >=2.4, or YES for earlier versions) by default. Creates a
    spatial index (GiST) on the geometry column to speed up queries (Has
    effect only when PostGIS is available). Set to NONE (GDAL >= 2.4, or
-   FALSE for earlier verions) to disable. BRIN is only available with
+   FALSE for earlier versions) to disable. BRIN is only available with
    PostgreSQL >= 9.4 and PostGIS >= 2.3. SPGIST is only available with
    PostgreSQL >= 11 and PostGIS >= 2.5
--  **TEMPORARY**: (From GDAL 1.8.0) Set to OFF by default. Creates a
+-  **TEMPORARY**: Set to OFF by default. Creates a
    temporary table instead of a permanent one.
--  **UNLOGGED**: (From GDAL 2.0) Set to OFF by default. Whether to
+-  **UNLOGGED**: Set to OFF by default. Whether to
    create the table as a unlogged one. Unlogged tables are only
    supported since PostgreSQL 9.1, and GiST indexes used for spatial
    indexing since PostgreSQL 9.3.
--  **NONE_AS_UNKNOWN**: (From GDAL 1.8.1) Can bet set to TRUE to force
+-  **NONE_AS_UNKNOWN**: Can bet set to TRUE to force
    non-spatial layers (wkbNone) to be created as spatial tables of type
-   GEOMETRY (wkbUnknown), which was the behaviour prior to GDAL 1.8.0.
+   GEOMETRY (wkbUnknown).
    Defaults to NO, in which case a regular table is created and not
    recorded in the PostGIS geometry_columns table.
--  **FID**: (From GDAL 1.9.0) Name of the FID column to create. Defaults
+-  **FID**: Name of the FID column to create. Defaults
    to 'ogc_fid'.
--  **FID64**: (From GDAL 2.0) This may be "TRUE" to create a FID column
+-  **FID64**: This may be "TRUE" to create a FID column
    that can support 64 bit identifiers. The default value is "FALSE".
--  **EXTRACT_SCHEMA_FROM_LAYER_NAME**: (From GDAL 1.9.0) Can be set to
+-  **EXTRACT_SCHEMA_FROM_LAYER_NAME**: Can be set to
    NO to avoid considering the dot character as the separator between
    the schema and the table name. Defaults to YES.
--  **COLUMN_TYPES**: (From GDAL 1.10) A list of strings of format
+-  **COLUMN_TYPES**: A list of strings of format
    field_name=pg_field_type (separated by comma) that should be use when
    CreateField() is invoked on them. This will override the default
    choice that OGR would have made. This can for example be used to
@@ -226,19 +239,18 @@ Options <http://trac.osgeo.org/gdal/wiki/ConfigOptions>`__ which help
 control the behavior of this driver.
 
 -  **PG_USE_COPY**: This may be "YES" for using COPY for inserting data
-   to Postgresql. COPY is significantly faster than INSERT. Starting
-   with GDAL 2.0, COPY is used by default when inserting from a table
-   that has just been created.
+   to Postgresql. COPY is significantly faster than INSERT. COPY is used by
+   default when inserting from a table that has just been created.
 -  **PGSQL_OGR_FID**: Set name of primary key instead of 'ogc_fid'. Only
    used when opening a layer whose primary key cannot be autodetected.
    Ignored by CreateLayer() that uses the FID creation option.
--  **PG_USE_BASE64**: (GDAL >= 1.8.0) If set to "YES", geometries will
+-  **PG_USE_BASE64**: If set to "YES", geometries will
    be fetched as BASE64 encoded EWKB instead of canonical HEX encoded
    EWKB. This reduces the amount of data to be transferred from 2 N to
    1.333 N, where N is the size of EWKB data. However, it might be a bit
    slower than fetching in canonical form when the client and the server
    are on the same machine, so the default is NO.
--  **OGR_TRUNCATE**: (GDAL >= 1.11) If set to "YES", the content of the
+-  **OGR_TRUNCATE**: If set to "YES", the content of the
    table will be first erased with the SQL TRUNCATE command before
    inserting the first feature. This is an alternative to using the
    -overwrite flag of ogr2ogr, that avoids views based on the table to
@@ -268,6 +280,41 @@ Examples
               gltp:/vrf/usr4/mpp1/v0eur/vmaplv0/eurnasia \
               -lco OVERWRITE=yes -nln polbndl_bnd 'polbndl@bnd(*)_line'
 
+- Export a single Postgres table to GeoPackage:
+
+   ::
+
+     ogr2ogr \
+       -f GPKG output.gpkg \
+       PG:"dbname='my_database'" "my_table"
+
+- Export many Postgres tables to GeoPackage:
+
+   ::
+
+     ogr2ogr \
+       -f GPKG output.gpkg \
+       PG:"dbname='my_database' tables='table_1,table_3'"
+
+- Export a whole Postgres database to GeoPackage:
+
+   ::
+
+     ogr2ogr \
+       -f GPKG output.gpkg \
+       PG:dbname=my_database
+
+
+- Load a single layer GeoPackage into Postgres:
+
+   ::
+
+     ogr2ogr \
+       -f "PostgreSQL" PG:"dbname='my_database'" \
+       input.gpkg \
+       -nln "name_of_new_table"
+
+
 -  In this example we merge tiger line data from two different
    directories of tiger files into one table. Note that the second
    invocation uses -append and no OVERWRITE=yes.
@@ -292,14 +339,14 @@ Examples
 
    ::
 
-      ogrinfo -ro PG:'host=myserver.velocet.ca user=postgres dbname=warmerda'
+      ogrinfo -ro PG:"host='myserver.velocet.ca' user='postgres' dbname='warmerda'"
 
 -  This example shows use of PRELUDE_STATEMENTS and CLOSING_STATEMENTS
    as destination open options of ogr2ogr.
 
    ::
 
-      ogrinfo "pg:dbname=mydb" poly.shp -doo "PRELUDE_STATEMENTS=BEGIN; SET LOCAL statement_timeout TO '1h';" -doo CLOSING_STATEMENTS=COMMIT
+      ogrinfo PG:"dbname='mydb'" poly -doo "PRELUDE_STATEMENTS=BEGIN; SET LOCAL statement_timeout TO '1h';" -doo CLOSING_STATEMENTS=COMMIT
 
 FAQs
 ----

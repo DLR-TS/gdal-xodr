@@ -2394,7 +2394,7 @@ int OGRMongoDBv3Dataset::TestCapability( const char * pszCap )
 /*                    OGRMongoDBv3SingleFeatureLayer                    */
 /************************************************************************/
 
-class OGRMongoDBv3SingleFeatureLayer: public OGRLayer
+class OGRMongoDBv3SingleFeatureLayer final: public OGRLayer
 {
     OGRFeatureDefn     *m_poFeatureDefn;
     CPLString           osVal;
@@ -2632,7 +2632,7 @@ void RegisterOGRMongoDBv3()
     poDriver->SetDescription( "MongoDBv3" );
     poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "MongoDB (using libmongocxx v3 client)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drv_mongodbv3.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/vector/mongodbv3.html" );
 
     poDriver->SetMetadataItem( GDAL_DMD_CONNECTION_PREFIX, "MongoDBv3:" );
 

@@ -6,6 +6,8 @@ BYN - Natural Resources Canada's Geoid file format (.byn)
 
 .. shortname:: BYN
 
+.. built_in_by_default:: 
+
 Files with extension ".byn" have a binary format. The format includes
 two sections which are the Header and the Data. The data are stored by
 rows starting from the north. Each row is stored from the west to the
@@ -53,10 +55,10 @@ Factor
 ------
 
 When translating from or into BYN file to or from another formats the
-scale will afect the result profundly.
+scale will affect the result profoundly.
 
 Translating to a format that supports Scale (GTIFF for example) will
-mantain the data type and thescale information. The pixel values are
+maintain the data type and thescale information. The pixel values are
 perfectly preserved.
 
 Translating to a format that does not support Scale will maintain the

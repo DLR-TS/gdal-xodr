@@ -66,26 +66,26 @@
 /* ==================================================================== */
 /************************************************************************/
 
-class JP2KAKDataset : public GDALJP2AbstractDataset
+class JP2KAKDataset final: public GDALJP2AbstractDataset
 {
     friend class JP2KAKRasterBand;
 
     kdu_codestream oCodeStream;
-    kdu_compressed_source *poInput;
-    kdu_compressed_source *poRawInput;
-    jp2_family_src  *family;
-    kdu_client      *jpip_client;
+    kdu_compressed_source *poInput = nullptr;
+    kdu_compressed_source *poRawInput = nullptr;
+    jp2_family_src  *family = nullptr;
+    kdu_client      *jpip_client = nullptr;
     kdu_dims dims;
-    int            nResCount;
-    bool           bPreferNPReads;
-    kdu_thread_env *poThreadEnv;
+    int            nResCount = 0;
+    bool           bPreferNPReads = false;
+    kdu_thread_env *poThreadEnv = nullptr;
 
-    bool           bCached;
-    bool           bResilient;
-    bool           bFussy;
-    bool           bUseYCC;
+    bool           bCached = false;
+    bool           bResilient = false;
+    bool           bFussy = false;
+    bool           bUseYCC = false;
 
-    bool           bPromoteTo8Bit;
+    bool           bPromoteTo8Bit = false;
 
     bool        TestUseBlockIO( int, int, int, int, int, int,
                                 GDALDataType, int, int * );
@@ -122,7 +122,7 @@ class JP2KAKDataset : public GDALJP2AbstractDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class JP2KAKRasterBand : public GDALPamRasterBand
+class JP2KAKRasterBand final: public GDALPamRasterBand
 {
     friend class JP2KAKDataset;
 
@@ -175,7 +175,7 @@ class JP2KAKRasterBand : public GDALPamRasterBand
 /* ==================================================================== */
 /************************************************************************/
 
-class kdu_cpl_error_message : public kdu_thread_safe_message
+class kdu_cpl_error_message final: public kdu_thread_safe_message
 {
   public:  // Member classes.
     using kdu_thread_safe_message::put_text;

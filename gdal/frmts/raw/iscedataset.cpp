@@ -317,7 +317,7 @@ void ISCEDataset::FlushCache( void )
                                  "createCoordinate" );
     CPLCreateXMLElementAndValue( psCoordinate1Node,
                                  "doc",
-                                 "First coordinate of a 2D image (witdh)." );
+                                 "First coordinate of a 2D image (width)." );
     /* Property name */
     psTmpNode = CPLCreateXMLNode( psCoordinate1Node,
                                   CXT_Element,
@@ -647,6 +647,12 @@ GDALDataset *ISCEDataset::Open( GDALOpenInfo *poOpenInfo, bool bFileSizeCheck )
     }
     const GDALDataType eDataType = GDALGetDataTypeByName( pszDataType );
     const int nDTSize = GDALGetDataTypeSizeBytes(eDataType);
+    if( nDTSize == 0 )
+    {
+        delete poDS;
+        CSLDestroy( papszXmlProps );
+        return nullptr;
+    }
     const char *pszScheme = CSLFetchNameValue( papszXmlProps, "SCHEME" );
     int nPixelOffset = 0;
     int nLineOffset = 0;
@@ -936,7 +942,7 @@ void GDALRegister_ISCE()
 
     poDriver->SetDescription( "ISCE" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "ISCE raster" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#ISCE" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/isce.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 Int32 Int64 Float32"
                                " Float64 CInt16 CInt64 CFloat32 "

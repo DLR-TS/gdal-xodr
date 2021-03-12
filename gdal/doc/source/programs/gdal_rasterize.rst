@@ -22,7 +22,8 @@ Synopsis
         [-co "NAME=VALUE"]* [-a_nodata value] [-init value]*
         [-te xmin ymin xmax ymax] [-tr xres yres] [-tap] [-ts width height]
         [-ot {Byte/Int16/UInt16/UInt32/Int32/Float32/Float64/
-                CInt16/CInt32/CFloat32/CFloat64}] [-q]
+                CInt16/CInt32/CFloat32/CFloat64}]
+        [-optim {[AUTO]/VECTOR/RASTER}] [-q]
         <src_datasource> <dst_filename>
 
 Description
@@ -35,7 +36,7 @@ formats.
 Note that on the fly reprojection of vector data to the coordinate system of the
 raster data is only supported since GDAL 2.1.0.
 
-.. program:: gdal_translate
+.. program:: gdal_rasterize
 
 .. option:: -b <band>
 
@@ -87,7 +88,7 @@ raster data is only supported since GDAL 2.1.0.
 .. option:: -where <expression>
 
     An optional SQL WHERE style query expression to be applied to select features
-    to burn in from the input layer(s). 
+    to burn in from the input layer(s).
 
 .. option:: -sql <select_statement>
 
@@ -121,7 +122,7 @@ raster data is only supported since GDAL 2.1.0.
     of features from the SRS of the input vector to the specified SRS of the output raster,
     so use only this option to correct an invalid source SRS.
     The <srs_def> may be any of the usual GDAL/OGR forms, complete WKT, PROJ.4,
-    EPSG:n or a file containing the WKT. 
+    EPSG:n or a file containing the WKT.
 
 .. option:: -to NAME=VALUE
 
@@ -138,7 +139,7 @@ raster data is only supported since GDAL 2.1.0.
 
     Set georeferenced extents. The values must be expressed in georeferenced units.
     If not specified, the extent of the output file will be the extent of the vector
-    layers. 
+    layers.
 
 .. option:: -tr <xres> <yres>
 
@@ -159,6 +160,16 @@ raster data is only supported since GDAL 2.1.0.
 .. option:: -ot <type>
 
     Force the output bands to be of the indicated data type. Defaults to ``Float64``
+
+.. option:: -optim {[AUTO]/VECTOR/RASTER}}
+
+    Force the algorithm used (results are identical). The raster mode is used in most cases and
+    optimise read/write operations. The vector mode is useful with a decent amount of input
+    features and optimise the CPU use. That mode have to be used with tiled images to be
+    efficient. The auto mode (the default) will chose the algorithm based on input and output
+    properties.
+
+    .. versionadded:: 2.3
 
 .. option:: -q
 

@@ -5,6 +5,8 @@ MySQL
 
 .. shortname:: MySQL
 
+.. build_dependencies:: MySQL library
+
 This driver implements read and write access for spatial data in
 `MySQL <http://www.mysql.org/>`__ tables.
 
@@ -28,8 +30,8 @@ be extremely slow.
 
 By default, SQL statements are passed directly to the MySQL database
 engine. It's also possible to request the driver to handle SQL commands
-with `OGR SQL <ogr_sql.html>`__ engine, by passing **"OGRSQL"** string
-to the ExecuteSQL() method, as name of the SQL dialect.
+with :ref:`OGR SQL <ogr_sql_dialect>` engine, by passing **"OGRSQL"**
+string to the ExecuteSQL() method, as name of the SQL dialect.
 
 Driver capabilities
 -------------------
@@ -116,7 +118,7 @@ Layer Creation Options
 -  **FID**: This option specifies the name of the FID column. The
    default value is "OGR_FID". Note: option was called MYSQL_FID in
    releases before GDAL 2
--  **FID64**: (GDAL >= 2.0) This may be "TRUE" to create a FID column
+-  **FID64**: This may be "TRUE" to create a FID column
    that can support 64 bit identifiers. The default value is "FALSE".
 -  **SPATIAL_INDEX**: May be "NO" to stop automatic creation of a
    spatial index on the geometry column, allowing NULL geometries and

@@ -45,11 +45,15 @@ typedef enum
 typedef char retStringAndCPLFree;
 %}
 
+%apply Pointer NONNULL {const char *message};
 %inline %{
   void Debug( const char *msg_class, const char *message ) {
     CPLDebug( msg_class, "%s", message );
   }
+%}
+%clear (const char *message);
 
+%inline %{
   CPLErr SetErrorHandler( CPLErrorHandler pfnErrorHandler = NULL, void* user_data = NULL )
   {
     if( pfnErrorHandler == NULL )
@@ -63,6 +67,9 @@ typedef char retStringAndCPLFree;
   }
 %}
 
+%rename (SetCurrentErrorHandlerCatchDebug) CPLSetCurrentErrorHandlerCatchDebug;
+void CPLSetCurrentErrorHandlerCatchDebug( int bCatchDebug );
+
 #ifdef SWIGPYTHON
 
 %nothread;
@@ -75,7 +82,7 @@ void CPL_STDCALL PyCPLErrorHandler(CPLErr eErrClass, int err_no, const char* psz
     if( GDALIsInGlobalDestructor() )
     {
         // this is typically during Python interpreter shutdown, and ends up in a crash
-        // because error handling tries to do thread initialisation.
+        // because error handling tries to do thread initialization.
         return;
     }
 
@@ -181,15 +188,23 @@ void CPL_STDCALL PyCPLErrorHandler(CPLErr eErrClass, int err_no, const char* psz
 %rename (FileFromMemBuffer) wrapper_VSIFileFromMemBuffer;
 %rename (Unlink) VSIUnlink;
 %rename (HasThreadSupport) wrapper_HasThreadSupport;
+%rename (NetworkStatsReset) VSINetworkStatsReset;
+%rename (NetworkStatsGetAsSerializedJSON) VSINetworkStatsGetAsSerializedJSON;
 
+%apply Pointer NONNULL {const char *pszScope};
 retStringAndCPLFree*
 GOA2GetAuthorizationURL( const char *pszScope );
+%clear (const char *pszScope);
 
+%apply Pointer NONNULL {const char *pszAuthToken};
 retStringAndCPLFree*
 GOA2GetRefreshToken( const char *pszAuthToken, const char *pszScope );
+%clear (const char *pszAuthToken);
 
+%apply Pointer NONNULL {const char *pszRefreshToken};
 retStringAndCPLFree*
 GOA2GetAccessToken( const char *pszRefreshToken, const char *pszScope );
+%clear (const char *pszRefreshToken);
 
 #if !defined(SWIGJAVA) && !defined(SWIGPYTHON)
 void CPLPushErrorHandler( CPLErrorHandler );
@@ -508,6 +523,28 @@ void wrapper_VSIFileFromMemBuffer( const char* utf8_path, int nBytes, const GByt
 /* Added in GDAL 1.7.0 */
 VSI_RETVAL VSIUnlink(const char * utf8_path );
 
+%rename (UnlinkBatch) wrapper_VSIUnlinkBatch;
+%apply (char **options) {char ** files};
+%inline {
+bool wrapper_VSIUnlinkBatch(char** files)
+{
+    int* success = VSIUnlinkBatch(files);
+    if( !success )
+        return false;
+    int bRet = true;
+    for( int i = 0; files && files[i]; i++ )
+    {
+        if( !success[i] ) {
+            bRet = false;
+            break;
+        }
+    }
+    VSIFree(success);
+    return bRet;
+}
+}
+%clear (char **files);
+
 /* Added in GDAL 1.7.0 */
 /* Thread support is necessary for binding languages with threaded GC */
 /* even if the user doesn't explicitly use threads */
@@ -653,6 +690,20 @@ int wrapper_VSIStatL( const char * utf8_path, StatBuf *psStatBufOut, int nFlags 
 
 #endif
 
+%rename (GetFileMetadata) VSIGetFileMetadata;
+%apply (char **dict) { char ** };
+char** VSIGetFileMetadata( const char *utf8_path, const char* domain,
+                           char** options = NULL );
+%clear char **;
+
+%rename (SetFileMetadata) VSISetFileMetadata;
+%apply (char **dict) { char ** metadata };
+bool VSISetFileMetadata( const char * utf8_path,
+                         char** metadata,
+                         const char* domain,
+                         char** options = NULL );
+%clear char **;
+
 %apply Pointer NONNULL {VSILFILE* fp};
 
 %rename (VSIFOpenL) wrapper_VSIFOpenL;
@@ -666,14 +717,16 @@ VSILFILE   *wrapper_VSIFOpenL( const char *utf8_path, const char *pszMode )
 %}
 
 %rename (VSIFOpenExL) wrapper_VSIFOpenExL;
+%apply (char **dict) { char ** };
 %inline %{
-VSILFILE   *wrapper_VSIFOpenExL( const char *utf8_path, const char *pszMode, int bSetError )
+VSILFILE   *wrapper_VSIFOpenExL( const char *utf8_path, const char *pszMode, int bSetError = FALSE, char** options = NULL )
 {
     if (!pszMode) /* would lead to segfault */
         pszMode = "r";
-    return VSIFOpenExL( utf8_path, pszMode, bSetError );
+    return VSIFOpenEx2L( utf8_path, pszMode, bSetError, options );
 }
 %}
+%clear char **;
 
 int VSIFEofL( VSILFILE* fp );
 int VSIFFlushL( VSILFILE* fp );
@@ -734,6 +787,9 @@ void VSIStdoutUnsetRedirection()
 
 void VSICurlClearCache();
 void VSICurlPartialClearCache( const char* utf8_path );
+
+void VSINetworkStatsReset();
+retStringAndCPLFree* VSINetworkStatsGetAsSerializedJSON( char** options = NULL );
 
 #endif /* !defined(SWIGJAVA) */
 

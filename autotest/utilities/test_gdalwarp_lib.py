@@ -266,7 +266,7 @@ def test_gdalwarp_lib_15():
 
     assert ds.GetRasterBand(1).GetNoDataValue() == 1, 'Bad nodata value'
 
-    assert ds.GetRasterBand(1).Checksum() == 4523, 'Bad checksum'
+    assert ds.GetRasterBand(1).Checksum() in (4523, 4547) # 4547 on Mac / Conda
 
     ds = None
 
@@ -382,7 +382,7 @@ def test_gdalwarp_lib_34():
 
     expected_gt = (440720.0, 60.0, 0.0, 3751320.0, 0.0, -60.0)
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 1e-5, 'bad gt'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=1e-5), 'bad gt'
 
     
 ###############################################################################
@@ -752,7 +752,7 @@ def test_gdalwarp_lib_121():
 
     # Will create an implicit options structure
     with gdaltest.error_handler():
-        gdal.wrapper_GDALWarpDestName('', [], None, gdal.TermProgress)
+        gdal.wrapper_GDALWarpDestName('', [], None, gdal.TermProgress_nocb)
 
     # Null dest name
     try:
@@ -766,7 +766,7 @@ def test_gdalwarp_lib_121():
 
     # Will create an implicit options structure
     with gdaltest.error_handler():
-        gdal.wrapper_GDALWarpDestDS(gdal.GetDriverByName('MEM').Create('', 1, 1), [], None, gdal.TermProgress)
+        gdal.wrapper_GDALWarpDestDS(gdal.GetDriverByName('MEM').Create('', 1, 1), [], None, gdal.TermProgress_nocb)
 
     
 ###############################################################################
@@ -1083,7 +1083,7 @@ def test_gdalwarp_lib_132():
         for i in range(2):
             for x in range(33):
                 data = struct.unpack('B' * 1, ds.GetRasterBand(i + 1).ReadRaster(i, 0, 1, 1, buf_type=gdal.GDT_Byte))[0]
-                if abs(data - expected_val[i]) > 1:
+                if data != pytest.approx(expected_val[i], abs=1):
                     print(dt)
                     print(x)
                     pytest.fail('bad checksum')
@@ -1887,7 +1887,7 @@ def test_gdalwarp_lib_to_cog_reprojection_options():
     ds = gdal.Warp(tmpfilename, '../gcore/data/byte.tif',
               options = '-f COG -co TILING_SCHEME=GoogleMapsCompatible')
     assert ds.RasterCount == 2
-    assert ds.GetRasterBand(1).Checksum() == 4187
+    assert ds.GetRasterBand(1).Checksum() in (4187, 4300, 4186) # 4300 on Mac, 4186 on Mac / Conda
     assert ds.GetRasterBand(2).Checksum() == 4415
     ds = None
     gdal.Unlink(tmpfilename)
@@ -1928,7 +1928,7 @@ def test_gdalwarp_lib_multiple_source_compatible_buildvrt_to_cog_reprojection_op
     ds = gdal.Warp(tmpfilename, [left_ds, right_ds],
                    options = '-f COG -co TILING_SCHEME=GoogleMapsCompatible')
     assert ds.RasterCount == 2
-    assert ds.GetRasterBand(1).Checksum() == 4187
+    assert ds.GetRasterBand(1).Checksum() in (4187, 4300, 4186) # 4300 on Mac, 4186 on Mac / Conda
     assert ds.GetRasterBand(2).Checksum() == 4415
     ds = None
     gdal.Unlink(tmpfilename)
@@ -1972,12 +1972,75 @@ def test_gdalwarp_lib_multiple_source_incompatible_buildvrt_to_cog_reprojection_
     ds = gdal.Warp(tmpfilename, [left_ds, right_ds],
                    options = '-f COG -co TILING_SCHEME=GoogleMapsCompatible')
     assert ds.RasterCount == 2
-    assert ds.GetRasterBand(1).Checksum() == 4207
+    assert ds.GetRasterBand(1).Checksum() in (4207, 4315, 4206) # 4300 on Mac, 4206 on Mac / Conda
     assert ds.GetRasterBand(2).Checksum() == 4415
     ds = None
     gdal.Unlink(tmpfilename)
     gdal.Unlink('/vsimem/left.tif')
     gdal.Unlink('/vsimem/right.tif')
+
+###############################################################################
+
+def test_gdalwarp_lib_no_crs():
+
+    src_ds = gdal.GetDriverByName('MEM').Create('', 1, 1)
+    src_ds.SetGeoTransform([0, 10, 0, 0, 0, -10])
+    out_ds = gdal.Warp('', src_ds, options = '-of MEM -ct "+proj=unitconvert +xy_in=1 +xy_out=2"')
+    assert out_ds.GetGeoTransform() == (0.0, 5.0, 0.0, 0.0, 0.0, -5.0)
+
+
+###############################################################################
+# Test that the warp kernel properly computes the resampling kernel xsize
+# when wrapping along the antimeridian (related to #2754)
+
+def test_gdalwarp_lib_xscale_antimeridian():
+
+    sr = osr.SpatialReference()
+    sr.SetFromUserInput("WGS84")
+
+    src1_ds = gdal.GetDriverByName('GTiff').Create('/vsimem/src1.tif', 1000, 1000)
+    src1_ds.SetGeoTransform([179, 0.001, 0, 50, 0, -0.001])
+    src1_ds.SetProjection(sr.ExportToWkt())
+    src1_ds.GetRasterBand(1).Fill(100)
+    src1_ds = None
+
+    src2_ds = gdal.GetDriverByName('GTiff').Create('/vsimem/src2.tif', 1000, 1000)
+    src2_ds.SetGeoTransform([-180, 0.001, 0, 50, 0, -0.001])
+    src2_ds.SetProjection(sr.ExportToWkt())
+    src2_ds.GetRasterBand(1).Fill(200)
+    src2_ds = None
+
+    source = gdal.BuildVRT('', ['/vsimem/src1.tif', '/vsimem/src2.tif'])
+    # Wrap to UTM zone 1 across the antimeridian
+    ds = gdal.Warp('', source, options="-of MEM -t_srs EPSG:32601 -te 276000 5464000 290000 5510000 -tr 1000 1000 -r cubic")
+    vals = struct.unpack('B' * ds.RasterXSize * ds.RasterYSize, ds.ReadRaster())
+    assert vals[0] == 100
+    assert vals[ds.RasterXSize - 1] == 200
+    # Check that the set of values is just 100 and 200. If the xscale was wrong,
+    # we would take intou account 0 values outsize of the 2 tiles.
+    assert set(vals) == set([100, 200])
+
+    gdal.Unlink('/vsimem/src1.tif')
+    gdal.Unlink('/vsimem/src2.tif')
+
+
+###############################################################################
+# Test gdalwarp preserves scale & offset of bands
+
+def test_gdalwarp_lib_scale_offset():
+
+    sr = osr.SpatialReference()
+    sr.SetFromUserInput("WGS84")
+
+    src_ds = gdal.GetDriverByName('MEM').Create('', 1, 1)
+    src_ds.SetGeoTransform([2,1,0,49,0,-1])
+    src_ds.SetProjection(sr.ExportToWkt())
+    src_ds.GetRasterBand(1).SetScale(1.5)
+    src_ds.GetRasterBand(1).SetOffset(2.5)
+
+    ds = gdal.Warp('', src_ds, format='MEM')
+    assert ds.GetRasterBand(1).GetScale() == 1.5
+    assert ds.GetRasterBand(1).GetOffset() == 2.5
 
 
 ###############################################################################

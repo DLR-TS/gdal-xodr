@@ -42,7 +42,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class JPEGLSDataset : public GDALPamDataset
+class JPEGLSDataset final: public GDALPamDataset
 {
     friend class JPEGLSRasterBand;
 
@@ -74,7 +74,7 @@ class JPEGLSDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class JPEGLSRasterBand : public GDALPamRasterBand
+class JPEGLSRasterBand final: public GDALPamRasterBand
 {
     friend class JPEGLSDataset;
 
@@ -121,9 +121,11 @@ static const char* JPEGLSGetErrorAsString(CharlsApiResultType eCode)
         case CharlsApiResultType::ParameterValueNotSupported: return "ParameterValueNotSupported";
         case CharlsApiResultType::UncompressedBufferTooSmall: return "UncompressedBufferTooSmall";
         case CharlsApiResultType::CompressedBufferTooSmall: return "CompressedBufferTooSmall";
+#ifndef CHARLS_2_1
         case CharlsApiResultType::InvalidCompressedData: return "InvalidCompressedData";
         case CharlsApiResultType::ImageTypeNotSupported: return "ImageTypeNotSupported";
         case CharlsApiResultType::UnsupportedBitDepthForTransform: return "UnsupportedBitDepthForTransform";
+#endif
         case CharlsApiResultType::UnsupportedColorTransform: return "UnsupportedColorTransform";
         default: return "unknown";
     };
@@ -421,6 +423,9 @@ GDALDataset *JPEGLSDataset::Open( GDALOpenInfo * poOpenInfo )
     if (!Identify(poOpenInfo, bIsDCOM))
         return nullptr;
 
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("JPEGLS") )
+        return nullptr;
+
     JlsParameters sParams;
 
 #ifdef CHARLS_2
@@ -503,7 +508,7 @@ GDALDataset *JPEGLSDataset::Open( GDALOpenInfo * poOpenInfo )
     if (nBitsPerSample > 16)
     {
         CPLError(CE_Failure, CPLE_NotSupported,
-                 "Unsupport bitspersample : %d",
+                 "Unsupported bitspersample : %d",
                  nBitsPerSample);
         return nullptr;
     }
@@ -560,6 +565,10 @@ JPEGLSDataset::CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
                 GDALProgressFunc /*pfnProgress*/, void * /*pProgressData*/ )
 
 {
+
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("JPEGLS") )
+        return nullptr;
+
     const int  nBands = poSrcDS->GetRasterCount();
     const int  nXSize = poSrcDS->GetRasterXSize();
     const int  nYSize = poSrcDS->GetRasterYSize();
@@ -772,7 +781,7 @@ void GDALRegister_JPEGLS()
     poDriver->SetDescription( "JPEGLS" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "JPEGLS" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_jpegls.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/jpegls.html" );
     // poDriver->SetMetadataItem( GDAL_DMD_MIMETYPE, "image/jls" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "jls" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Byte Int16" );

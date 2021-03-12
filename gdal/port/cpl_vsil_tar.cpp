@@ -221,6 +221,16 @@ static void* CPLmemmem(const void *haystack, size_t haystacklen,
 #endif
 
 /************************************************************************/
+/*                       IsNumericFieldTerminator()                     */
+/************************************************************************/
+
+static bool IsNumericFieldTerminator(GByte byVal)
+{
+    // See https://github.com/Keruspe/tar-parser.rs/blob/master/tar.specs#L202
+    return byVal == '\0' || byVal == ' ';
+}
+
+/************************************************************************/
 /*                           GotoNextFile()                             */
 /************************************************************************/
 
@@ -333,11 +343,11 @@ int VSITarReader::GotoNextFile()
         if (VSIFReadL(abyHeader, 512, 1, fp) != 1)
             return FALSE;
 
-        if (!(abyHeader[100] == 0x80 || abyHeader[107] == '\0') || /* start/end of filemode */
-            !(abyHeader[108] == 0x80 || abyHeader[115] == '\0') || /* start/end of owner ID */
-            !(abyHeader[116] == 0x80 || abyHeader[123] == '\0') || /* start/end of group ID */
-            (abyHeader[135] != '\0' && abyHeader[135] != ' ') || /* end of file size */
-            (abyHeader[147] != '\0' && abyHeader[147] != ' ')) /* end of mtime */
+        if (!(abyHeader[100] == 0x80 || IsNumericFieldTerminator(abyHeader[107])) || /* start/end of filemode */
+            !(abyHeader[108] == 0x80 || IsNumericFieldTerminator(abyHeader[115])) || /* start/end of owner ID */
+            !(abyHeader[116] == 0x80 || IsNumericFieldTerminator(abyHeader[123])) || /* start/end of group ID */
+            !IsNumericFieldTerminator(abyHeader[135]) || /* end of file size */
+            !IsNumericFieldTerminator(abyHeader[147])) /* end of mtime */
         {
             return FALSE;
         }
@@ -354,7 +364,17 @@ int VSITarReader::GotoNextFile()
         for(int i=0;i<11;i++)
         {
             if( abyHeader[124+i] != ' ' )
+            {
+                if( nNextFileSize > static_cast<GUIntBig>(GINTBIG_MAX / 8) ||
+                    abyHeader[124+i] < '0' ||
+                    abyHeader[124+i] >= '8' )
+                {
+                    CPLError(CE_Failure, CPLE_AppDefined,
+                            "Invalid file size for %s", osNextFileName.c_str());
+                    return FALSE;
+                }
                 nNextFileSize = nNextFileSize * 8 + (abyHeader[124+i] - '0');
+            }
         }
         if( nNextFileSize > GINTBIG_MAX )
         {
@@ -367,7 +387,18 @@ int VSITarReader::GotoNextFile()
         for(int i=0;i<11;i++)
         {
             if( abyHeader[136+i] != ' ' )
+            {
+                if( nModifiedTime > GINTBIG_MAX / 8 ||
+                    abyHeader[136+i] < '0' ||
+                    abyHeader[136+i] >= '8' ||
+                    nModifiedTime * 8 > GINTBIG_MAX - (abyHeader[136+i] - '0') )
+                {
+                    CPLError(CE_Failure, CPLE_AppDefined,
+                            "Invalid mtime for %s", osNextFileName.c_str());
+                    return FALSE;
+                }
                 nModifiedTime = nModifiedTime * 8 + (abyHeader[136+i] - '0');
+            }
         }
 
         if( abyHeader[156] == 'L' && nNextFileSize > 0 && nNextFileSize < 32768 )
@@ -443,7 +474,8 @@ int VSITarReader::GotoFileOffset( VSIArchiveEntryFileOffset* pOffset )
         return TRUE;
     }
 #endif
-    if( VSIFSeekL(fp, pTarEntryOffset->m_nOffset - 512, SEEK_SET) < 0 )
+    if( pTarEntryOffset->m_nOffset < 512 ||
+        VSIFSeekL(fp, pTarEntryOffset->m_nOffset - 512, SEEK_SET) < 0 )
         return FALSE;
     return GotoNextFile();
 }
@@ -463,7 +495,8 @@ public:
 
     VSIVirtualHandle *Open( const char *pszFilename,
                             const char *pszAccess,
-                            bool bSetError ) override;
+                            bool bSetError,
+                            CSLConstList /* papszOptions */ ) override;
 };
 
 /************************************************************************/
@@ -518,7 +551,8 @@ VSIArchiveReader* VSITarFilesystemHandler::CreateReader(const char* pszTarFileNa
 
 VSIVirtualHandle* VSITarFilesystemHandler::Open( const char *pszFilename,
                                                  const char *pszAccess,
-                                                 bool /* bSetError */ )
+                                                 bool /* bSetError */,
+                                                 CSLConstList /* papszOptions */ )
 {
 
     if (strchr(pszAccess, 'w') != nullptr ||
@@ -596,7 +630,7 @@ VSIVirtualHandle* VSITarFilesystemHandler::Open( const char *pszFilename,
  * For example gdalinfo /vsitar/myarchive.tar/subdir1/file1.tif
  *
  * Syntactic sugar : if the tar archive contains only one file located at its
- * root, just mentionning "/vsitar/path/to/the/file.tar" will work
+ * root, just mentioning "/vsitar/path/to/the/file.tar" will work
  *
  * VSIStatL() will return the uncompressed size in st_size member and file
  * nature- file or directory - in st_mode member.

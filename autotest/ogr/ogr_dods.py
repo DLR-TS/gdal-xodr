@@ -46,7 +46,7 @@ def test_ogr_dods_1():
     if ogrtest.dods_drv is None:
         pytest.skip()
 
-    gdal.SetConfigOption('DODS_AIS_FILE', 'data/ais.xml')
+    gdal.SetConfigOption('DODS_AIS_FILE', 'data/dods/ais.xml')
 
     srv = 'http://www.epic.noaa.gov:10100/dods/wod2001/natl_prof_bot.cdp?&_id=1'
     if gdaltest.gdalurlopen(srv) is None:
@@ -122,7 +122,7 @@ def test_ogr_dods_3():
 
         assert feat.GetField('time') == -1936483200000, 'time wrong'
 
-        assert abs(feat.GetField('T_20') - expected[i]) <= 0.001, 'T_20 wrong'
+        assert feat.GetField('T_20') == pytest.approx(expected[i], abs=0.001), 'T_20 wrong'
 
         assert ogrtest.check_feature_geometry(feat, 'POINT (4.30000019 5.36999989)') == 0
 

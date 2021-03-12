@@ -65,7 +65,7 @@ CPL_C_END
 
 #include "mrsidstream.h"
 
-LT_USE_NAMESPACE(LizardTech)
+using namespace LizardTech;
 
 /* -------------------------------------------------------------------- */
 /*      Various wrapper templates used to force new/delete to happen    */
@@ -211,9 +211,8 @@ class MrSIDDataset final: public GDALJP2AbstractDataset
     CPLString           osMETFilename;
 
     CPLErr              OpenZoomLevel( lt_int32 iZoom );
-    char                *SerializeMetadataRec( const LTIMetadataRecord* );
     int                 GetMetadataElement( const char *, void *, int=0 );
-    void                FetchProjParms();
+    void                FetchProjParams();
     void                GetGTIFDefn();
     char                *GetOGISDefn( GTIFDefn * );
 
@@ -240,7 +239,7 @@ class MrSIDDataset final: public GDALJP2AbstractDataset
 #ifdef MRSID_ESDK
     static GDALDataset  *Create( const char * pszFilename,
                                  int nXSize, int nYSize, int nBands,
-                                 GDALDataType eType, char ** papszParmList );
+                                 GDALDataType eType, char ** papszParamList );
     virtual void        FlushCache( void );
 #endif
 };
@@ -1022,22 +1021,22 @@ CPLErr MrSIDDataset::IBuildOverviews( const char *, int, int *,
 /*                        SerializeMetadataRec()                        */
 /************************************************************************/
 
-char *MrSIDDataset::SerializeMetadataRec( const LTIMetadataRecord *poMetadataRec )
+static CPLString SerializeMetadataRec( const LTIMetadataRecord *poMetadataRec )
 {
     GUInt32  iNumDims = 0;
     const GUInt32  *paiDims = nullptr;
     const void     *pData = poMetadataRec->getArrayData( iNumDims, paiDims );
-    GUInt32        i, j, k = 0, iLength;
-    char           *pszMetadata = CPLStrdup( "" );
+    CPLString      osMetadata;
+    GUInt32        k = 0;
 
-    for ( i = 0; i < iNumDims; i++ )
+    for ( GUInt32 i = 0; i < iNumDims; i++ )
     {
         // stops on large binary data
         if ( poMetadataRec->getDataType() == LTI_METADATA_DATATYPE_UINT8
              && paiDims[i] > 1024 )
-            return pszMetadata;
+            return CPLString();
 
-        for ( j = 0; j < paiDims[i]; j++ )
+        for ( GUInt32 j = 0; j < paiDims[i]; j++ )
         {
             CPLString osTemp;
 
@@ -1069,20 +1068,16 @@ char *MrSIDDataset::SerializeMetadataRec( const LTIMetadataRecord *poMetadataRec
                     osTemp = ((const char **)pData)[k++];
                     break;
                 default:
-                    osTemp = "";
                     break;
             }
 
-            iLength = static_cast<int>(strlen(pszMetadata) + osTemp.size() + 2);
-
-            pszMetadata = (char *)CPLRealloc( pszMetadata, iLength );
-            if ( !EQUAL( pszMetadata, "" ) )
-                strncat( pszMetadata, ",", 1 );
-            CPLStrlcat( pszMetadata, osTemp, iLength );
+            if( !osMetadata.empty() )
+                osMetadata += ',';
+            osMetadata += osTemp;
         }
     }
 
-    return pszMetadata;
+    return osMetadata;
 }
 
 /************************************************************************/
@@ -1297,8 +1292,9 @@ CPLErr MrSIDDataset::OpenZoomLevel( lt_int32 iZoom )
             int bWGS84 = FALSE;
             int bUnitsMeter = FALSE;
             while ( (pszLine = CPLReadLine2L(fp, 200, nullptr)) != nullptr &&
-                    ++nCountLine < 1000 )
+                    nCountLine < 1000 )
             {
+                ++ nCountLine;
                 if (nCountLine == 1 && strcmp(pszLine, "::MetadataFile") != 0)
                     break;
                 if (STARTS_WITH_CI(pszLine, "Projection UTM "))
@@ -1548,7 +1544,7 @@ GDALDataset *MrSIDDataset::Open( GDALOpenInfo * poOpenInfo, int bIsJP2 )
         const LTIMetadataRecord *poMetadataRec = nullptr;
         if ( LT_SUCCESS(poDS->poMetadata->getDataByIndex(i, poMetadataRec)) )
         {
-            char    *pszElement = poDS->SerializeMetadataRec( poMetadataRec );
+            const auto osElement = SerializeMetadataRec( poMetadataRec );
             char    *pszKey = CPLStrdup( poMetadataRec->getTagName() );
             char    *pszTemp = pszKey;
 
@@ -1561,9 +1557,8 @@ GDALDataset *MrSIDDataset::Open( GDALOpenInfo * poOpenInfo, int bIsJP2 )
             }
             while ( *++pszTemp );
 
-            poDS->SetMetadataItem( pszKey, pszElement );
+            poDS->SetMetadataItem( pszKey, osElement.c_str() );
 
-            CPLFree( pszElement );
             CPLFree( pszKey );
         }
     }
@@ -1759,7 +1754,7 @@ static int EPSGProjMethodToCTProjMethod( int nEPSG )
 #define EPSGZoneWidth            8831
 
 /************************************************************************/
-/*                            SetGTParmIds()                            */
+/*                            SetGTParamIds()                            */
 /*                                                                      */
 /*      This is hardcoded logic to set the GeoTIFF parameter            */
 /*      identifiers for all the EPSG supported projections.  As the     */
@@ -1768,8 +1763,8 @@ static int EPSGProjMethodToCTProjMethod( int nEPSG )
 /*      Explicitly copied from geo_normalize.c of the GeoTIFF package.  */
 /************************************************************************/
 
-static int SetGTParmIds( int nCTProjection,
-                         int *panProjParmId,
+static int SetGTParamIds( int nCTProjection,
+                         int *panProjParamId,
                          int *panEPSGCodes )
 
 {
@@ -1777,8 +1772,8 @@ static int SetGTParmIds( int nCTProjection,
 
     if( panEPSGCodes == nullptr )
         panEPSGCodes = anWorkingDummy;
-    if( panProjParmId == nullptr )
-        panProjParmId = anWorkingDummy;
+    if( panProjParamId == nullptr )
+        panProjParamId = anWorkingDummy;
 
     memset( panEPSGCodes, 0, sizeof(int) * 7 );
 
@@ -1788,10 +1783,10 @@ static int SetGTParmIds( int nCTProjection,
     {
       case CT_CassiniSoldner:
       case CT_NewZealandMapGrid:
-        panProjParmId[0] = ProjNatOriginLatGeoKey;
-        panProjParmId[1] = ProjNatOriginLongGeoKey;
-        panProjParmId[5] = ProjFalseEastingGeoKey;
-        panProjParmId[6] = ProjFalseNorthingGeoKey;
+        panProjParamId[0] = ProjNatOriginLatGeoKey;
+        panProjParamId[1] = ProjNatOriginLongGeoKey;
+        panProjParamId[5] = ProjFalseEastingGeoKey;
+        panProjParamId[6] = ProjFalseNorthingGeoKey;
 
         panEPSGCodes[0] = EPSGNatOriginLat;
         panEPSGCodes[1] = EPSGNatOriginLong;
@@ -1800,13 +1795,13 @@ static int SetGTParmIds( int nCTProjection,
         return TRUE;
 
       case CT_ObliqueMercator:
-        panProjParmId[0] = ProjCenterLatGeoKey;
-        panProjParmId[1] = ProjCenterLongGeoKey;
-        panProjParmId[2] = ProjAzimuthAngleGeoKey;
-        panProjParmId[3] = ProjRectifiedGridAngleGeoKey;
-        panProjParmId[4] = ProjScaleAtCenterGeoKey;
-        panProjParmId[5] = ProjFalseEastingGeoKey;
-        panProjParmId[6] = ProjFalseNorthingGeoKey;
+        panProjParamId[0] = ProjCenterLatGeoKey;
+        panProjParamId[1] = ProjCenterLongGeoKey;
+        panProjParamId[2] = ProjAzimuthAngleGeoKey;
+        panProjParamId[3] = ProjRectifiedGridAngleGeoKey;
+        panProjParamId[4] = ProjScaleAtCenterGeoKey;
+        panProjParamId[5] = ProjFalseEastingGeoKey;
+        panProjParamId[6] = ProjFalseNorthingGeoKey;
 
         panEPSGCodes[0] = EPSGProjCenterLat;
         panEPSGCodes[1] = EPSGProjCenterLong;
@@ -1818,12 +1813,12 @@ static int SetGTParmIds( int nCTProjection,
         return TRUE;
 
       case CT_ObliqueMercator_Laborde:
-        panProjParmId[0] = ProjCenterLatGeoKey;
-        panProjParmId[1] = ProjCenterLongGeoKey;
-        panProjParmId[2] = ProjAzimuthAngleGeoKey;
-        panProjParmId[4] = ProjScaleAtCenterGeoKey;
-        panProjParmId[5] = ProjFalseEastingGeoKey;
-        panProjParmId[6] = ProjFalseNorthingGeoKey;
+        panProjParamId[0] = ProjCenterLatGeoKey;
+        panProjParamId[1] = ProjCenterLongGeoKey;
+        panProjParamId[2] = ProjAzimuthAngleGeoKey;
+        panProjParamId[4] = ProjScaleAtCenterGeoKey;
+        panProjParamId[5] = ProjFalseEastingGeoKey;
+        panProjParamId[6] = ProjFalseNorthingGeoKey;
 
         panEPSGCodes[0] = EPSGProjCenterLat;
         panEPSGCodes[1] = EPSGProjCenterLong;
@@ -1839,11 +1834,11 @@ static int SetGTParmIds( int nCTProjection,
       case CT_PolarStereographic:
       case CT_TransverseMercator:
       case CT_TransvMercator_SouthOriented:
-        panProjParmId[0] = ProjNatOriginLatGeoKey;
-        panProjParmId[1] = ProjNatOriginLongGeoKey;
-        panProjParmId[4] = ProjScaleAtNatOriginGeoKey;
-        panProjParmId[5] = ProjFalseEastingGeoKey;
-        panProjParmId[6] = ProjFalseNorthingGeoKey;
+        panProjParamId[0] = ProjNatOriginLatGeoKey;
+        panProjParamId[1] = ProjNatOriginLongGeoKey;
+        panProjParamId[4] = ProjScaleAtNatOriginGeoKey;
+        panProjParamId[5] = ProjFalseEastingGeoKey;
+        panProjParamId[6] = ProjFalseNorthingGeoKey;
 
         panEPSGCodes[0] = EPSGNatOriginLat;
         panEPSGCodes[1] = EPSGNatOriginLong;
@@ -1853,12 +1848,12 @@ static int SetGTParmIds( int nCTProjection,
         return TRUE;
 
       case CT_LambertConfConic_2SP:
-        panProjParmId[0] = ProjFalseOriginLatGeoKey;
-        panProjParmId[1] = ProjFalseOriginLongGeoKey;
-        panProjParmId[2] = ProjStdParallel1GeoKey;
-        panProjParmId[3] = ProjStdParallel2GeoKey;
-        panProjParmId[5] = ProjFalseEastingGeoKey;
-        panProjParmId[6] = ProjFalseNorthingGeoKey;
+        panProjParamId[0] = ProjFalseOriginLatGeoKey;
+        panProjParamId[1] = ProjFalseOriginLongGeoKey;
+        panProjParamId[2] = ProjStdParallel1GeoKey;
+        panProjParamId[3] = ProjStdParallel2GeoKey;
+        panProjParamId[5] = ProjFalseEastingGeoKey;
+        panProjParamId[6] = ProjFalseNorthingGeoKey;
 
         panEPSGCodes[0] = EPSGFalseOriginLat;
         panEPSGCodes[1] = EPSGFalseOriginLong;
@@ -1869,10 +1864,10 @@ static int SetGTParmIds( int nCTProjection,
         return TRUE;
 
       case CT_SwissObliqueCylindrical:
-        panProjParmId[0] = ProjCenterLatGeoKey;
-        panProjParmId[1] = ProjCenterLongGeoKey;
-        panProjParmId[5] = ProjFalseEastingGeoKey;
-        panProjParmId[6] = ProjFalseNorthingGeoKey;
+        panProjParamId[0] = ProjCenterLatGeoKey;
+        panProjParamId[1] = ProjCenterLongGeoKey;
+        panProjParamId[5] = ProjFalseEastingGeoKey;
+        panProjParamId[6] = ProjFalseNorthingGeoKey;
 
         /* EPSG codes? */
         return TRUE;
@@ -1958,7 +1953,7 @@ static void WKTMassageDatum( char ** ppszDatum )
 }
 
 /************************************************************************/
-/*                           FetchProjParms()                           */
+/*                           FetchProjParams()                           */
 /*                                                                      */
 /*      Fetch the projection parameters for a particular projection     */
 /*      from MrSID metadata, and fill the GTIFDefn structure out        */
@@ -1966,7 +1961,7 @@ static void WKTMassageDatum( char ** ppszDatum )
 /*      Copied from geo_normalize.c of the GeoTIFF package.             */
 /************************************************************************/
 
-void MrSIDDataset::FetchProjParms()
+void MrSIDDataset::FetchProjParams()
 {
     double dfNatOriginLong = 0.0, dfNatOriginLat = 0.0, dfRectGridAngle = 0.0;
     double dfFalseEasting = 0.0, dfFalseNorthing = 0.0, dfNatOriginScale = 1.0;
@@ -2475,7 +2470,7 @@ void MrSIDDataset::GetGTIFDefn()
         psDefn->CTProjection = (short)
             EPSGProjMethodToCTProjMethod( psDefn->Projection );
 
-        SetGTParmIds( psDefn->CTProjection, psDefn->ProjParmId, nullptr);
+        SetGTParamIds( psDefn->CTProjection, psDefn->ProjParmId, nullptr);
         psDefn->nParms = 7;
     }
 
@@ -2590,7 +2585,7 @@ void MrSIDDataset::GetGTIFDefn()
     if( GetMetadataElement( "GEOTIFF_NUM::3075::ProjCoordTransGeoKey",
                             &(psDefn->CTProjection) ) )
     {
-        FetchProjParms();
+        FetchProjParams();
     }
 
 /* -------------------------------------------------------------------- */
@@ -2768,25 +2763,25 @@ char *MrSIDDataset::GetOGISDefn( GTIFDefn *psDefnIn )
     if( psDefnIn->Model == ModelTypeProjected )
     {
 /* -------------------------------------------------------------------- */
-/*      Make a local copy of parms, and convert back into the           */
+/*      Make a local copy of params, and convert back into the           */
 /*      angular units of the GEOGCS and the linear units of the         */
 /*      projection.                                                     */
 /* -------------------------------------------------------------------- */
-        double          adfParm[10];
+        double          adfParam[10];
         int             i;
 
         for( i = 0; i < MIN(10,psDefnIn->nParms); i++ )
-            adfParm[i] = psDefnIn->ProjParm[i];
+            adfParam[i] = psDefnIn->ProjParm[i];
         for( ; i < 10; i++)
-            adfParm[i] = 0;
+            adfParam[i] = 0;
 
-        adfParm[0] /= psDefnIn->UOMAngleInDegrees;
-        adfParm[1] /= psDefnIn->UOMAngleInDegrees;
-        adfParm[2] /= psDefnIn->UOMAngleInDegrees;
-        adfParm[3] /= psDefnIn->UOMAngleInDegrees;
+        adfParam[0] /= psDefnIn->UOMAngleInDegrees;
+        adfParam[1] /= psDefnIn->UOMAngleInDegrees;
+        adfParam[2] /= psDefnIn->UOMAngleInDegrees;
+        adfParam[3] /= psDefnIn->UOMAngleInDegrees;
 
-        adfParm[5] /= psDefnIn->UOMLengthInMeters;
-        adfParm[6] /= psDefnIn->UOMLengthInMeters;
+        adfParam[5] /= psDefnIn->UOMLengthInMeters;
+        adfParam[6] /= psDefnIn->UOMLengthInMeters;
 
 /* -------------------------------------------------------------------- */
 /*      Translation the fundamental projection.                         */
@@ -2794,130 +2789,130 @@ char *MrSIDDataset::GetOGISDefn( GTIFDefn *psDefnIn )
         switch( psDefnIn->CTProjection )
         {
           case CT_TransverseMercator:
-            oSRS.SetTM( adfParm[0], adfParm[1],
-                        adfParm[4],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetTM( adfParam[0], adfParam[1],
+                        adfParam[4],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_TransvMercator_SouthOriented:
-            oSRS.SetTMSO( adfParm[0], adfParm[1],
-                          adfParm[4],
-                          adfParm[5], adfParm[6] );
+            oSRS.SetTMSO( adfParam[0], adfParam[1],
+                          adfParam[4],
+                          adfParam[5], adfParam[6] );
             break;
 
           case CT_Mercator:
-            oSRS.SetMercator( adfParm[0], adfParm[1],
-                              adfParm[4],
-                              adfParm[5], adfParm[6] );
+            oSRS.SetMercator( adfParam[0], adfParam[1],
+                              adfParam[4],
+                              adfParam[5], adfParam[6] );
             break;
 
           case CT_ObliqueStereographic:
-            oSRS.SetOS( adfParm[0], adfParm[1],
-                        adfParm[4],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetOS( adfParam[0], adfParam[1],
+                        adfParam[4],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_Stereographic:
-            oSRS.SetOS( adfParm[0], adfParm[1],
-                        adfParm[4],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetOS( adfParam[0], adfParam[1],
+                        adfParam[4],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_ObliqueMercator: /* hotine */
-            oSRS.SetHOM( adfParm[0], adfParm[1],
-                         adfParm[2], adfParm[3],
-                         adfParm[4],
-                         adfParm[5], adfParm[6] );
+            oSRS.SetHOM( adfParam[0], adfParam[1],
+                         adfParam[2], adfParam[3],
+                         adfParam[4],
+                         adfParam[5], adfParam[6] );
             break;
 
           case CT_EquidistantConic:
-            oSRS.SetEC( adfParm[0], adfParm[1],
-                        adfParm[2], adfParm[3],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetEC( adfParam[0], adfParam[1],
+                        adfParam[2], adfParam[3],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_CassiniSoldner:
-            oSRS.SetCS( adfParm[0], adfParm[1],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetCS( adfParam[0], adfParam[1],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_Polyconic:
-            oSRS.SetPolyconic( adfParm[0], adfParm[1],
-                               adfParm[5], adfParm[6] );
+            oSRS.SetPolyconic( adfParam[0], adfParam[1],
+                               adfParam[5], adfParam[6] );
             break;
 
           case CT_AzimuthalEquidistant:
-            oSRS.SetAE( adfParm[0], adfParm[1],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetAE( adfParam[0], adfParam[1],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_MillerCylindrical:
-            oSRS.SetMC( adfParm[0], adfParm[1],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetMC( adfParam[0], adfParam[1],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_Equirectangular:
-            oSRS.SetEquirectangular( adfParm[0], adfParm[1],
-                                     adfParm[5], adfParm[6] );
+            oSRS.SetEquirectangular( adfParam[0], adfParam[1],
+                                     adfParam[5], adfParam[6] );
             break;
 
           case CT_Gnomonic:
-            oSRS.SetGnomonic( adfParm[0], adfParm[1],
-                              adfParm[5], adfParm[6] );
+            oSRS.SetGnomonic( adfParam[0], adfParam[1],
+                              adfParam[5], adfParam[6] );
             break;
 
           case CT_LambertAzimEqualArea:
-            oSRS.SetLAEA( adfParm[0], adfParm[1],
-                          adfParm[5], adfParm[6] );
+            oSRS.SetLAEA( adfParam[0], adfParam[1],
+                          adfParam[5], adfParam[6] );
             break;
 
           case CT_Orthographic:
-            oSRS.SetOrthographic( adfParm[0], adfParm[1],
-                                  adfParm[5], adfParm[6] );
+            oSRS.SetOrthographic( adfParam[0], adfParam[1],
+                                  adfParam[5], adfParam[6] );
             break;
 
           case CT_Robinson:
-            oSRS.SetRobinson( adfParm[1],
-                              adfParm[5], adfParm[6] );
+            oSRS.SetRobinson( adfParam[1],
+                              adfParam[5], adfParam[6] );
             break;
 
           case CT_Sinusoidal:
-            oSRS.SetSinusoidal( adfParm[1],
-                                adfParm[5], adfParm[6] );
+            oSRS.SetSinusoidal( adfParam[1],
+                                adfParam[5], adfParam[6] );
             break;
 
           case CT_VanDerGrinten:
-            oSRS.SetVDG( adfParm[1],
-                         adfParm[5], adfParm[6] );
+            oSRS.SetVDG( adfParam[1],
+                         adfParam[5], adfParam[6] );
             break;
 
           case CT_PolarStereographic:
-            oSRS.SetPS( adfParm[0], adfParm[1],
-                        adfParm[4],
-                        adfParm[5], adfParm[6] );
+            oSRS.SetPS( adfParam[0], adfParam[1],
+                        adfParam[4],
+                        adfParam[5], adfParam[6] );
             break;
 
           case CT_LambertConfConic_2SP:
-            oSRS.SetLCC( adfParm[2], adfParm[3],
-                         adfParm[0], adfParm[1],
-                         adfParm[5], adfParm[6] );
+            oSRS.SetLCC( adfParam[2], adfParam[3],
+                         adfParam[0], adfParam[1],
+                         adfParam[5], adfParam[6] );
             break;
 
           case CT_LambertConfConic_1SP:
-            oSRS.SetLCC1SP( adfParm[0], adfParm[1],
-                            adfParm[4],
-                            adfParm[5], adfParm[6] );
+            oSRS.SetLCC1SP( adfParam[0], adfParam[1],
+                            adfParam[4],
+                            adfParam[5], adfParam[6] );
             break;
 
           case CT_AlbersEqualArea:
-            oSRS.SetACEA( adfParm[0], adfParm[1],
-                          adfParm[2], adfParm[3],
-                          adfParm[5], adfParm[6] );
+            oSRS.SetACEA( adfParam[0], adfParam[1],
+                          adfParam[2], adfParam[3],
+                          adfParam[5], adfParam[6] );
             break;
 
           case CT_NewZealandMapGrid:
-            oSRS.SetNZMG( adfParm[0], adfParm[1],
-                          adfParm[5], adfParm[6] );
+            oSRS.SetNZMG( adfParam[0], adfParam[1],
+                          adfParam[5], adfParam[6] );
             break;
         }
 
@@ -3551,7 +3546,7 @@ void GDALRegister_MrSID()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Multi-resolution Seamless Image Database "
                                "(MrSID)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_mrsid.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/mrsid.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "sid" );
 
 #ifdef MRSID_ESDK
@@ -3592,7 +3587,7 @@ void GDALRegister_MrSID()
     poDriver->SetDescription( "JP2MrSID" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "MrSID JPEG2000" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_jp2mrsid.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/jp2mrsid.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "jp2" );
 
 #ifdef MRSID_ESDK

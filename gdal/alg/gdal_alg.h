@@ -212,15 +212,35 @@ int CPL_DLL GDALTPSTransform(
     double *x, double *y, double *z, int *panSuccess );
 
 /*! @cond Doxygen_Suppress */
-char CPL_DLL ** RPCInfoToMD( GDALRPCInfo *psRPCInfo );
+#ifdef GDAL_COMPILATION
+#define RPCInfoV1ToMD RPCInfoToMD
+#else
+#define RPCInfoToMD RPCInfoV2ToMD
+#endif
+char CPL_DLL ** RPCInfoV1ToMD( GDALRPCInfoV1 *psRPCInfo );
+char CPL_DLL ** RPCInfoV2ToMD( GDALRPCInfoV2 *psRPCInfo );
 /*! @endcond */
 
 /* RPC based transformer ... src is pixel/line/elev, dst is long/lat/elev */
 
+/*! @cond Doxygen_Suppress */
+#ifdef GDAL_COMPILATION
+#define GDALCreateRPCTransformerV1 GDALCreateRPCTransformer
+#else
+#define GDALCreateRPCTransformer GDALCreateRPCTransformerV2
+#endif
+
 void CPL_DLL *
-GDALCreateRPCTransformer( GDALRPCInfo *psRPC, int bReversed,
+GDALCreateRPCTransformerV1( GDALRPCInfoV1 *psRPC, int bReversed,
                           double dfPixErrThreshold,
                           char **papszOptions );
+/*! @endcond */
+
+void CPL_DLL *
+GDALCreateRPCTransformerV2( const GDALRPCInfoV2 *psRPC, int bReversed,
+                          double dfPixErrThreshold,
+                          char **papszOptions );
+
 void CPL_DLL GDALDestroyRPCTransformer( void *pTransformArg );
 int CPL_DLL GDALRPCTransform(
     void *pTransformArg, int bDstToSrc, int nPointCount,
@@ -341,6 +361,37 @@ CPLErr CPL_DLL
 GDALContourGenerateEx( GDALRasterBandH hBand, void *hLayer,
                        CSLConstList options,
                        GDALProgressFunc pfnProgress, void *pProgressArg );
+
+/* -------------------------------------------------------------------- */
+/*      Viewshed Generation                                             */
+/* -------------------------------------------------------------------- */
+
+/** Viewshed Modes */
+typedef enum {
+    GVM_Diagonal = 1,
+    GVM_Edge = 2,
+    GVM_Max = 3,
+    GVM_Min = 4
+} GDALViewshedMode;
+
+/** Viewshed output types */
+typedef enum {
+    GVOT_NORMAL = 1,
+    GVOT_MIN_TARGET_HEIGHT_FROM_DEM = 2,
+    GVOT_MIN_TARGET_HEIGHT_FROM_GROUND = 3
+} GDALViewshedOutputType;
+
+GDALDatasetH CPL_DLL
+GDALViewshedGenerate(GDALRasterBandH hBand,
+                     const char* pszDriverName,
+                     const char* pszTargetRasterName,
+                     CSLConstList papszCreationOptions,
+                     double dfObserverX, double dfObserverY, double dfObserverHeight,
+                     double dfTargetHeight, double dfVisibleVal, double dfInvisibleVal,
+                     double dfOutOfRangeVal, double dfNoDataVal, double dfCurvCoeff,
+                     GDALViewshedMode eMode, double dfMaxDistance,
+                     GDALProgressFunc pfnProgress, void *pProgressArg,
+                     GDALViewshedOutputType heightMode, CSLConstList papszExtraOptions);
 
 /************************************************************************/
 /*      Rasterizer API - geometries burned into GDAL raster.            */

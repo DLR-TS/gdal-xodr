@@ -27,7 +27,7 @@
  * DEALINGS IN THE SOFTWARE.
  ****************************************************************************/
 
-#include "swq.h"
+#include "ogr_swq.h"
 #include "ogr_p.h"
 #include "ogr_gensql.h"
 #include "cpl_string.h"
@@ -965,12 +965,10 @@ int OGRGenSQLResultsLayer::PrepareSummary()
     poSrcLayer->GetLayerDefn()->SetGeometryIgnored(bSaveIsGeomIgnored);
 
 /* -------------------------------------------------------------------- */
-/*      If we have run out of features on the source layer, clear       */
-/*      away the filters we have installed till a next run through      */
+/*      Clear away the filters we have installed till a next run through*/
 /*      the features.                                                   */
 /* -------------------------------------------------------------------- */
-    if( poSrcFeature == nullptr )
-        ClearFilters();
+    ClearFilters();
 
 /* -------------------------------------------------------------------- */
 /*      Now apply the values to the summary feature.  If we are in      */
@@ -2044,7 +2042,7 @@ void OGRGenSQLResultsLayer::CreateOrderByIndex()
             }
             panFIDList = panNewFIDList;
 
-            memset(pasIndexFields + nFeaturesAlloc, 0,
+            memset(pasIndexFields + nFeaturesAlloc * nOrderItems, 0,
                    sizeof(OGRField) * nOrderItems *
                    static_cast<size_t>(nNewFeaturesAlloc - nFeaturesAlloc));
 

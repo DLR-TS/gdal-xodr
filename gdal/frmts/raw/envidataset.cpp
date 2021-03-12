@@ -337,12 +337,6 @@ void ENVIDataset::FlushCache()
         return;
 
     // Rewrite out the header.
-#ifdef CPL_LSB
-    const int iBigEndian = 0;
-#else
-    const int iBigEndian = 1;
-#endif
-
     bool bOK = VSIFPrintfL(fp, "ENVI\n") >= 0;
     if ("" != sDescription)
         bOK &= VSIFPrintfL(fp, "description = {\n%s}\n",
@@ -377,7 +371,13 @@ void ENVIDataset::FlushCache()
         break;
     }
     bOK &= VSIFPrintfL(fp, "interleave = %s\n", pszInterleaving) >= 0;
-    bOK &= VSIFPrintfL(fp, "byte order = %d\n", iBigEndian) >= 0;
+
+    const char* pszByteOrder = m_aosHeader["byte_order"];
+    if( pszByteOrder )
+    {
+        // Supposed to be required
+        bOK &= VSIFPrintfL(fp, "byte order = %s\n", pszByteOrder) >= 0;
+    }
 
     // Write class and color information.
     catNames = band->GetCategoryNames();
@@ -458,6 +458,13 @@ void ENVIDataset::FlushCache()
     }
     bOK &= VSIFPrintfL(fp, "}\n") >= 0;
 
+    int bHasNoData = FALSE;
+    double dfNoDataValue = band->GetNoDataValue(&bHasNoData);
+    if( bHasNoData )
+    {
+        bOK &= VSIFPrintfL(fp, "data ignore value = %.18g\n", dfNoDataValue) >= 0;
+    }
+
     // Write the metadata that was read into the ENVI domain.
     char **papszENVIMetadata = GetMetadata("ENVI");
 
@@ -497,7 +504,8 @@ void ENVIDataset::FlushCache()
              poKey == "class names" ||
              poKey == "band names" ||
              poKey == "map info" ||
-             poKey == "projection info" )
+             poKey == "projection info" ||
+             poKey == "data ignore value" )
         {
             CSLDestroy(papszTokens);
             continue;
@@ -620,7 +628,12 @@ void ENVIDataset::WriteProjectionInfo()
         adfGeoTransform[0] != 0.0 || adfGeoTransform[1] != 1.0 ||
         adfGeoTransform[2] != 0.0 || adfGeoTransform[3] != 0.0 ||
         adfGeoTransform[4] != 0.0 || adfGeoTransform[5] != 1.0;
-    if( bHasNonDefaultGT )
+    if( adfGeoTransform[1] > 0.0 && adfGeoTransform[2] == 0.0 &&
+        adfGeoTransform[4] == 0.0 && adfGeoTransform[5] > 0.0 )
+    {
+        osRotation = ", rotation=180";
+    }
+    else if( bHasNonDefaultGT )
     {
         const double dfRotation1 =
             -atan2(-adfGeoTransform[2], adfGeoTransform[1]) * kdfRadToDeg;
@@ -1376,6 +1389,7 @@ bool ENVIDataset::ProcessMapinfo( const char *pszMapinfo )
     char **papszFields = SplitList(pszMapinfo);
     const char *pszUnits = nullptr;
     double dfRotation = 0.0;
+    bool bUpsideDown = false;
     const int nCount = CSLCount(papszFields);
 
     if( nCount < 7 )
@@ -1394,8 +1408,9 @@ bool ENVIDataset::ProcessMapinfo( const char *pszMapinfo )
         else if ( STARTS_WITH(papszFields[i], "rotation=") )
         {
             dfRotation =
-                CPLAtof(papszFields[i] + strlen("rotation=")) *
-                kdfDegToRad * -1.0;
+                CPLAtof(papszFields[i] + strlen("rotation="));
+            bUpsideDown = fabs(dfRotation) == 180.0;
+            dfRotation *= kdfDegToRad * -1.0;
         }
     }
 
@@ -1432,6 +1447,13 @@ bool ENVIDataset::ProcessMapinfo( const char *pszMapinfo )
     adfGeoTransform[3] = pixelNorthing + (yReference - 1) * yPixelSize;
     adfGeoTransform[4] = -sin(dfRotation) * yPixelSize;
     adfGeoTransform[5] = -cos(dfRotation) * yPixelSize;
+    if( bUpsideDown ) // to avoid numeric approximations
+    {
+        adfGeoTransform[1] = xPixelSize;
+        adfGeoTransform[2] = 0;
+        adfGeoTransform[4] = 0;
+        adfGeoTransform[5] = yPixelSize;
+    }
 
     // TODO(schwehr): Symbolic constants for the fields.
     // Capture projection.
@@ -1811,7 +1833,7 @@ void ENVIDataset::ProcessGeoPoints( const char *pszGeoPoints )
     }
     for( int i = 0; i < static_cast<int>(m_asGCPs.size()); i++ )
     {
-        // Substract 1 to pixel and line for ENVI convention
+        // Subtract 1 to pixel and line for ENVI convention
         m_asGCPs[i].dfGCPPixel = CPLAtof( papszFields[i * 4 + 0] ) - 1;
         m_asGCPs[i].dfGCPLine = CPLAtof( papszFields[i * 4 + 1] ) - 1;
         m_asGCPs[i].dfGCPY = CPLAtof( papszFields[i * 4 + 2] );
@@ -1819,6 +1841,12 @@ void ENVIDataset::ProcessGeoPoints( const char *pszGeoPoints )
         m_asGCPs[i].dfGCPZ = 0;
     }
     CSLDestroy(papszFields);
+}
+
+static unsigned byteSwapUInt(unsigned swapMe)
+{
+    CPL_MSBPTR32(&swapMe);
+    return swapMe;
 }
 
 void ENVIDataset::ProcessStatsFile()
@@ -1853,10 +1881,10 @@ void ENVIDataset::ProcessStatsFile()
     }
 
     // TODO(schwehr): What are 1, 4, 8, and 40?
-    int lOffset = 0;
+    unsigned lOffset = 0;
     if( VSIFSeekL(fpStaFile, 40 + static_cast<vsi_l_offset>(nb + 1) * 4, SEEK_SET) == 0 &&
-        VSIFReadL(&lOffset, sizeof(int), 1, fpStaFile) == 1 &&
-        VSIFSeekL(fpStaFile, 40 + static_cast<vsi_l_offset>(nb + 1) * 8 + byteSwapInt(lOffset) + nb,
+        VSIFReadL(&lOffset, sizeof(lOffset), 1, fpStaFile) == 1 &&
+        VSIFSeekL(fpStaFile, 40 + static_cast<vsi_l_offset>(nb + 1) * 8 + byteSwapUInt(lOffset) + nb,
                   SEEK_SET) == 0)
     {
         // This should be the beginning of the statistics.
@@ -1988,6 +2016,22 @@ bool ENVIDataset::ReadHeader( VSILFILE *fpHdr )
         }
     }
 
+    return true;
+}
+
+/************************************************************************/
+/*                        GetRawBinaryLayout()                          */
+/************************************************************************/
+
+bool ENVIDataset::GetRawBinaryLayout(GDALDataset::RawBinaryLayout& sLayout)
+{
+    const bool bIsCompressed = atoi(
+        m_aosHeader.FetchNameValueDef("file_compression", "0")) != 0;
+    if( bIsCompressed )
+        return false;
+    if( !RawDataset::GetRawBinaryLayout(sLayout) )
+        return false;
+    sLayout.osRawFilename = GetDescription();
     return true;
 }
 
@@ -2772,6 +2816,16 @@ CPLErr ENVIRasterBand::SetCategoryNames( char **papszCategoryNamesIn )
 }
 
 /************************************************************************/
+/*                            SetNoDataValue()                          */
+/************************************************************************/
+
+CPLErr ENVIRasterBand::SetNoDataValue( double dfNoDataValue )
+{
+    reinterpret_cast<ENVIDataset *>(poDS)->bHeaderDirty = true;
+    return RawRasterBand::SetNoDataValue(dfNoDataValue);
+}
+
+/************************************************************************/
 /*                         GDALRegister_ENVI()                          */
 /************************************************************************/
 
@@ -2785,7 +2839,7 @@ void GDALRegister_ENVI()
     poDriver->SetDescription("ENVI");
     poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "ENVI .hdr Labelled");
-    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "frmt_various.html#ENVI");
+    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "drivers/raster/envi.html");
     poDriver->SetMetadataItem(GDAL_DMD_EXTENSION, "");
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONDATATYPES,
                               "Byte Int16 UInt16 Int32 UInt32 "

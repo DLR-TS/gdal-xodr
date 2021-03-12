@@ -6,6 +6,8 @@ PDF -- Geospatial PDF
 
 .. shortname:: PDF
 
+.. build_dependencies:: none for write support, Poppler/PoDoFo/PDFium for read support
+
 GDAL supports reading Geospatial PDF documents, by extracting
 georeferencing information and rasterizing the data. Non-geospatial PDF
 documents will also be recognized by the driver.
@@ -34,69 +36,7 @@ Driver capabilities
 Vector support
 --------------
 
-This driver can read and write geospatial PDF
-with vector features. Vector read support requires linking to one of the
-above mentioned dependent libraries, but write support does not. The
-driver can read vector features encoded according to PDF's logical
-structure facilities (as described by "§10.6 - Logical Structure" of PDF
-spec), or retrieve only vector geometries for other vector PDF files.
-
-If there is no such logical structure, the driver will not try to
-interpret the vector content of the PDF, unless you defined the
-OGR_PDF_READ_NON_STRUCTURED configuration option to YES.
-
-Feature style support
----------------------
-
-For write support, the driver has partial support for the style
-information attached to features, encoded according to the
-:ref:`ogr_feature_style`.
-
-The following tools are recognized:
-
--  For points, LABEL and SYMBOL.
--  For lines, PEN.
--  For polygons, PEN and BRUSH.
-
-The supported attributes for each tool are summed up in the following
-table:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 10 60 30
-
-   * - Tool
-     - Supported attributes
-     - Example
-   * - PEN
-     - color (c); width (w); dash pattern (p)
-     - PEN(c:#FF0000,w:5px)
-   * - BRUSH
-     - foreground color (fc)
-     - BRUSH(fc:#0000FF)
-   * - LABEL
-     - | GDAL >= 2.3.0: text (t), limited to ASCII strings; font name (f), see
-       | note below; font size (s); bold (bo); italic (it); text color (c); x and
-       | y offsets (dx, dy); angle (a); anchor point (p), values 1 through 9;
-       | stretch (w)
-       | GDAL <= 2.2.x: text (t), limited to ASCII strings; font size (s); text
-       | color (c); x and y offsets (dx, dy); angle (a)
-     - LABEL(c:#000000,t:"Hello World!",s:5g)
-   * - SYMBOL
-     - id (ogr-sym-0 to ogr-sym-9, and filenames for raster symbols); color (c); size (s)
-     - | SYMBOL(c:#00FF00,id:"ogr- sym-3",s:10)
-       | SYMBOL(c:#00000080,id:"a_symbol.png")
-
-Alpha values are supported for colors to control the opacity. If not
-specified, for BRUSH, it is set at 50% opaque.
-
-For SYMBOL with a bitmap name, only the alpha value of the color
-specified with 'c' is taken into account.
-
-A font name starting with "Times" or containing the string "Serif" (case
-sensitive) will be treated as Times. A font name starting with "Courier"
-or containing the string "Mono" (case sensitive) will be treated as
-Courier. All other font names will be treated as Helvetica.
+See the :ref:`PDF vector <vector.pdf>` documentation page
 
 Metadata
 --------
@@ -105,46 +45,51 @@ The neatline (for OGC best practice) or the bounding box (Adobe style)
 will be reported as a NEATLINE metadata item, so that it can be later
 used as a cutline for the warping algorithm.
 
-Starting with GDAL 1.9.0, XMP metadata can be extracted from the file,
+XMP metadata can be extracted from the file,
 and will be stored as XML raw content in the xml:XMP metadata domain.
 
-Starting with GDAL 1.10.0, additional metadata, such as found in USGS
+Additional metadata, such as found in USGS
 Topo PDF can be extracted from the file, and will be stored as XML raw
 content in the EMBEDDED_METADATA metadata domain.
 
 Configuration options
 ---------------------
 
--  *GDAL_PDF_DPI* : To control the dimensions of the raster by
+-  :decl_configoption:`GDAL_PDF_DPI` : To control the dimensions of the raster by
    specifying the DPI of the rasterization with the Its default value is
-   150. Starting with GDAL 1.10, the driver will make some effort to
+   150. The driver will make some effort to
    guess the DPI value either from a specific metadata item contained in
    some PDF files, or from the raster images inside the PDF (in simple
    cases).
--  *GDAL_PDF_NEATLINE* : (GDAL >= 1.10.0 ) The name of the neatline to
+-  :decl_configoption:`GDAL_PDF_NEATLINE` : The name of the neatline to
    select (only available for geospatial PDF, encoded according to OGC
    Best Practice). This defaults to "Map Layers" for USGS Topo PDF. If
    not found, the neatline that covers the largest area.
--  *GDAL_USER_PWD* : User password for protected PDFs.
--  *GDAL_PDF_RENDERING_OPTIONS* : a combination of VECTOR, RASTER and
+-  :decl_configoption:`GDAL_USER_PWD` : User password for protected PDFs.
+-  :decl_configoption:`GDAL_PDF_RENDERING_OPTIONS` : a combination of VECTOR, RASTER and
    TEXT separated by comma, to select whether vector, raster or text
    features should be rendered. If the option is not specified, all
    features are rendered (Poppler and PDFium).
--  *GDAL_PDF_BANDS* = 3 or 4 : whether the PDF should be rendered as a
-   RGB (3) or RGBA (4) image. Defaults to 3.
--  *GDAL_PDF_LAYERS* = list of layers (comma separated) to turn ON (or
+-  :decl_configoption:`GDAL_PDF_BANDS` = 3 or 4 : whether the PDF should be rendered as a
+   RGB (3) or RGBA (4) image. The default value will depend on the PDF rendering
+   used (Poppler vs PDFium) and on the content found in the PDF file (if an
+   image with transparency is recognized, then 4 will be used). When 3 bands
+   is selected, a white background is used.
+-  :decl_configoption:`GDAL_PDF_LAYERS` = list of layers (comma separated) to turn ON (or
    "ALL" to turn all layers ON). The layer names can be obtained by
    querying the LAYERS metadata domain. When this option is specified,
    layers not explicitly listed will be turned off (Poppler and PDFium).
--  *GDAL_PDF_LAYERS_OFF* = list of layers (comma separated) to turn OFF.
+-  :decl_configoption:`GDAL_PDF_LAYERS_OFF` = list of layers (comma separated) to turn OFF.
    The layer names can be obtained by querying the LAYERS metadata
    domain (Poppler and PDFium).
+-  :decl_configoption:`GDAL_PDF_LAUNDER_LAYER_NAMES` = YES/NO: (GDAL >= 3.1) Can be set to NO
+   to avoid the layer names reported in the LAYERS metadata domain or as OGR
+   layers for the vector part to be "laundered".
 
 Open Options
 ~~~~~~~~~~~~
 
-Since GDAL 2.0, above configuration options are also available as open
-options.
+Above configuration options are also available as open options.
 
 -  **RENDERING_OPTIONS**\ =[RASTER,VECTOR,TEXT / RASTER,VECTOR /
    RASTER,TEXT / RASTER / VECTOR,TEXT / VECTOR / TEXT]: same as
@@ -171,7 +116,7 @@ options.
 LAYERS Metadata domain
 ----------------------
 
-Starting with GDAL >= 1.10.0 and when GDAL is compiled against Poppler
+When GDAL is compiled against Poppler
 or PDFium, the LAYERS metadata domain can be queried to retrieve layer
 names that can be turned ON or OFF. This is useful to know which values
 to specify for the *GDAL_PDF_LAYERS* or *GDAL_PDF_LAYERS_OFF*
@@ -203,7 +148,7 @@ The opening of a PDF document (to get the georeferencing) is fast, but
 at the first access to a raster block, the whole page will be rasterized
 (with Poppler), which can be a slow operation.
 
-Note: starting with GDAL 1.10, some raster-only PDF files (such as some
+Note: some raster-only PDF files (such as some
 USGS GeoPDF files), that are regularly tiled are exposed as tiled
 dataset by the GDAL PDF driver, and can be rendered with any backends.
 
@@ -215,8 +160,8 @@ For documents that contain several neatlines in a page (insets), the
 georeferencing will be extracted from the inset that has the largest
 area (in term of screen points).
 
-Creation Issues (GDAL >= 1.10.0)
---------------------------------
+Creation Issues
+---------------
 
 PDF documents can be created from other GDAL raster datasets, that have
 1 band (graylevel or with color table), 3 bands (RGB) or 4 bands (RGBA).
@@ -380,7 +325,7 @@ Creation Options
 
 -  **EXCLUSIVE_LAYERS=names**: Comma separated list of layer names, such
    that only one of those layers can be visible at a time. This is the
-   behaviour of radio-buttons in a graphical user interface. The layer
+   behavior of radio-buttons in a graphical user interface. The layer
    names can come from LAYER_NAME (main raster layer name),
    EXTRA_RASTERS_LAYER_NAME, EXTRA_LAYER_NAME and
    OGR_DISPLAY_LAYER_NAMES.
@@ -449,7 +394,8 @@ Example on how to use the API:
 
 A sample Python script
 `gdal_create_pdf.py <https://raw.githubusercontent.com/OSGeo/gdal/master/gdal/swig/python/samples/gdal_create_pdf.py>`__
-is also available.
+is also available. Starting with GDAL 3.2, the :ref:`gdal_create` utility can
+also be used.
 
 Example of a composition XML file:
 
@@ -572,11 +518,11 @@ available.
 Poppler
 ~~~~~~~
 
-libpoppler itself must have been configured with --enable-xpdf-headers
+libpoppler itself must have been configured with
+-DENABLE_UNSTABLE_API_ABI_HEADERS=ON
 so that the xpdf C++ headers are available. Note: the poppler C++ API
 isn't stable, so the driver compilation may fail with too old or too
-recent poppler versions. Successfully tested versions are poppler >=
-0.12.X and <= 0.31.0.
+recent poppler versions.
 
 PoDoFo
 ~~~~~~
@@ -593,15 +539,33 @@ libpodofo 0.8.4, 0.9.1 and 0.9.3. Important note: using PoDoFo 0.9.0 is
 strongly discouraged, as it could cause crashes in GDAL due to a bug in
 PoDoFo.
 
-PDFium (GDAL > 2.1.0)
-~~~~~~~~~~~~~~~~~~~~~
+PDFium
+~~~~~~
 
 Using PDFium as a backend allows access to raster, vector,
 georeferencing and other metadata. The PDFium backend has also support
 for arbitrary overviews, for fast zoom-out.
 
 Only GDAL builds against static builds of PDFium have been tested.
-Building PDFium can be challenging. A `PDFium forked version for simpler
+Building PDFium can be challenging, and particular builds must be used to
+work properly with GDAL.
+
+With GDAL >= 3.2.0
++++++++++++++++++++
+
+The scripts in the `<https://github.com/rouault/pdfium_build_gdal_3_2>`__
+repository must be used to build a patched version of PDFium.
+
+With GDAL 3.1.x
++++++++++++++++
+
+The scripts in the `<https://github.com/rouault/pdfium_build_gdal_3_1>`__
+repository must be used to build a patched version of PDFium.
+
+With GDAL >= 2.2.0 and < 3.1
+++++++++++++++++++++++++++++
+
+A `PDFium forked version for simpler
 builds <https://github.com/rouault/pdfium>`__ is available (for Windows,
 a dedicated
 `win_gdal_build <https://github.com/rouault/pdfium/tree/win_gdal_build>`__
@@ -646,9 +610,10 @@ Examples
 See also
 --------
 
+:ref:`PDF vector <vector.pdf>` documentation page
+
 Specifications :
 
--  :ref:`ogr_feature_style`
 -  `OGC GeoPDF Encoding Best Practice Version 2.2
    (08-139r3) <http://portal.opengeospatial.org/files/?artifact_id=40537>`__
 -  `Adobe Supplement to ISO

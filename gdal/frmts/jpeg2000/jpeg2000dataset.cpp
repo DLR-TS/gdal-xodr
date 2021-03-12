@@ -189,7 +189,7 @@ int jp2_encode_uuid(jas_image_t *image, jas_stream_t *out,
 /* ==================================================================== */
 /************************************************************************/
 
-class JPEG2000Dataset : public GDALJP2AbstractDataset
+class JPEG2000Dataset final: public GDALJP2AbstractDataset
 {
     friend class JPEG2000RasterBand;
 
@@ -215,7 +215,7 @@ class JPEG2000Dataset : public GDALJP2AbstractDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class JPEG2000RasterBand : public GDALPamRasterBand
+class JPEG2000RasterBand final: public GDALPamRasterBand
 {
     friend class JPEG2000Dataset;
 
@@ -484,7 +484,7 @@ int JPEG2000Dataset::DecodeImage()
     /* the JP2 boxes match the ones of the code stream */
     if (nBands != 0)
     {
-        if (nBands != jas_image_numcmpts( psImage ))
+        if (nBands != static_cast<int>(jas_image_numcmpts( psImage )))
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "The number of components indicated in the IHDR box (%d) mismatch "
@@ -513,7 +513,7 @@ int JPEG2000Dataset::DecodeImage()
         for ( iBand = 0; iBand < nBands; iBand++ )
         {
             JPEG2000RasterBand* poBand = (JPEG2000RasterBand*) GetRasterBand(iBand+1);
-            if (poBand->iDepth != jas_image_cmptprec( psImage, iBand ) ||
+            if (poBand->iDepth != static_cast<int>(jas_image_cmptprec( psImage, iBand )) ||
                 poBand->bSignedness != jas_image_cmptsgnd( psImage, iBand ))
             {
                 CPLError(CE_Failure, CPLE_AppDefined,
@@ -568,7 +568,7 @@ static void JPEG2000Init()
 int JPEG2000Dataset::Identify( GDALOpenInfo * poOpenInfo )
 
 {
-    constexpr unsigned char jpc_header[] = {0xff,0x4f};
+    constexpr unsigned char jpc_header[] = {0xff,0x4f,0xff,0x51}; // SOC + RSIZ markers
     constexpr unsigned char jp2_box_jp[] = {0x6a,0x50,0x20,0x20}; /* 'jP  ' */
 
     if( poOpenInfo->nHeaderBytes >= 16
@@ -595,7 +595,7 @@ GDALDataset *JPEG2000Dataset::Open( GDALOpenInfo * poOpenInfo )
 
 {
     int         iFormat;
-    char        *pszFormatName = nullptr;
+    const char *pszFormatName = nullptr;
 
     if (!Identify(poOpenInfo))
         return nullptr;
@@ -623,6 +623,9 @@ GDALDataset *JPEG2000Dataset::Open( GDALOpenInfo * poOpenInfo )
         jas_stream_close( sS );
         return nullptr;
     }
+
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("JPEG2000", "You should consider using another driver, in particular the JP2OpenJPEG driver that is a better free and open source alternative. ") )
+        return nullptr;
 
 /* -------------------------------------------------------------------- */
 /*      Confirm the requested access is supported.                      */
@@ -848,6 +851,9 @@ JPEG2000CreateCopy( const char * pszFilename, GDALDataset *poSrcDS,
                     GDALProgressFunc pfnProgress, void * pProgressData )
 
 {
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("JPEG2000", "You should consider using another driver, in particular the JP2OpenJPEG driver that is a better free and open source alternative. ") )
+        return nullptr;
+
     int  nBands = poSrcDS->GetRasterCount();
     int  nXSize = poSrcDS->GetRasterXSize();
     int  nYSize = poSrcDS->GetRasterYSize();
@@ -1393,7 +1399,7 @@ void GDALRegister_JPEG2000()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "JPEG-2000 part 1 (ISO/IEC 15444-1), "
                                "based on Jasper library" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_jpeg2000.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/jpeg2000.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Int32 UInt32" );
     poDriver->SetMetadataItem( GDAL_DMD_MIMETYPE, "image/jp2" );

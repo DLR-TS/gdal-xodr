@@ -61,7 +61,7 @@ constexpr GByte SG_NODATA_GDT_Byte = 255;
 
 class SAGARasterBand;
 
-class SAGADataset : public GDALPamDataset
+class SAGADataset final: public GDALPamDataset
 {
     friend class SAGARasterBand;
 
@@ -81,7 +81,7 @@ class SAGADataset : public GDALPamDataset
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType,
-                                char **papszParmList );
+                                char **papszParamList );
     static GDALDataset *CreateCopy( const char *pszFilename,
                                     GDALDataset *poSrcDS,
                                     int bStrict, char **papszOptions,
@@ -109,7 +109,7 @@ class SAGADataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class SAGARasterBand : public GDALPamRasterBand
+class SAGARasterBand final: public GDALPamRasterBand
 {
     friend class SAGADataset;
 
@@ -441,7 +441,7 @@ GDALDataset *SAGADataset::Open( GDALOpenInfo * poOpenInfo )
             return nullptr; //empty zip file
 
         CPLString file;
-        for (int iFile = 0; filesinzip != nullptr && filesinzip[iFile] != nullptr; iFile++)
+        for (int iFile = 0; filesinzip[iFile] != nullptr; iFile++)
         {
             if (EQUAL(CPLGetExtension(filesinzip[iFile]), "sdat"))
             {
@@ -864,7 +864,7 @@ CPLErr SAGADataset::WriteHeader( CPLString osHDRFilename, GDALDataType eType,
 GDALDataset *SAGADataset::Create( const char * pszFilename,
                                   int nXSize, int nYSize, int nBands,
                                   GDALDataType eType,
-                                  char **papszParmList )
+                                  char **papszParamList )
 
 {
     if( nXSize <= 0 || nYSize <= 0 )
@@ -907,7 +907,7 @@ GDALDataset *SAGADataset::Create( const char * pszFilename,
 
     double dfNoDataVal = 0.0;
 
-    const char* pszNoDataValue = CSLFetchNameValue(papszParmList, "NODATA_VALUE");
+    const char* pszNoDataValue = CSLFetchNameValue(papszParamList, "NODATA_VALUE");
     if (pszNoDataValue)
     {
         dfNoDataVal = CPLAtofM(pszNoDataValue);
@@ -972,7 +972,7 @@ GDALDataset *SAGADataset::Create( const char * pszFilename,
         return nullptr;
     }
 
-    if( CPLFetchBool( papszParmList , "FILL_NODATA", true ) )
+    if( CPLFetchBool( papszParamList , "FILL_NODATA", true ) )
     {
         const int nDataTypeSize = GDALGetDataTypeSize(eType) / 8;
         GByte* pabyNoDataBuf = reinterpret_cast<GByte *>(
@@ -1104,7 +1104,7 @@ void GDALRegister_SAGA()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "SAGA GIS Binary Grid (.sdat, .sg-grd-z)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#SAGA" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/sdat.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSIONS, "sdat sg-grd-z" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Byte Int16 "
                                "UInt16 Int32 UInt32 Float32 Float64" );

@@ -22,7 +22,7 @@ Description
 
 The :program:`gdalcompare.py` script compares two GDAL supported datasets and
 reports the differences. In addition to reporting differences to the
-standard out the script will also return the difference count in it's
+standard output the script will also return the difference count in its
 exit value.
 
 Image pixels, and various metadata are checked. There is also a byte by
@@ -30,7 +30,7 @@ byte comparison done which will count as one difference. So if it is
 only important that the GDAL visible data is identical a difference
 count of 1 (the binary difference) should be considered acceptable.
 
-.. program:: gdalinfo
+.. program:: gdalcompare
 
 .. option:: -sds
 

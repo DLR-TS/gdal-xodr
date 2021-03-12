@@ -37,6 +37,8 @@
 #include "ogrsf_frmts.h"
 #include "commonutils.h"
 
+#include "proj.h"
+
 CPL_CVSID("$Id$")
 
 bool FindSRS( const char *pszInput, OGRSpatialReference &oSRS );
@@ -67,7 +69,11 @@ static void Usage(const char* pszErrorMsg = nullptr)
             "   [-V]                   Validate SRS\n"
             "   [-e]                   Search for EPSG number(s) corresponding to SRS\n"
             "   [-o out_type]          Output type { default, all, wkt_all,\n"
+#if PROJ_VERSION_MAJOR > 6 || PROJ_VERSION_MINOR >= 2
+            "                                        PROJJSON, proj4, epsg,\n"
+#else
             "                                        proj4, epsg,\n"
+#endif
             "                                        wkt1, wkt_simple, wkt_noct, wkt_esri,\n"
             "                                        wkt2, wkt2_2015, wkt2_2018, mapinfo, xml }\n\n" );
 
@@ -240,7 +246,11 @@ MAIN_START(argc, argv)
                 if ( bFindEPSG )
                     printf("\nEPSG:%d\n\n",nEPSGCode);
                 const char* papszOutputTypes[] =
-                    {"proj4", "wkt1", "wkt2_2015", "wkt2_2018", "wkt_simple","wkt_noct","wkt_esri","mapinfo","xml",nullptr};
+                    {"proj4", "wkt1", "wkt2_2015", "wkt2_2018", "wkt_simple","wkt_noct","wkt_esri","mapinfo","xml",
+#if PROJ_VERSION_MAJOR > 6 || PROJ_VERSION_MINOR >= 2
+                     "PROJJSON",
+#endif
+                     nullptr};
                 PrintSRSOutputTypes( oSRS, papszOutputTypes, bPretty );
             }
             else if ( EQUAL("wkt_all", pszOutputType ) ) {
@@ -285,7 +295,6 @@ bool FindSRS( const char *pszInput, OGRSpatialReference &oSRS )
     GDALDataset *poGDALDS = nullptr;
     OGRLayer      *poLayer = nullptr;
     bool bIsFile = false;
-    OGRErr eErr = OGRERR_NONE;
 
     /* temporarily suppress error messages we may get from xOpen() */
     bool bDebug = CPLTestBool(CPLGetConfigOption("CPL_DEBUG", "OFF"));
@@ -341,12 +350,11 @@ bool FindSRS( const char *pszInput, OGRSpatialReference &oSRS )
         else
             pszTemp = CSLLoad( pszInput );
 
+        OGRErr eErr = OGRERR_UNSUPPORTED_SRS;
         if( pszTemp ) {
             eErr = oSRS.importFromESRI( pszTemp );
             CSLDestroy( pszTemp );
         }
-        else
-            eErr = OGRERR_UNSUPPORTED_SRS;
 
         if( eErr != OGRERR_NONE ) {
             CPLDebug( "gdalsrsinfo", "did not get SRS from ESRI .prj file" );
@@ -369,7 +377,7 @@ bool FindSRS( const char *pszInput, OGRSpatialReference &oSRS )
         if( CPLGetConfigOption("CPL_ALLOW_VSISTDIN", nullptr) == nullptr )
             CPLSetConfigOption("CPL_ALLOW_VSISTDIN", "YES");
 
-        eErr = oSRS.SetFromUserInput( pszInput );
+        const OGRErr eErr = oSRS.SetFromUserInput( pszInput );
 
        if(  eErr != OGRERR_NONE ) {
             CPLDebug( "gdalsrsinfo", "did not get SRS from user input" );
@@ -405,6 +413,14 @@ CPLErr PrintSRS( const OGRSpatialReference &oSRS,
     if ( EQUAL("proj4", pszOutputType ) ) {
         if ( bPrintSep ) printf( "PROJ.4 : ");
         oSRS.exportToProj4( &pszOutput );
+        printf( "%s\n", pszOutput );
+    }
+
+    else if ( EQUAL("PROJJSON", pszOutputType ) ) {
+        if ( bPrintSep ) printf( "PROJJSON :\n");
+        const char* const apszOptions[] = {
+            bPretty ? "MULTILINE=YES" : "MULTILINE=NO", nullptr };
+        oSRS.exportToPROJJSON( &pszOutput, apszOptions );
         printf( "%s\n", pszOutput );
     }
 

@@ -50,7 +50,7 @@ static double RAD2DEG = 180.0 / M_PI;
 
 class IRISRasterBand;
 
-class IRISDataset : public GDALPamDataset
+class IRISDataset final: public GDALPamDataset
 {
     friend class IRISRasterBand;
 
@@ -148,7 +148,7 @@ const char* const IRISDataset::aszProjections[] = {
 /* ==================================================================== */
 /************************************************************************/
 
-class IRISRasterBand : public GDALPamRasterBand
+class IRISRasterBand final: public GDALPamRasterBand
 {
     friend class IRISDataset;
 
@@ -714,11 +714,18 @@ int IRISDataset::Identify( GDALOpenInfo * poOpenInfo )
 
     const short nId1 = CPL_LSBSINT16PTR(poOpenInfo->pabyHeader);
     const short nId2 = CPL_LSBSINT16PTR(poOpenInfo->pabyHeader + 12);
-    unsigned short nType = CPL_LSBUINT16PTR(poOpenInfo->pabyHeader + 24);
+    unsigned short nProductCode = CPL_LSBUINT16PTR(poOpenInfo->pabyHeader + 12 + 12);
+    const short nYear = CPL_LSBSINT16PTR(poOpenInfo->pabyHeader+26+12);
+    const short nMonth = CPL_LSBSINT16PTR(poOpenInfo->pabyHeader+28+12);
+    const short nDay = CPL_LSBSINT16PTR(poOpenInfo->pabyHeader+30+12);
 
     // Check if the two headers are 27 (product hdr) & 26 (product
-    // configuration), and the product type is in the range 1 -> 34.
-    if( !(nId1 == 27 && nId2 == 26 && nType > 0 && nType < 35) )
+    // configuration), and other metadata
+    if( !(nId1 == 27 && nId2 == 26 &&
+          nProductCode > 0 && nProductCode < CPL_ARRAYSIZE(aszProductNames) &&
+          nYear >= 1900 && nYear < 2100 &&
+          nMonth >= 1 && nMonth <= 12 &&
+          nDay >= 1 && nDay <= 31) )
         return FALSE;
 
     return TRUE;
@@ -1014,7 +1021,7 @@ GDALDataset *IRISDataset::Open( GDALOpenInfo * poOpenInfo )
 
         const float fMinZAcum =
             (CPL_LSBUINT32PTR(poDS->abyHeader+164+12) - 32768.0f) / 10000.0f;
-        poDS->SetMetadataItem("MINIMUM_Z_TO_ACUMULATE",
+        poDS->SetMetadataItem("MINIMUM_Z_TO_ACCUMULATE",
                               CPLString().Printf("%f", fMinZAcum));
 
         const unsigned short nSecondsOfAccumulation =
@@ -1153,7 +1160,7 @@ void GDALRegister_IRIS()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "IRIS data (.PPI, .CAPPi etc)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#IRIS" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/iris.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "ppi" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

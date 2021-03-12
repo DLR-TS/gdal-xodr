@@ -43,7 +43,7 @@ extern "C" void RegisterOGRCSW();
 
 class OGRCSWDataSource;
 
-class OGRCSWLayer : public OGRLayer
+class OGRCSWLayer final: public OGRLayer
 {
     OGRCSWDataSource*   poDS;
     OGRFeatureDefn*     poFeatureDefn;
@@ -84,7 +84,7 @@ class OGRCSWLayer : public OGRLayer
 /*                           OGRCSWDataSource                           */
 /************************************************************************/
 
-class OGRCSWDataSource : public OGRDataSource
+class OGRCSWDataSource final: public OGRDataSource
 {
     char*               pszName;
     CPLString           osBaseURL;
@@ -1059,7 +1059,7 @@ void RegisterOGRCSW()
     poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "OGC CSW (Catalog  Service for the Web)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drv_csw.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/vector/csw.html" );
 
     poDriver->SetMetadataItem( GDAL_DMD_CONNECTION_PREFIX, "CSW:" );
 

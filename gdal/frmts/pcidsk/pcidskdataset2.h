@@ -57,7 +57,8 @@ class PCIDSK2Dataset final: public GDALPamDataset
     friend class PCIDSK2Band;
 
     mutable OGRSpatialReference* m_poSRS = nullptr;
-    CPLString   osLastMDValue;
+
+    std::unordered_map<std::string, std::string> m_oCacheMetadataItem{};
     char      **papszLastMDListValue;
 
     PCIDSK::PCIDSKFile  *poFile;
@@ -79,7 +80,7 @@ class PCIDSK2Dataset final: public GDALPamDataset
     static GDALDataset  *Create( const char * pszFilename,
                                  int nXSize, int nYSize, int nBands,
                                  GDALDataType eType,
-                                 char **papszParmList );
+                                 char **papszParamList );
 
     char              **GetFileList() override;
     CPLErr              GetGeoTransform( double * padfTransform ) override;
@@ -122,7 +123,7 @@ class PCIDSK2Band final: public GDALPamRasterBand
     void        RefreshOverviewList();
     std::vector<PCIDSK2Band*> apoOverviews;
 
-    CPLString   osLastMDValue;
+    std::unordered_map<std::string, std::string> m_oCacheMetadataItem{};
     char      **papszLastMDListValue;
 
     bool        CheckForColorTable();
@@ -165,14 +166,14 @@ class PCIDSK2Band final: public GDALPamRasterBand
 /*                             OGRPCIDSKLayer                              */
 /************************************************************************/
 
-class OGRPCIDSKLayer final: public OGRLayer
+class OGRPCIDSKLayer final: public OGRLayer, public OGRGetNextFeatureThroughRaw<OGRPCIDSKLayer>
 {
     PCIDSK::PCIDSKVectorSegment *poVecSeg;
     PCIDSK::PCIDSKSegment       *poSeg;
 
     OGRFeatureDefn     *poFeatureDefn;
 
-    OGRFeature *        GetNextUnfilteredFeature();
+    OGRFeature *        GetNextRawFeature();
 
     int                 iRingStartField;
     PCIDSK::ShapeId     hLastShapeId;
@@ -182,13 +183,15 @@ class OGRPCIDSKLayer final: public OGRLayer
     OGRSpatialReference *poSRS;
 
     std::unordered_map<std::string, int> m_oMapFieldNameToIdx{};
+    bool                m_bEOF = false;
 
   public:
     OGRPCIDSKLayer( PCIDSK::PCIDSKSegment*, PCIDSK::PCIDSKVectorSegment *, bool bUpdate );
     virtual ~OGRPCIDSKLayer();
 
     void                ResetReading() override;
-    OGRFeature *        GetNextFeature() override;
+    DEFINE_GET_NEXT_FEATURE_THROUGH_RAW(OGRPCIDSKLayer)
+
     OGRFeature         *GetFeature( GIntBig nFeatureId ) override;
     virtual OGRErr      ISetFeature( OGRFeature *poFeature ) override;
 

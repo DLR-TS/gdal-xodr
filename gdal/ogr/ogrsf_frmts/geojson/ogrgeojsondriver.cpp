@@ -58,7 +58,7 @@ class OGRESRIFeatureServiceDataset;
 /*                      OGRESRIFeatureServiceLayer                      */
 /************************************************************************/
 
-class OGRESRIFeatureServiceLayer: public OGRLayer
+class OGRESRIFeatureServiceLayer final: public OGRLayer
 {
     OGRESRIFeatureServiceDataset* poDS;
     OGRFeatureDefn* poFeatureDefn;
@@ -87,7 +87,7 @@ class OGRESRIFeatureServiceLayer: public OGRLayer
 /*                       OGRESRIFeatureServiceDataset                   */
 /************************************************************************/
 
-class OGRESRIFeatureServiceDataset: public GDALDataset
+class OGRESRIFeatureServiceDataset final: public GDALDataset
 {
     CPLString              osURL;
     GIntBig                nFirstOffset;
@@ -240,8 +240,9 @@ GIntBig OGRESRIFeatureServiceLayer::GetFeatureCount( int bForce )
     GIntBig nFeatureCount = -1;
     if( m_poAttrQuery == nullptr && m_poFilterGeom == nullptr )
     {
-        const CPLString osNewURL =
+        CPLString osNewURL =
             CPLURLAddKVP(poDS->GetURL(), "returnCountOnly", "true");
+        osNewURL = CPLURLAddKVP(osNewURL, "resultRecordCount", nullptr);
         CPLErrorReset();
         CPLHTTPResult* pResult = CPLHTTPFetch( osNewURL, nullptr );
         if( pResult != nullptr &&
@@ -278,6 +279,7 @@ OGRErr OGRESRIFeatureServiceLayer::GetExtent( OGREnvelope *psExtent,
     OGRErr eErr = OGRERR_FAILURE;
     CPLString osNewURL =
         CPLURLAddKVP(poDS->GetURL(), "returnExtentOnly", "true");
+    osNewURL = CPLURLAddKVP(osNewURL, "resultRecordCount", nullptr);
     osNewURL = CPLURLAddKVP(osNewURL, "f", "geojson");
     CPLErrorReset();
     CPLHTTPResult* pResult = CPLHTTPFetch( osNewURL, nullptr );
@@ -342,7 +344,7 @@ OGRESRIFeatureServiceDataset::OGRESRIFeatureServiceDataset(
         if( nUserSetRecordCount > poFirst->GetLayer(0)->GetFeatureCount() )
         {
             CPLError(CE_Warning, CPLE_AppDefined,
-                     "Specificied resultRecordCount=%d is greater than "
+                     "Specified resultRecordCount=%d is greater than "
                      "the maximum %d supported by the server",
                      nUserSetRecordCount,
                      static_cast<int>(poFirst->GetLayer(0)->GetFeatureCount()));
@@ -438,6 +440,18 @@ static int OGRGeoJSONDriverIdentifyInternal( GDALOpenInfo* poOpenInfo,
     {
         return -1;
     }
+
+    // If this looks like a file that can be handled by the STACTA driver,
+    // and that one is available, then don't identify the file.
+    const char* pszHeader = reinterpret_cast<const char*>(poOpenInfo->pabyHeader);
+    if( pszHeader != nullptr &&
+        strstr(pszHeader, "\"stac_extensions\"") != nullptr &&
+        strstr(pszHeader, "\"tiled-assets\"") != nullptr &&
+        GDALGetDriverByName("STACTA") != nullptr )
+    {
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -632,7 +646,7 @@ void RegisterOGRGeoJSON()
     poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "GeoJSON" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSIONS, "json geojson" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drv_geojson.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/vector/geojson.html" );
 
     poDriver->SetMetadataItem( GDAL_DMD_OPENOPTIONLIST,
 "<OpenOptionList>"
@@ -641,6 +655,7 @@ void RegisterOGRGeoJSON()
 "  <Option name='FEATURE_SERVER_PAGING' type='boolean' description='Whether to automatically scroll through results with a ArcGIS Feature Service endpoint'/>"
 "  <Option name='NATIVE_DATA' type='boolean' description='Whether to store the native JSon representation at FeatureCollection and Feature level' default='NO'/>"
 "  <Option name='ARRAY_AS_STRING' type='boolean' description='Whether to expose JSon arrays of strings, integers or reals as a OGR String' default='NO'/>"
+"  <Option name='DATE_AS_STRING' type='boolean' description='Whether to expose date/time/date-time content using dedicated OGR date/time/date-time types or as a OGR String' default='NO'/>"
 "</OpenOptionList>");
 
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONOPTIONLIST,
@@ -662,13 +677,14 @@ void RegisterOGRGeoJSON()
 "    <Value>String</Value>"
 "    <Value>Integer</Value>"
 "  </Option>"
+"  <Option name='ID_GENERATE' type='boolean' description='Auto-generate feature ids' />"
 "  <Option name='WRITE_NON_FINITE_VALUES' type='boolean' description='Whether to write NaN / Infinity values' default='NO'/>"
 "</LayerCreationOptionList>");
 
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONFIELDDATATYPES,
                                "Integer Integer64 Real String IntegerList "
-                               "Integer64List RealList StringList" );
+                               "Integer64List RealList StringList Date DateTime" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONFIELDDATASUBTYPES, "Boolean" );
 
     poDriver->pfnOpen = OGRGeoJSONDriverOpen;

@@ -71,7 +71,7 @@ constexpr int GEOTRSFRM_NS_RES = 5;
 /* ==================================================================== */
 /************************************************************************/
 
-class RPFTOCDataset : public GDALPamDataset
+class RPFTOCDataset final: public GDALPamDataset
 {
   char      **papszSubDatasets;
   char       *pszProjection;
@@ -161,7 +161,7 @@ class RPFTOCDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class RPFTOCSubDataset : public VRTDataset
+class RPFTOCSubDataset final: public VRTDataset
 {
 
   int          cachedTileBlockXOff;
@@ -236,7 +236,7 @@ class RPFTOCSubDataset : public VRTDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class RPFTOCProxyRasterDataSet : public GDALProxyPoolDataset
+class RPFTOCProxyRasterDataSet final: public GDALProxyPoolDataset
 {
     /* The following parameters are only for sanity checking */
     int checkDone;
@@ -293,7 +293,7 @@ class RPFTOCProxyRasterDataSet : public GDALProxyPoolDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class RPFTOCProxyRasterBandRGBA : public GDALPamRasterBand
+class RPFTOCProxyRasterBandRGBA final: public GDALPamRasterBand
 {
     int initDone;
     unsigned char colorTable[256];
@@ -464,7 +464,7 @@ CPLErr RPFTOCProxyRasterBandRGBA::IReadBlock( int nBlockXOff, int nBlockYOff,
 /* ==================================================================== */
 /************************************************************************/
 
-class RPFTOCProxyRasterBandPalette : public GDALPamRasterBand
+class RPFTOCProxyRasterBandPalette final: public GDALPamRasterBand
 {
     int initDone;
     int blockByteSize;
@@ -1344,7 +1344,7 @@ void GDALRegister_RPFTOC()
     poDriver->pfnOpen = RPFTOCDataset::Open;
 
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#RPFTOC" );
+                               "drivers/raster/rpftoc.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "toc" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_SUBDATASETS, "YES" );

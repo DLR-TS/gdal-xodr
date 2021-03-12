@@ -75,7 +75,7 @@ typedef int OGRJustification;
 %rename (wkbByteOrder) OGRwkbByteOrder;
 typedef enum
 {
-    wkbXDR = 0,         /* MSB/Sun/Motoroloa: Most Significant Byte First   */
+    wkbXDR = 0,         /* MSB/Sun/Motorola: Most Significant Byte First   */
     wkbNDR = 1          /* LSB/Intel/Vax: Least Significant Byte First      */
 } OGRwkbByteOrder;
 
@@ -200,6 +200,10 @@ typedef enum
      * @since GDAL 2.4
      */
                                                         OFSTJSON = 4,
+    /** UUID string representation. Only valid for OFTString.
+     * @since GDAL 3.3
+     */
+                                                        OFSTUUID = 5,
 } OGRFieldSubType;
 
 
@@ -241,7 +245,6 @@ typedef struct OGRFeatureHS OGRFeatureShadow;
 typedef struct OGRFeatureDefnHS OGRFeatureDefnShadow;
 typedef struct OGRGeometryHS OGRGeometryShadow;
 typedef struct OGRCoordinateTransformationHS OSRCoordinateTransformationShadow;
-typedef struct OGRCoordinateTransformationHS OGRCoordinateTransformationShadow;
 typedef struct OGRFieldDefnHS OGRFieldDefnShadow;
 #else
 typedef void OSRSpatialReferenceShadow;
@@ -258,6 +261,8 @@ typedef void OGRFieldDefnShadow;
 #endif
 typedef struct OGRStyleTableHS OGRStyleTableShadow;
 typedef struct OGRGeomFieldDefnHS OGRGeomFieldDefnShadow;
+typedef struct OGRGeomTransformer OGRGeomTransformerShadow;
+typedef struct _OGRPreparedGeometry OGRPreparedGeometryShadow;
 %}
 
 #ifdef SWIGJAVA
@@ -375,6 +380,7 @@ typedef void retGetPoints;
 %constant OFSTInt16 = 2;
 %constant OFSTFloat32 = 3;
 %constant OFSTJSON = 4;
+%constant OFSTUUID = 5;
 
 %constant OJUndefined = 0;
 %constant OJLeft = 1;
@@ -389,8 +395,10 @@ typedef void retGetPoints;
 %constant ALTER_TYPE_FLAG = 2;
 %constant ALTER_WIDTH_PRECISION_FLAG = 4;
 %constant ALTER_NULLABLE_FLAG = 8;
+%constant ALTER__FLAG = 8;
 %constant ALTER_DEFAULT_FLAG = 16;
-%constant ALTER_ALL_FLAG = 1 + 2 + 4 + 8 + 16;
+%constant ALTER_UNIQUE_FLAG = 32;
+%constant ALTER_ALL_FLAG = 1 + 2 + 4 + 8 + 16 + 32;
 
 %constant F_VAL_NULL= 0x00000001; /**< Validate that fields respect not-null constraints */
 %constant F_VAL_GEOM_TYPE = 0x00000002; /**< Validate that geometries respect geometry column type */
@@ -515,8 +523,7 @@ typedef int OGRErr;
 
 #ifndef FROM_GDAL_I
 /* For Python we don't import, but include MajorObject.i to avoid */
-/* cyclic dependency betwenn gdal.py and ogr.py. Python2 is fine with that */
-/* but Python3 not */
+/* cyclic dependency between gdal.py and ogr.py. */
 /* We should probably define a new module for MajorObject, or merge gdal and ogr */
 /* modules */
 #if defined(SWIGPYTHON)
@@ -660,12 +667,14 @@ public:
 #ifndef SWIGJAVA
 %feature( "kwargs" ) CopyDataSource;
 #endif
+%apply Pointer NONNULL {OGRDataSourceShadow *copy_ds};
   OGRDataSourceShadow *CopyDataSource( OGRDataSourceShadow* copy_ds,
                                   const char* utf8_path,
                                   char **options = 0 ) {
     OGRDataSourceShadow *ds = (OGRDataSourceShadow*) OGR_Dr_CopyDataSource(self, copy_ds, utf8_path, options);
     return ds;
   }
+%clear OGRDataSourceShadow *copy_ds;
 #ifdef SWIGPYTHON
 %nothread;
 #endif
@@ -847,6 +856,10 @@ public:
                                                       spatialFilter,
                                                       dialect);
     return layer;
+  }
+
+  OGRErr AbortSQL(){
+    return GDALDatasetAbortSQL((OGRDataSourceShadow*)self);
   }
 
 %apply SWIGTYPE *DISOWN {OGRLayerShadow *layer};
@@ -2160,6 +2173,7 @@ public:
             case OFSTInt16:
             case OFSTFloat32:
             case OFSTJSON:
+            case OFSTUUID:
                 return TRUE;
             default:
                 CPLError(CE_Failure, CPLE_IllegalArg, "Illegal field subtype value");
@@ -2198,6 +2212,18 @@ public:
 
   void SetName( const char* name) {
     OGR_Fld_SetName(self, name);
+  }
+
+  const char * GetAlternativeName() {
+    return OGR_Fld_GetAlternativeNameRef(self);
+  }
+
+  const char * GetAlternativeNameRef() {
+    return OGR_Fld_GetAlternativeNameRef(self);
+  }
+
+  void SetAlternativeName( const char* alternativeName) {
+    OGR_Fld_SetAlternativeName(self, alternativeName);
   }
 
   OGRFieldType GetType() {
@@ -2267,6 +2293,14 @@ public:
 
   void SetNullable(int bNullable ) {
     OGR_Fld_SetNullable( self, bNullable );
+  }
+
+  int IsUnique() {
+    return OGR_Fld_IsUnique( self );
+  }
+
+  void SetUnique(int bUnique ) {
+    OGR_Fld_SetUnique( self, bUnique );
   }
 
   const char* GetDefault() {
@@ -2451,6 +2485,15 @@ OGRGeometryShadow* CreateGeometryFromWkb(int nLen, unsigned char *pBuf,
 %inline %{
   OGRGeometryShadow *CreateGeometryFromJson( const char * input_string ) {
     OGRGeometryShadow* geom = (OGRGeometryShadow*)OGR_G_CreateGeometryFromJson(input_string);
+    return geom;
+  }
+
+%}
+
+%newobject CreateGeometryFromEsriJson;
+%inline %{
+  OGRGeometryShadow *CreateGeometryFromEsriJson( const char * input_string ) {
+    OGRGeometryShadow* geom = (OGRGeometryShadow*)OGR_G_CreateGeometryFromEsriJson(input_string);
     return geom;
   }
 
@@ -2972,6 +3015,16 @@ public:
     return (OGRGeometryShadow*) OGR_G_MakeValid(self);
   }
 
+  %newobject Normalize;
+  OGRGeometryShadow* Normalize() {
+    return (OGRGeometryShadow*) OGR_G_Normalize(self);
+  }
+
+  %newobject RemoveLowerDimensionSubGeoms;
+  OGRGeometryShadow* RemoveLowerDimensionSubGeoms() {
+    return (OGRGeometryShadow*) OGR_G_RemoveLowerDimensionSubGeoms(self);
+  }
+
   %newobject Buffer;
 #ifndef SWIGJAVA
   %feature("kwargs") Buffer;
@@ -3215,10 +3268,49 @@ public:
     return OGR_G_Value(self, dfDistance);
   }
 
+  %newobject Transform;
+  %apply Pointer NONNULL {OGRGeomTransformerShadow* transformer};
+  OGRGeometryShadow* Transform(OGRGeomTransformerShadow* transformer)
+  {
+    return (OGRGeometryShadow*)OGR_GeomTransformer_Transform(transformer, self);
+  }
+
+  %newobject CreatePreparedGeometry;
+  OGRPreparedGeometryShadow* CreatePreparedGeometry()
+  {
+    return (OGRPreparedGeometryShadow*)OGRCreatePreparedGeometry(self);
+  }
 } /* %extend */
 
 }; /* class OGRGeometryShadow */
 
+
+/************************************************************************/
+/*                        OGRPreparedGeometry                           */
+/************************************************************************/
+
+%rename (PreparedGeometry) OGRPreparedGeometryShadow;
+class OGRPreparedGeometryShadow {
+  OGRPreparedGeometryShadow();
+public:
+%extend {
+
+  ~OGRPreparedGeometryShadow() {
+    OGRDestroyPreparedGeometry( self );
+  }
+
+  %apply Pointer NONNULL {const OGRGeometryShadow* otherGeom};
+  bool Intersects(const OGRGeometryShadow* otherGeom) {
+    return OGRPreparedGeometryIntersects(self, (OGRGeometryH)otherGeom);
+  }
+
+  bool Contains(const OGRGeometryShadow* otherGeom) {
+    return OGRPreparedGeometryContains(self, (OGRGeometryH)otherGeom);
+  }
+
+} /* %extend */
+
+}; /* class OGRPreparedGeometryShadow */
 
 
 #ifdef SWIGPYTHON
@@ -3226,6 +3318,34 @@ public:
 %clear (const char* field_name);
 #endif
 
+/************************************************************************/
+/*                         OGRGeomTransformerH                          */
+/************************************************************************/
+
+%rename (GeomTransformer) OGRGeomTransformerShadow;
+class OGRGeomTransformerShadow {
+  OGRGeomTransformerShadow();
+public:
+%extend {
+
+  OGRGeomTransformerShadow(OSRCoordinateTransformationShadow* ct,
+                           char** options = NULL ) {
+    return OGR_GeomTransformer_Create(ct, options);
+  }
+
+  ~OGRGeomTransformerShadow() {
+    OGR_GeomTransformer_Destroy( self );
+  }
+
+  %newobject Transform;
+  %apply Pointer NONNULL {OGRGeometryShadow* src_geom};
+  OGRGeometryShadow* Transform(OGRGeometryShadow* src_geom)
+  {
+    return (OGRGeometryShadow*)OGR_GeomTransformer_Transform(self, src_geom);
+  }
+} /* %extend */
+
+}; /* class OGRGeomTransformerShadow */
 
 /************************************************************************/
 /*                        Other misc functions.                         */

@@ -31,7 +31,7 @@
 import json
 import math
 import os
-
+import struct
 
 from osgeo import osr
 from osgeo import ogr
@@ -40,6 +40,9 @@ from osgeo import gdal
 import gdaltest
 import ogrtest
 import pytest
+
+pytestmark = pytest.mark.require_driver('GeoJSON')
+
 ###############################################################################
 # Test utilities
 
@@ -83,13 +86,12 @@ def validate_layer(lyr, name, features, typ, fields, box):
     return True
 
 
-def verify_geojson_copy(name, fids, names):
+def verify_geojson_copy(fname, fids, names):
 
     if gdaltest.gjpoint_feat is None:
         print('Missing features collection')
         return False
 
-    fname = os.path.join('tmp', name + '.geojson')
     ds = ogr.Open(fname)
     if ds is None:
         print('Can not open \'' + fname + '\'')
@@ -140,9 +142,6 @@ def verify_geojson_copy(name, fids, names):
 
 def copy_shape_to_geojson(gjname, compress=None):
 
-    if gdaltest.geojson_drv is None:
-        return False
-
     if compress is not None:
         if compress[0:5] == '/vsig':
             dst_name = os.path.join('/vsigzip/', 'tmp', gjname + '.geojson' + '.gz')
@@ -151,22 +150,22 @@ def copy_shape_to_geojson(gjname, compress=None):
         elif compress == '/vsistdout/':
             dst_name = compress
         else:
-            return False
+            return False, None
     else:
         dst_name = os.path.join('tmp', gjname + '.geojson')
 
-    ds = gdaltest.geojson_drv.CreateDataSource(dst_name)
+    ds = ogr.GetDriverByName('GeoJSON').CreateDataSource(dst_name)
     if ds is None:
-        return False
+        return False, dst_name
 
     ######################################################
     # Create layer
     lyr = ds.CreateLayer(gjname)
     if lyr is None:
-        return False
+        return False, dst_name
 
     ######################################################
-    # Setup schema (all test shapefiles use common schmea)
+    # Setup schema (all test shapefiles use common schema)
     ogrtest.quick_create_layer_def(lyr,
                                    [('FID', ogr.OFTReal),
                                     ('NAME', ogr.OFTString)])
@@ -176,7 +175,7 @@ def copy_shape_to_geojson(gjname, compress=None):
 
     dst_feat = ogr.Feature(feature_def=lyr.GetLayerDefn())
 
-    src_name = os.path.join('data', gjname + '.shp')
+    src_name = os.path.join('data', 'shp', gjname + '.shp')
     shp_ds = ogr.Open(src_name)
     shp_lyr = shp_ds.GetLayer(0)
 
@@ -197,19 +196,7 @@ def copy_shape_to_geojson(gjname, compress=None):
 
     ds = None
 
-    return True
-
-###############################################################################
-# Find GeoJSON driver
-
-
-def test_ogr_geojson_1():
-
-    gdaltest.geojson_drv = ogr.GetDriverByName('GeoJSON')
-
-    if gdaltest.geojson_drv is not None:
-        return
-    pytest.fail()
+    return True, dst_name
 
 ###############################################################################
 # Test file-based DS with standalone "Point" feature object.
@@ -217,13 +204,10 @@ def test_ogr_geojson_1():
 
 def test_ogr_geojson_2():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/point.geojson')
+    ds = ogr.Open('data/geojson/point.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('point')
     assert lyr is not None, 'Missing layer called point'
@@ -241,13 +225,10 @@ def test_ogr_geojson_2():
 
 def test_ogr_geojson_3():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/linestring.geojson')
+    ds = ogr.Open('data/geojson/linestring.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('linestring')
     assert lyr is not None, 'Missing layer called linestring'
@@ -265,13 +246,10 @@ def test_ogr_geojson_3():
 
 def test_ogr_geojson_4():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/polygon.geojson')
+    ds = ogr.Open('data/geojson/polygon.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('polygon')
     assert lyr is not None, 'Missing layer called polygon'
@@ -289,13 +267,10 @@ def test_ogr_geojson_4():
 
 def test_ogr_geojson_5():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/geometrycollection.geojson')
+    ds = ogr.Open('data/geojson/geometrycollection.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('geometrycollection')
     assert lyr is not None, 'Missing layer called geometrycollection'
@@ -313,13 +288,10 @@ def test_ogr_geojson_5():
 
 def test_ogr_geojson_6():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/multipoint.geojson')
+    ds = ogr.Open('data/geojson/multipoint.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('multipoint')
     assert lyr is not None, 'Missing layer called multipoint'
@@ -337,13 +309,10 @@ def test_ogr_geojson_6():
 
 def test_ogr_geojson_7():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/multilinestring.geojson')
+    ds = ogr.Open('data/geojson/multilinestring.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('multilinestring')
     assert lyr is not None, 'Missing layer called multilinestring'
@@ -361,13 +330,10 @@ def test_ogr_geojson_7():
 
 def test_ogr_geojson_8():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/multipolygon.geojson')
+    ds = ogr.Open('data/geojson/multipolygon.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('multipolygon')
     assert lyr is not None, 'Missing layer called multipolygon'
@@ -385,10 +351,7 @@ def test_ogr_geojson_8():
 
 def test_ogr_geojson_9():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    gdaltest.tests = [
+    tests = [
         ['gjpoint', [1], ['Point 1']],
         ['gjline', [1], ['Line 1']],
         ['gjpoly', [1], ['Polygon 1']],
@@ -397,26 +360,25 @@ def test_ogr_geojson_9():
         ['gjmultipoly', [2], ['MultiPoly 1']]
     ]
 
-    for i in range(len(gdaltest.tests)):
-        test = gdaltest.tests[i]
+    for test in tests:
 
-        rc = copy_shape_to_geojson(test[0])
-        assert rc, ('Failed making copy of ' + test[0] + '.shp')
+        rc, dstname = copy_shape_to_geojson(test[0])
+        try:
+            assert rc, ('Failed making copy of ' + test[0] + '.shp')
 
-        rc = verify_geojson_copy(test[0], test[1], test[2])
-        assert rc, ('Verification of copy of ' + test[0] + '.shp failed')
+            rc = verify_geojson_copy(dstname, test[1], test[2])
+            assert rc, ('Verification of copy of ' + test[0] + '.shp failed')
+        finally:
+            if dstname:
+                gdal.Unlink(dstname)
 
-    
 ##############################################################################
 # Test translation of data/gjpoint.shp to GZip compressed GeoJSON file
 
 
 def test_ogr_geojson_10():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    gdaltest.tests = [
+    tests = [
         ['gjpoint', [1], ['Point 1']],
         ['gjline', [1], ['Line 1']],
         ['gjpoly', [1], ['Polygon 1']],
@@ -425,28 +387,29 @@ def test_ogr_geojson_10():
         ['gjmultipoly', [2], ['MultiPoly 1']]
     ]
 
-    for i in range(len(gdaltest.tests)):
-        test = gdaltest.tests[i]
+    for test in tests:
 
-        rc = copy_shape_to_geojson(test[0], '/vsigzip/')
-        assert rc, ('Failed making copy of ' + test[0] + '.shp')
+        rc, dstname = copy_shape_to_geojson(test[0], '/vsigzip/')
+        try:
+            assert rc, ('Failed making copy of ' + test[0] + '.shp')
 
-        rc = verify_geojson_copy(test[0], test[1], test[2])
-        assert rc, ('Verification of copy of ' + test[0] + '.shp failed')
+            rc = verify_geojson_copy(dstname, test[1], test[2])
+            assert rc, ('Verification of copy of ' + test[0] + '.shp failed')
+        finally:
+            if dstname:
+                dstname = dstname[len("/vsigzip/"):]
+                gdal.Unlink(dstname)
+                gdal.Unlink(dstname + ".properties")
 
-    
 ###############################################################################
 
 
 def test_ogr_geojson_11():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/srs_name.geojson')
+    ds = ogr.Open('data/geojson/srs_name.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('srs_name')
     assert lyr is not None, 'Missing layer called srs_name'
@@ -475,9 +438,6 @@ def test_ogr_geojson_11():
 
 def test_ogr_geojson_12():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
     if os.name == 'nt':
         pytest.skip()
 
@@ -495,12 +455,9 @@ def test_ogr_geojson_12():
 
 def test_ogr_geojson_13():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
     test = ['gjpoint', [1], ['Point 1']]
 
-    rc = copy_shape_to_geojson(test[0], '/vsistdout/')
+    rc, _ = copy_shape_to_geojson(test[0], '/vsistdout/')
     assert rc, ('Failed making copy of ' + test[0] + '.shp')
 
 ###############################################################################
@@ -509,29 +466,29 @@ def test_ogr_geojson_13():
 
 def test_ogr_geojson_14():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    if int(gdal.VersionInfo('VERSION_NUM')) < 1800:
-        pytest.skip()
-
     with gdaltest.error_handler():
-        ds = ogr.Open('data/ogr_geojson_14.geojson')
+        ds = ogr.Open('data/geojson/ogr_geojson_14.geojson')
     lyr = ds.GetLayer(0)
 
-    out_ds = gdaltest.geojson_drv.CreateDataSource('tmp/out_ogr_geojson_14.geojson')
-    out_lyr = out_ds.CreateLayer('lyr')
+    try:
+        out_ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('tmp/out_ogr_geojson_14.geojson')
+        out_lyr = out_ds.CreateLayer('lyr')
 
-    with gdaltest.error_handler():
-        for feat in lyr:
-            geom = feat.GetGeometryRef()
-            if geom is not None:
-                # print(geom)
-                out_feat = ogr.Feature(feature_def=out_lyr.GetLayerDefn())
-                out_feat.SetGeometry(geom)
-                out_lyr.CreateFeature(out_feat)
+        with gdaltest.error_handler():
+            for feat in lyr:
+                geom = feat.GetGeometryRef()
+                if geom is not None:
+                    # print(geom)
+                    out_feat = ogr.Feature(feature_def=out_lyr.GetLayerDefn())
+                    out_feat.SetGeometry(geom)
+                    out_lyr.CreateFeature(out_feat)
 
-    out_ds = None
+        out_ds = None
+    finally:
+        try:
+            os.remove('tmp/out_ogr_geojson_14.geojson')
+        except OSError:
+            pass
 
 ###############################################################################
 # Test Feature.ExportToJson (#3870)
@@ -571,189 +528,10 @@ def test_ogr_geojson_15():
     assert out == expected_out
 
 ###############################################################################
-# Test reading ESRI point file
-
-
-def test_ogr_geojson_16():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esripoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayerByName('esripoint')
-    assert lyr is not None, 'Missing layer called esripoint'
-
-    extent = (2, 2, 49, 49)
-
-    rc = validate_layer(lyr, 'esripoint', 1, ogr.wkbPoint, 4, extent)
-    assert rc
-
-    ref = lyr.GetSpatialRef()
-    gcs = int(ref.GetAuthorityCode('GEOGCS'))
-
-    assert gcs == 4326, "Spatial reference was not valid"
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('POINT(2 49)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFID() != 1:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsInteger('fooInt') != 2:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsDouble('fooDouble') != 3.4:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsString('fooString') != '56':
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI linestring file
-
-
-def test_ogr_geojson_17():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrilinestring.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    extent = (2, 3, 49, 50)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbLineString, 0, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('LINESTRING (2 49,3 50)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-    # MultiLineString
-    ds = ogr.Open("""{
-  "geometryType": "esriGeometryPolyline",
-  "fields": [],
-  "features": [
-  {
-   "geometry": {
-      "paths" : [
-       [ [2,49],[2.1,49.1] ],
-       [ [3,50],[3.1,50.1] ]
-      ]
-   }
-  }
- ]
-}""")
-    lyr = ds.GetLayer(0)
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTILINESTRING ((2 49,2.1 49.1),(3 50,3.1 50.1))')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    
-###############################################################################
-# Test reading ESRI polygon file
-
-
-def test_ogr_geojson_18():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esripolygon.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    extent = (-3, 3, 49, 50)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbPolygon, 0, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTIPOLYGON (((2 49,2 50,3 50,3 49,2 49),(2.1 49.1,2.1 49.9,2.9 49.9,2.9 49.1,2.1 49.1)),((-2 49,-2 50,-3 50,-3 49,-2 49)))')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-    ds = ogr.Open('data/esripolygonempty.json')
-    assert ds is not None, 'Failed to open datasource'
-    lyr = ds.GetLayer(0)
-    feature = lyr.GetNextFeature()
-    if feature.GetGeometryRef().ExportToWkt() != 'POLYGON EMPTY':
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI multipoint file
-
-
-def test_ogr_geojson_19():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrimultipoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    extent = (2, 3, 49, 50)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbMultiPoint, 4, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTIPOINT (2 49,3 50)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
 # Test reading files with no extension (#4314)
 
 
 def test_ogr_geojson_20():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     from glob import glob
 
@@ -779,15 +557,12 @@ def test_ogr_geojson_20():
 
         gdal.Unlink('/vsimem/testgj')
 
-    
+
 ###############################################################################
 # Test reading output of geocouch spatiallist
 
 
 def test_ogr_geojson_21():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open("""{"type": "FeatureCollection", "features":[
 {"type": "Feature",
@@ -815,9 +590,6 @@ def test_ogr_geojson_21():
 
 
 def test_ogr_geojson_22():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open("""{"type": "FeatureCollection", "features":[
 {"type": "Feature",
@@ -860,10 +632,7 @@ def test_ogr_geojson_22():
 
 def test_ogr_geojson_23():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = gdaltest.geojson_drv.CreateDataSource('/vsimem/ogr_geojson_23.json')
+    ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_23.json')
     sr = osr.SpatialReference()
     sr.ImportFromEPSG(4322)
     lyr = ds.CreateLayer('foo', srs=sr, options=['WRITE_BBOX=YES'])
@@ -873,6 +642,9 @@ def test_ogr_geojson_23():
     feat = ogr.Feature(lyr.GetLayerDefn())
     feat.SetGeometry(ogr.CreateGeometryFromWkt('POINT(2 20)'))
     lyr.CreateFeature(feat)
+    assert lyr.GetExtent() == (1.0, 2.0, 10.0, 20.0)
+    assert lyr.GetExtent(geom_field=0) == (1.0, 2.0, 10.0, 20.0)
+    assert lyr.GetExtent(geom_field=1, can_return_null=True) is None
     lyr = None
     ds = None
 
@@ -900,9 +672,6 @@ def test_ogr_geojson_23():
 
 
 def test_ogr_geojson_24():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     content = """loadGeoJSON({"layerFoo": { "type": "Feature",
   "geometry": {
@@ -951,102 +720,12 @@ def test_ogr_geojson_24():
 
         ds = None
 
-    
-###############################################################################
-# Test TopoJSON
-
-
-def test_ogr_geojson_25():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/topojson1.topojson')
-    lyr = ds.GetLayer(0)
-    assert lyr.GetName() == 'a_layer'
-    feat = lyr.GetNextFeature()
-    assert ogrtest.check_feature_geometry(feat, 'LINESTRING (100 1000,110 1000,110 1100)') == 0
-    lyr = ds.GetLayer(1)
-    assert lyr.GetName() == 'TopoJSON'
-    expected_results = [
-        (None, None, 'POINT EMPTY'),
-        (None, None, 'POINT EMPTY'),
-        (None, None, 'POINT EMPTY'),
-        (None, None, 'POINT (100 1010)'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, None, 'LINESTRING EMPTY'),
-        (None, '0', 'LINESTRING EMPTY'),
-        (None, 'foo', 'LINESTRING EMPTY'),
-        ('1', None, 'LINESTRING (100 1000,110 1000,110 1100)'),
-        ('2', None, 'LINESTRING (110 1100,110 1000,100 1000)'),
-        (None, None, 'POLYGON EMPTY'),
-        (None, None, 'POLYGON EMPTY'),
-        (None, None, 'POLYGON EMPTY'),
-        (None, None, 'POLYGON ((100 1000,110 1000,110 1100,100 1100,100 1000),(101 1010,101 1090,109 1090,109 1010,101 1010))'),
-        (None, None, 'POLYGON ((110 1100,110 1000,100 1000,100 1100,110 1100),(101 1010,109 1010,109 1090,101 1090,101 1010))'),
-        (None, None, 'MULTIPOINT EMPTY'),
-        (None, None, 'MULTIPOINT EMPTY'),
-        (None, None, 'MULTIPOINT EMPTY'),
-        (None, None, 'MULTIPOINT EMPTY'),
-        (None, None, 'MULTIPOINT (100 1010,101 1020)'),
-        (None, None, 'MULTIPOLYGON EMPTY'),
-        (None, None, 'MULTIPOLYGON EMPTY'),
-        (None, None, 'MULTIPOLYGON EMPTY'),
-        (None, None, 'MULTIPOLYGON (((110 1100,110 1000,100 1000,100 1100,110 1100)),((101 1010,109 1010,109 1090,101 1090,101 1010)))'),
-        (None, None, 'MULTILINESTRING EMPTY'),
-        (None, None, 'MULTILINESTRING EMPTY'),
-        (None, None, 'MULTILINESTRING ((100 1000,110 1000,110 1100))'),
-        (None, None, 'MULTILINESTRING ((100 1000,110 1000,110 1100,100 1100,100 1000))'),
-        (None, None, 'MULTILINESTRING ((100 1000,110 1000,110 1100,100 1100,100 1000),(101 1010,101 1090,109 1090,109 1010,101 1010))'),
-    ]
-    assert lyr.GetFeatureCount() == len(expected_results)
-    for i, exp_result in enumerate(expected_results):
-        feat = lyr.GetNextFeature()
-        if feat.GetField('id') != exp_result[0] or \
-           feat.GetField('name') != exp_result[1] or \
-           feat.GetGeometryRef().ExportToWkt() != exp_result[2]:
-            feat.DumpReadable()
-            print(exp_result)
-            print(feat.GetField('name'))
-            pytest.fail('failure at feat index %d' % i)
-    ds = None
-
-    ds = ogr.Open('data/topojson2.topojson')
-    lyr = ds.GetLayer(0)
-    assert lyr.GetName() == 'a_layer'
-    feat = lyr.GetNextFeature()
-    assert ogrtest.check_feature_geometry(feat, 'LINESTRING (100 1000,110 1000,110 1100)') == 0
-    lyr = ds.GetLayer(1)
-    assert lyr.GetName() == 'TopoJSON'
-    feat = lyr.GetNextFeature()
-    assert ogrtest.check_feature_geometry(feat, 'LINESTRING (100 1000,110 1000,110 1100)') == 0
-    ds = None
-
-    ds = ogr.Open('data/topojson3.topojson')
-    lyr = ds.GetLayer(0)
-    assert lyr.GetName() == 'a_layer'
-    feat = lyr.GetNextFeature()
-    assert ogrtest.check_feature_geometry(feat, 'LINESTRING (0 0,10 0,0 10,10 0,0 0)') == 0
-    lyr = ds.GetLayer(1)
-    assert lyr.GetName() == 'TopoJSON'
-    feat = lyr.GetNextFeature()
-    assert ogrtest.check_feature_geometry(feat, 'LINESTRING (0 0,10 0,0 10,10 0,0 0)') == 0
-    ds = None
 
 ###############################################################################
 # Test 64bit support
 
 
 def test_ogr_geojson_26():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open("""{"type": "FeatureCollection", "features":[
 {"type": "Feature", "id": 1,
@@ -1086,7 +765,7 @@ def test_ogr_geojson_26():
     lyr = None
     ds = None
 
-    ds = gdaltest.geojson_drv.CreateDataSource('/vsimem/ogr_geojson_26.json')
+    ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_26.json')
     lyr = ds.CreateLayer('test')
     lyr.CreateField(ogr.FieldDefn('int64', ogr.OFTInteger64))
     lyr.CreateField(ogr.FieldDefn('int64list', ogr.OFTInteger64List))
@@ -1111,9 +790,6 @@ def test_ogr_geojson_26():
 
 
 def test_ogr_geojson_27():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     # Warning 1: Integer values probably ranging out of 64bit integer range
@@ -1145,250 +821,12 @@ def test_ogr_geojson_27():
     ds = None
 
 ###############################################################################
-# Test reading ESRI point file with z value
-
-
-def test_ogr_geojson_28():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrizpoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    # validate layer doesn't check z, but put it in
-    extent = (2, 2, 49, 49, 1, 1)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbPoint, 4, extent)
-    assert rc
-
-    ref = lyr.GetSpatialRef()
-    gcs = int(ref.GetAuthorityCode('GEOGCS'))
-
-    assert gcs == 4326, "Spatial reference was not valid"
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('POINT(2 49 1)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFID() != 1:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsInteger('fooInt') != 2:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsDouble('fooDouble') != 3.4:
-        feature.DumpReadable()
-        pytest.fail()
-
-    if feature.GetFieldAsString('fooString') != '56':
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI linestring file with z
-
-
-def test_ogr_geojson_29():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrizlinestring.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    # validate layer doesn't check z, but put it in
-    extent = (2, 3, 49, 50, 1, 2)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbLineString, 0, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('LINESTRING (2 49 1,3 50 2)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI multipoint file with z
-
-
-def test_ogr_geojson_30():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrizmultipoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    # validate layer doesn't check z, but put it in
-    extent = (2, 3, 49, 50, 1, 2)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbMultiPoint, 4, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTIPOINT (2 49 1,3 50 2)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI polygon file with z
-
-
-def test_ogr_geojson_31():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrizpolygon.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    # validate layer doesn't check z, but put it in
-    extent = (2, 3, 49, 50, 1, 4)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbPolygon, 0, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('POLYGON ((2 49 1,2 50 2,3 50 3,3 49 4,2 49 1))')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI multipoint file with m, but no z (hasM=true, hasZ omitted)
-
-
-def test_ogr_geojson_32():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrihasmnozmultipoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    extent = (2, 3, 49, 50)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbMultiPoint, 4, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTIPOINT M ((2 49 1),(3 50 2))')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI multipoint file with hasZ=true, but only 2 components.
-
-
-def test_ogr_geojson_33():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esriinvalidhaszmultipoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    extent = (2, 3, 49, 50)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbMultiPoint, 4, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTIPOINT (2 49,3 50)')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
-# Test reading ESRI multipoint file with z and m
-
-
-def test_ogr_geojson_34():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/esrizmmultipoint.json')
-    assert ds is not None, 'Failed to open datasource'
-
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
-
-    lyr = ds.GetLayer(0)
-
-    extent = (2, 3, 49, 50)
-
-    rc = validate_layer(lyr, None, 1, ogr.wkbMultiPoint, 4, extent)
-    assert rc
-
-    feature = lyr.GetNextFeature()
-    ref_geom = ogr.CreateGeometryFromWkt('MULTIPOINT ZM ((2 49 1 100),(3 50 2 100))')
-    if ogrtest.check_feature_geometry(feature, ref_geom) != 0:
-        feature.DumpReadable()
-        pytest.fail()
-
-    lyr = None
-    ds = None
-
-###############################################################################
 # Test handling of huge coordinates (#5377)
 
 
 def test_ogr_geojson_35():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = gdaltest.geojson_drv.CreateDataSource('/vsimem/ogr_geojson_35.json')
+    ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_35.json')
     lyr = ds.CreateLayer('foo')
     feat = ogr.Feature(lyr.GetLayerDefn())
     feat.SetFID(1)
@@ -1471,21 +909,18 @@ def test_ogr_geojson_35():
 
     gdal.Unlink('/vsimem/ogr_geojson_35.json')
 
-    assert not (data.find('-1.79') == -1 and data.find('e+308') == -1)
+    assert '-1.79' in data and 'e+308' in data
     for ident in range(2, 8):
         assert data.find('{ "type": "Feature", "id": %d, "properties": { }, "geometry": null }' % ident) != -1
 
-    
+
 ###############################################################################
 # Test reading file with UTF-8 BOM (which is supposed to be illegal in JSON...) (#5630)
 
 
 def test_ogr_geojson_36():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    ds = ogr.Open('data/point_with_utf8bom.json')
+    ds = ogr.Open('data/geojson/point_with_utf8bom.json')
     assert ds is not None, 'Failed to open datasource'
     ds = None
 
@@ -1494,9 +929,6 @@ def test_ogr_geojson_36():
 
 
 def test_ogr_geojson_37():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     # Test read support
     ds = ogr.Open("""{"type": "FeatureCollection","features": [
@@ -1539,13 +971,10 @@ def test_ogr_geojson_37():
 
 def test_ogr_geojson_38():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
     # Test read support
-    ds = ogr.Open("""{"type": "FeatureCollection", "features": [
-{ "type": "Feature", "properties": { "dt": "2014-11-20 12:34:56+0100", "dt2": "2014\/11\/20", "date":"2014\/11\/20", "time":"12:34:56", "no_dt": "2014-11-20 12:34:56+0100", "no_dt2": "2014-11-20 12:34:56+0100" }, "geometry": null },
-{ "type": "Feature", "properties": { "dt": "2014\/11\/20", "dt2": "2014\/11\/20T12:34:56Z", "date":"2014-11-20", "time":"12:34:56", "no_dt": "foo", "no_dt2": 1 }, "geometry": null }
+    ds = gdal.OpenEx("""{"type": "FeatureCollection", "features": [
+{ "type": "Feature", "properties": { "dt": "2014-11-20 12:34:56+0100", "dt2": "2014\\/11\\/20", "date":"2014\\/11\\/20", "time":"12:34:56", "no_dt": "2014-11-20 12:34:56+0100", "no_dt2": "2014-11-20 12:34:56+0100" }, "geometry": null },
+{ "type": "Feature", "properties": { "dt": "2014\\/11\\/20", "dt2": "2014\\/11\\/20T12:34:56Z", "date":"2014-11-20", "time":"12:34:56", "no_dt": "foo", "no_dt2": 1 }, "geometry": null }
 ] }""")
     lyr = ds.GetLayer(0)
     feat_defn = lyr.GetLayerDefn()
@@ -1566,15 +995,30 @@ def test_ogr_geojson_38():
         f.DumpReadable()
         pytest.fail()
 
-    
+    tmpfilename = '/vsimem/out.json'
+    gdal.VectorTranslate(tmpfilename, ds, options = '-lco NATIVE_DATA=dummy') # dummy NATIVE_DATA so that input values are not copied directly
+
+    fp = gdal.VSIFOpenL(tmpfilename, 'rb')
+    data = gdal.VSIFReadL(1, 10000, fp).decode('ascii')
+    gdal.VSIFCloseL(fp)
+
+    gdal.Unlink(tmpfilename)
+
+    assert '"dt": "2014-11-20T12:34:56+01:00", "dt2": "2014-11-20T00:00:00", "date": "2014-11-20", "time": "12:34:56"' in data, data
+
+    ds = gdal.OpenEx("""{"type": "FeatureCollection", "features": [
+{ "type": "Feature", "properties": { "dt": "2014-11-20 12:34:56+0100", "dt2": "2014\\/11\\/20", "date":"2014\\/11\\/20", "time":"12:34:56", "no_dt": "2014-11-20 12:34:56+0100", "no_dt2": "2014-11-20 12:34:56+0100" }, "geometry": null }
+] }""", open_options = ['DATE_AS_STRING=YES'])
+    lyr = ds.GetLayer(0)
+    feat_defn = lyr.GetLayerDefn()
+    for i in range(feat_defn.GetFieldCount()):
+        assert feat_defn.GetFieldDefn(i).GetType() == ogr.OFTString
+
 ###############################################################################
 # Test id top-object level
 
 
 def test_ogr_geojson_39():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open("""{"type": "FeatureCollection", "features": [
 { "type": "Feature", "id" : "foo", "properties": { "bar" : "baz" }, "geometry": null },
@@ -1725,15 +1169,12 @@ def test_ogr_geojson_39():
         feat.DumpReadable()
         pytest.fail()
 
-    
+
 ###############################################################################
 # Test nested attributes
 
 
 def test_ogr_geojson_40():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = gdal.OpenEx("""{
   "type": "FeatureCollection",
@@ -1777,15 +1218,12 @@ def test_ogr_geojson_40():
         feat.DumpReadable()
         pytest.fail()
 
-    
+
 ###############################################################################
 # Test ogr.CreateGeometryFromJson()
 
 
 def test_ogr_geojson_41():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     # Check that by default we return a WGS 84 SRS
     g = ogr.CreateGeometryFromJson("{ 'type': 'Point', 'coordinates' : [ 2, 49] }")
@@ -1806,188 +1244,10 @@ def test_ogr_geojson_41():
     assert not srs
 
 ###############################################################################
-# Test ESRI FeatureService scrolling
-
-
-def test_ogr_geojson_42():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
-    gdal.SetConfigOption('CPL_CURL_ENABLE_VSIMEM', 'YES')
-
-    resultOffset0 = """
-{ "type":"FeatureCollection",
-  "properties" : {
-    "exceededTransferLimit" : true
-  },
-  "features" :
-  [
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [ 2, 49 ]
-      },
-      "properties": {
-        "id": 1,
-        "a_property": 1,
-      }
-    } ] }"""
-
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1', resultOffset0)
-    ds = ogr.Open('/vsimem/geojson/test.json?resultRecordCount=1')
-    lyr = ds.GetLayer(0)
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 1
-    f = lyr.GetNextFeature()
-    assert f is None
-    ds = None
-    gdal.Unlink('/vsimem/geojson/test.json?resultRecordCount=1')
-
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=10', resultOffset0)
-    gdal.PushErrorHandler()
-    ds = ogr.Open('/vsimem/geojson/test.json?resultRecordCount=10')
-    gdal.PopErrorHandler()
-    lyr = ds.GetLayer(0)
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 1
-    f = lyr.GetNextFeature()
-    assert f is None
-    ds = None
-    gdal.Unlink('/vsimem/geojson/test.json?resultRecordCount=10')
-
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?', resultOffset0)
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1&resultOffset=0', resultOffset0)
-
-    ds = ogr.Open('/vsimem/geojson/test.json?')
-    lyr = ds.GetLayer(0)
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 1
-    f = lyr.GetNextFeature()
-    assert f is None
-    lyr.ResetReading()
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 1
-
-    resultOffset1 = """
-{ "type":"FeatureCollection",
-  "features" :
-  [
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [ 2, 49 ]
-      },
-      "properties": {
-        "id": 2,
-        "a_property": 1,
-      }
-    } ] }"""
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1&resultOffset=1', resultOffset1)
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 2
-    f = lyr.GetNextFeature()
-    assert f is None
-
-    gdal.PushErrorHandler()
-    fc = lyr.GetFeatureCount()
-    gdal.PopErrorHandler()
-    assert fc == 2
-
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1&returnCountOnly=true',
-                           """{ "count": 123456}""")
-    fc = lyr.GetFeatureCount()
-    assert fc == 123456
-
-    gdal.PushErrorHandler()
-    extent = lyr.GetExtent()
-    gdal.PopErrorHandler()
-    assert extent == (2, 2, 49, 49)
-
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1&returnExtentOnly=true&f=geojson',
-                           """{"type":"FeatureCollection","bbox":[1, 2, 3, 4],"features":[]}""")
-    extent = lyr.GetExtent()
-    assert extent == (1.0, 3.0, 2.0, 4.0)
-
-    assert lyr.TestCapability(ogr.OLCFastFeatureCount) == 1
-
-    assert lyr.TestCapability(ogr.OLCFastGetExtent) == 0
-
-    assert lyr.TestCapability('foo') == 0
-
-    # Test scrolling with ESRI json
-    resultOffset0 = """
-{
-  "objectIdFieldName" : "objectid",
-  "geometryType" : "esriGeometryPoint",
-  "fields" : [
-    {
-      "name" : "objectid",
-      "alias" : "Object ID",
-      "type" : "esriFieldTypeOID"
-    },
-
-  ],
-  "features" : [
-    {
-      "geometry" : {
-        "x" : 2,
-        "y" : 49,
-        "z" : 1
-      },
-      "attributes" : {
-        "objectid" : 1
-      }
-    }
-  ],
-  "exceededTransferLimit": true
-}
-"""
-
-    resultOffset1 = """
-{
-  "objectIdFieldName" : "objectid",
-  "geometryType" : "esriGeometryPoint",
-  "fields" : [
-    {
-      "name" : "objectid",
-      "alias" : "Object ID",
-      "type" : "esriFieldTypeOID"
-    },
-
-  ],
-  "features" : [
-    {
-      "geometry": null,
-      "attributes" : {
-        "objectid" : 20
-      }
-    }
-  ]
-}
-"""
-
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1', resultOffset0)
-    gdal.FileFromMemBuffer('/vsimem/geojson/test.json?resultRecordCount=1&resultOffset=1', resultOffset1)
-    ds = ogr.Open('/vsimem/geojson/test.json?resultRecordCount=1')
-    lyr = ds.GetLayer(0)
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 1
-    f = lyr.GetNextFeature()
-    assert f is not None and f.GetFID() == 20
-    ds = None
-    gdal.Unlink('/vsimem/geojson/test.json?resultRecordCount=1')
-    gdal.Unlink('/vsimem/geojson/test.json?resultRecordCount=1&resultOffset=1')
-
-###############################################################################
 # Test Feature without geometry
 
 
 def test_ogr_geojson_43():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open("""{"type": "FeatureCollection", "features":[
 {"type": "Feature", "properties": {"foo": "bar"}}]}""")
@@ -2008,20 +1268,16 @@ def test_ogr_geojson_43():
 
 
 def test_ogr_geojson_44():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     with gdaltest.error_handler():
         ogr.Open("""{"type": "FeatureCollection", "features":[ null ]}""")
 
-    
+
 ###############################################################################
 # Test native data support
 
 
 def test_ogr_geojson_45():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     # Test read support
     content = """{"type": "FeatureCollection", "foo": "bar", "bar": "baz",
@@ -2143,8 +1399,6 @@ def test_ogr_geojson_45():
 
 
 def test_ogr_geojson_46():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_46.json')
     lyr = ds.CreateLayer('test')
@@ -2167,8 +1421,6 @@ def test_ogr_geojson_46():
 
 
 def test_ogr_geojson_47():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     # ERROR 6: Update from inline definition not supported
     with gdaltest.error_handler():
@@ -2293,17 +1545,18 @@ def test_ogr_geojson_47():
 
     assert 'something' in data
 
-    # Test appending to feature collection with "bbox"
-    gdal.FileFromMemBuffer('/vsimem/ogr_geojson_47.json', """{ "type": "FeatureCollection", "bbox": [0,0,0,0], "features": [ { "type": "Feature", "geometry": { "type": "Point", "coordinates": [0,0]} } ]}""")
-    ds = ogr.Open('/vsimem/ogr_geojson_47.json', update=1)
-    lyr = ds.GetLayer(0)
-    f = ogr.Feature(lyr.GetLayerDefn())
-    lyr.CreateFeature(f)
-    ds = None
-    ds = ogr.Open('/vsimem/ogr_geojson_47.json')
-    lyr = ds.GetLayer(0)
-    assert lyr.GetFeatureCount() == 2
-    ds = None
+    with gdaltest.config_option('OGR_GEOJSON_REWRITE_IN_PLACE', 'YES'):
+        # Test appending to feature collection with "bbox"
+        gdal.FileFromMemBuffer('/vsimem/ogr_geojson_47.json', """{ "type": "FeatureCollection", "bbox": [0,0,0,0], "features": [ { "type": "Feature", "geometry": { "type": "Point", "coordinates": [0,0]} } ]}""")
+        ds = ogr.Open('/vsimem/ogr_geojson_47.json', update=1)
+        lyr = ds.GetLayer(0)
+        f = ogr.Feature(lyr.GetLayerDefn())
+        lyr.CreateFeature(f)
+        ds = None
+        ds = ogr.Open('/vsimem/ogr_geojson_47.json')
+        lyr = ds.GetLayer(0)
+        assert lyr.GetFeatureCount() == 2
+        ds = None
 
     fp = gdal.VSIFOpenL('/vsimem/ogr_geojson_47.json', 'rb')
     if fp is not None:
@@ -2321,8 +1574,6 @@ def test_ogr_geojson_47():
 
 
 def test_ogr_geojson_48():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     gdal.FileFromMemBuffer('/vsimem/ogr_geojson_48.json',
                            """{ "type": "Feature", "bar": "baz", "bbox": [2,49,2,49], "properties": { "myprop": "myvalue" }, "geometry": {"type": "Point", "coordinates": [ 2, 49]} }""")
@@ -2357,8 +1608,6 @@ def test_ogr_geojson_48():
 
 
 def test_ogr_geojson_49():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     gdal.FileFromMemBuffer('/vsimem/ogr_geojson_49.json',
                            """{ "type": "Feature", "properties": { "foo": ["bar"] }, "geometry": null }""")
@@ -2380,8 +1629,6 @@ def test_ogr_geojson_49():
 
 
 def test_ogr_geojson_50():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_50.json')
     lyr = ds.CreateLayer('test')
@@ -2448,8 +1695,6 @@ def test_ogr_geojson_50():
 
 
 def test_ogr_geojson_51():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_51.json')
     lyr = ds.CreateLayer('test')
@@ -2510,13 +1755,11 @@ def test_ogr_geojson_51():
 
 
 def test_ogr_geojson_52():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
-    ds = ogr.Open('data/nullvalues.geojson')
+    ds = ogr.Open('data/geojson/nullvalues.geojson')
     assert ds is not None, 'Failed to open datasource'
 
-    assert ds.GetLayerCount() is 1, 'Wrong number of layers'
+    assert ds.GetLayerCount() == 1, 'Wrong number of layers'
 
     lyr = ds.GetLayerByName('nullvalues')
     assert lyr is not None, 'Missing layer called nullvalues'
@@ -2536,8 +1779,6 @@ def test_ogr_geojson_52():
 
 
 def test_ogr_geojson_53():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.GetDriverByName('GeoJSON').CreateDataSource('/vsimem/ogr_geojson_53.json')
     lyr = ds.CreateLayer('test')
@@ -2559,8 +1800,6 @@ def test_ogr_geojson_53():
 
 
 def test_ogr_geojson_54():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open("""{
    "type": "FeatureCollection",
@@ -2602,8 +1841,6 @@ def read_file(filename):
 
 
 def test_ogr_geojson_55():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     # Basic test for standard bbox and coordinate truncation
     gdal.VectorTranslate('/vsimem/out.json', """{
@@ -2704,8 +1941,7 @@ def test_ogr_geojson_55():
 
 
 def test_ogr_geojson_56():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
+
     if not ogrtest.have_geos():
         pytest.skip()
 
@@ -2765,15 +2001,45 @@ def test_ogr_geojson_56():
 ]
 }
 """
+
+    j_got = json.loads(got)
+    j_expected = json.loads(expected)
+    assert j_got["bbox"] == j_expected["bbox"]
+    assert len(j_expected["features"]) == 5
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][0]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][0]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][1]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][1]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][2]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][2]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][3]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][3]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][4]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][4]["geometry"]))) == 0
+
+
+    # Test polygon geometry that covers the whole world (#2833)
+    gdal.VectorTranslate('/vsimem/out.json', """{
+  "type": "FeatureCollection",
+  "features": [
+      { "type": "Feature", "geometry": {"type":"Polygon","coordinates":[[[-180,-90.0],[180,-90.0],[180,90.0],[-180,90.0],[-180,-90.0]]]} }
+  ]
+}""", format='GeoJSON', layerCreationOptions=['RFC7946=YES', 'WRITE_BBOX=YES'])
+
+    got = read_file('/vsimem/out.json')
+    gdal.Unlink('/vsimem/out.json')
+    expected = """{
+"type": "FeatureCollection",
+"bbox": [ -180.0000000, -90.0000000, 180.0000000, 90.0000000 ],
+"features": [
+{ "type": "Feature", "properties": { }, "bbox": [ -180.0, -90.0, 180.0, 90.0 ], "geometry": { "type": "Polygon", "coordinates": [ [ [ -180.0, -90.0 ], [ 180.0, -90.0 ], [ 180.0, 90.0 ], [ -180.0, 90.0 ], [ -180.0, -90.0 ] ] ] } }
+]
+}
+"""
     assert json.loads(got) == json.loads(expected)
+
 
 ###############################################################################
 # Test RFC 7946 and reprojection
 
 
 def test_ogr_geojson_57():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
+
     if not ogrtest.have_geos():
         pytest.skip()
 
@@ -2825,7 +2091,14 @@ def test_ogr_geojson_57():
 ]
 }
 """
-    assert json.loads(got) == json.loads(expected)
+
+    j_got = json.loads(got)
+    j_expected = json.loads(expected)
+    assert j_got["bbox"] == j_expected["bbox"]
+    assert len(j_expected["features"]) == 2
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][0]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][0]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][1]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][1]["geometry"]))) == 0
+
 
     # Polar case: slice of spherical cap (not intersecting antimeridian, west hemisphere)
     src_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
@@ -2894,7 +2167,14 @@ def test_ogr_geojson_57():
 ]
 }
 """
-    assert json.loads(got) == json.loads(expected)
+    expected_geos_overlay_ng = """{
+"type": "FeatureCollection",
+"bbox": [ 135.0000000, 88.6984598, -135.0000000, 90.0000000 ],
+"features": [
+{ "type": "Feature", "properties": { }, "bbox": [ 135.0, 88.6984598, -135.0, 90.0 ], "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ -135.0, 88.6984598 ], [ -180.0, 90.0 ], [ -180.0, 89.0796531 ], [ -135.0, 88.6984598 ] ] ], [ [ [ 180.0, 90.0 ], [ 135.0, 88.6984598 ], [ 180.0, 89.0796531 ], [ 180.0, 90.0 ] ] ] ] } }
+]
+}"""
+    assert json.loads(got) == json.loads(expected) or json.loads(got) == json.loads(expected_geos_overlay_ng), got
 
     # Polar case: EPSG:3031: WGS 84 / Antarctic Polar Stereographic
     src_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
@@ -2917,7 +2197,11 @@ def test_ogr_geojson_57():
 ]
 }
 """
-    assert json.loads(got) == json.loads(expected)
+    j_got = json.loads(got)
+    j_expected = json.loads(expected)
+    assert j_got["bbox"] == j_expected["bbox"]
+    assert len(j_expected["features"]) == 1
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][0]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][0]["geometry"]))) == 0
 
     # Antimeridian case: EPSG:32660: WGS 84 / UTM zone 60N with polygon and line crossing
     src_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
@@ -2942,28 +2226,21 @@ def test_ogr_geojson_57():
 "type": "FeatureCollection",
 "bbox": [ 178.5275649, 0.0000000, -179.0681936, 37.0308258 ],
 "features": [
-{ "type": "Feature", "properties": { }, "bbox": [ 178.8892102, 36.0816324, -179.0681936, 37.0308258 ], "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 180.0, 36.1071354 ], [ 180.0, 37.0082839 ], [ 178.9112998, 37.0308258 ], [ 178.8892102, 36.1298163 ], [ 180.0, 36.1071354 ] ] ], [ [ [ -179.0681936, 36.9810434 ], [ -180.0, 37.0082839 ], [ -180.0, 36.1071354 ], [ -179.1135277, 36.0816324 ], [ -179.0681936, 36.9810434 ] ] ] ] } },
+{ "type": "Feature", "properties": { }, "bbox": [ 178.8892102, 36.0816324, -179.0681936, 37.0308258 ], "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ 180.0, 36.1071354 ], [ 180.0, 36.1071354 ], [ 180.0, 37.0082839 ], [ 180.0, 37.0082839 ], [ 178.9112998, 37.0308258 ], [ 178.8892102, 36.1298163 ], [ 180.0, 36.1071354 ] ] ], [ [ [ -180.0, 37.0082839 ], [ -180.0, 36.1071354 ], [ -180.0, 36.1071354 ], [ -179.1135277, 36.0816324 ], [ -179.0681936, 36.9810434 ], [ -180.0, 37.0082839 ] ] ] ] } },
 { "type": "Feature", "properties": { }, "bbox": [ 178.8892102, 36.1298163, -179.0681936, 36.9810434 ], "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 178.8892102, 36.1298163 ], [ 180.0, 36.5995612 ] ], [ [ -180.0, 36.5995612 ], [ -179.0681936, 36.9810434 ] ] ] } },
 { "type": "Feature", "properties": { }, "bbox": [ 178.5275649, 0.0, -179.8562277, 0.0 ], "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 178.5275649, 0.0 ], [ 180.0, 0.0 ] ], [ [ -180.0, 0.0 ], [ -179.8562277, 0.0 ] ] ] } }
 ]
 }
 """
+    j_got = json.loads(got)
+    j_expected = json.loads(expected)
+    assert j_got["bbox"] == j_expected["bbox"]
+    assert len(j_expected["features"]) == 3
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][0]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][0]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][1]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][1]["geometry"]))) == 0
+    assert ogrtest.check_feature_geometry(ogr.CreateGeometryFromJson(json.dumps(j_got["features"][2]["geometry"])), ogr.CreateGeometryFromJson(json.dumps(j_expected["features"][2]["geometry"]))) == 0
 
-    # with proj 4.9.3
-    expected2 = """{
-"type": "FeatureCollection",
-"bbox": [ 178.5275649, 0.0000000, -179.0681936, 37.0308258 ],
-"features": [
-{ "type": "Feature", "properties": { }, "bbox": [ 178.8892102, 36.0816324, -179.0681936, 37.0308258 ], "geometry": { "type": "MultiPolygon", "coordinates": [ [ [ [ -179.0681936, 36.9810434 ], [ -180.0, 37.0082839 ], [ -180.0, 36.1071354 ], [ -179.1135277, 36.0816324 ], [ -179.0681936, 36.9810434 ] ] ], [ [ [ 178.8892102, 36.1298163 ], [ 180.0, 36.1071354 ], [ 180.0, 37.0082839 ], [ 178.9112998, 37.0308258 ], [ 178.8892102, 36.1298163 ] ] ] ] } },
-{ "type": "Feature", "properties": { }, "bbox": [ 178.8892102, 36.1298163, -179.0681936, 36.9810434 ], "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 178.8892102, 36.1298163 ], [ 180.0, 36.5995612 ] ], [ [ -180.0, 36.5995612 ], [ -179.0681936, 36.9810434 ] ] ] } },
-{ "type": "Feature", "properties": { }, "bbox": [ 178.5275649, 0.0, -179.8562277, 0.0 ], "geometry": { "type": "MultiLineString", "coordinates": [ [ [ 178.5275649, 0.0 ], [ 180.0, 0.0 ] ], [ [ -180.0, 0.0 ], [ -179.8562277, 0.0 ] ] ] } }
-]
-}
-"""
-
-    assert json.loads(got) == json.loads(expected) or json.loads(got) == json.loads(expected2)
-
-    # Antimeridian case: EPSG:32660: WGS 84 / UTM zone 60N wit polygon on west of antimeridian
+    # Antimeridian case: EPSG:32660: WGS 84 / UTM zone 60N with polygon on west of antimeridian
     src_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
     sr = osr.SpatialReference()
     sr.SetFromUserInput('+proj=utm +zone=60 +datum=WGS84 +units=m +no_defs')
@@ -2991,8 +2268,6 @@ def test_ogr_geojson_57():
 
 
 def test_ogr_geojson_58():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open('{ "type": "FeatureCollection", "name": "layer_name", "features": []}')
     assert ds is not None, 'Failed to open datasource'
@@ -3014,8 +2289,6 @@ def test_ogr_geojson_58():
 
 
 def test_ogr_geojson_59():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = ogr.Open('{ "type": "FeatureCollection", "description": "my_description", "features": []}')
     assert ds is not None, 'Failed to open datasource'
@@ -3039,8 +2312,6 @@ def test_ogr_geojson_59():
 
 
 def test_ogr_geojson_60():
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     ds = gdal.OpenEx("""{ "type": "FeatureCollection", "features": [
 { "type": "Feature", "properties" : { "foo" : "bar" } },
@@ -3123,7 +2394,16 @@ def test_ogr_geojson_62():
     ds = gdal.OpenEx("""{ "type": "FeatureCollection", "crs": { "type":"name", "properties":{"name": "urn:ogc:def:crs:EPSG::32631"} }, "features":[] }""")
     lyr = ds.GetLayer(0)
     srs = lyr.GetSpatialRef()
-    assert srs.ExportToWkt().find('32631') >= 0
+    assert srs.GetAuthorityCode(None) == '32631'
+    assert srs.GetDataAxisToSRSAxisMapping() == [1, 2]
+
+
+    # See https://github.com/OSGeo/gdal/issues/2035
+    ds = gdal.OpenEx("""{ "type": "FeatureCollection", "crs": { "type":"name", "properties":{"name": "urn:ogc:def:crs:OGC:1.3:CRS84"} }, "features":[] }""")
+    lyr = ds.GetLayer(0)
+    srs = lyr.GetSpatialRef()
+    assert srs.GetAuthorityCode(None) == '4326'
+    assert srs.GetDataAxisToSRSAxisMapping() == [2, 1]
 
     # crs type=EPSG (not even documented in GJ2008 spec!) tests. Just for coverage completeness
     gdal.OpenEx("""{ "type": "FeatureCollection", "crs": { "type":"EPSG" }, "features":[] }""")
@@ -3181,14 +2461,14 @@ def test_ogr_geojson_62():
     assert srs.ExportToWkt().find('32631') >= 0
 
 ###############################################################################
-# Extensive test of field tye promotion
+# Extensive test of field type promotion
 
 
 def test_ogr_geojson_63():
 
-    ds_ref = ogr.Open('data/test_type_promotion_ref.json')
+    ds_ref = ogr.Open('data/geojson/test_type_promotion_ref.json')
     lyr_ref = ds_ref.GetLayer(0)
-    ds = ogr.Open('data/test_type_promotion.json')
+    ds = ogr.Open('data/geojson/test_type_promotion.json')
     lyr = ds.GetLayer(0)
     return ogrtest.compare_layers(lyr, lyr_ref)
 
@@ -3266,21 +2546,9 @@ def test_ogr_geojson_66():
 
 def test_ogr_geojson_67():
 
-    ds = ogr.Open('data/grenada.geojson')
+    ds = ogr.Open('data/geojson/grenada.geojson')
     assert ds is not None
     assert ds.GetDriver().GetName() == 'GeoJSON'
-    lyr = ds.GetLayer(0)
-    assert lyr.GetFeatureCount() == 1
-
-
-###############################################################################
-# Test reading ESRIJSON files starting with {"features":[{"geometry":.... (#7198)
-
-def test_ogr_geojson_68():
-
-    ds = ogr.Open('data/esrijsonstartingwithfeaturesgeometry.json')
-    assert ds is not None
-    assert ds.GetDriver().GetName() == 'ESRIJSON'
     lyr = ds.GetLayer(0)
     assert lyr.GetFeatureCount() == 1
 
@@ -3360,6 +2628,18 @@ def test_ogr_geojson_id_field_and_id_type():
     got = read_file('/vsimem/out.json')
     gdal.Unlink('/vsimem/out.json')
     assert '"id": 35043411, "properties": { "AREA": 215229.266, "EAS_ID": 168 }' in got
+
+    gdal.VectorTranslate('/vsimem/out.json', 'data/poly.shp', format='GeoJSON', layerCreationOptions=['ID_GENERATE=YES'], limit=1)
+    got = read_file('/vsimem/out.json')
+    assert '"id": 0, "properties": { "AREA": 215229.266, "EAS_ID": 168, "PRFEDEA": "35043411" }' in got
+
+    gdal.VectorTranslate('/vsimem/out.json', 'data/poly.shp', format='GeoJSON', layerCreationOptions=['ID_GENERATE=YES', 'ID_TYPE=Integer'], limit=1)
+    got = read_file('/vsimem/out.json')
+    assert '"id": 0, "properties": { "AREA": 215229.266, "EAS_ID": 168, "PRFEDEA": "35043411" }' in got
+
+    gdal.VectorTranslate('/vsimem/out.json', 'data/poly.shp', format='GeoJSON', layerCreationOptions=['ID_GENERATE=YES', 'ID_TYPE=String'], limit=1)
+    got = read_file('/vsimem/out.json')
+    assert '"id": "0", "properties": { "AREA": 215229.266, "EAS_ID": 168, "PRFEDEA": "35043411" }' in got
 
 ###############################################################################
 
@@ -3459,34 +2739,6 @@ def test_ogr_geojson_empty_geometrycollection():
 ###############################################################################
 
 
-def test_ogr_esrijson_without_geometryType():
-
-    ds = ogr.Open("""{
-  "spatialReference" : {
-    "wkid" : 4326
-  },
-  "fields": [],
-  "fieldAliases": {},
-  "features" : [
-    {
-      "geometry" : {
-        "x" : 2,
-        "y" : 49
-      },
-      "attributes" : {
-      }
-    }
-  ]
-}
-""")
-    lyr = ds.GetLayer(0)
-    f = lyr.GetNextFeature()
-    assert f.GetGeometryRef() is not None
-
-
-###############################################################################
-
-
 def test_ogr_geojson_read_fields_with_different_case():
 
     ds = ogr.Open("""{
@@ -3502,7 +2754,7 @@ def test_ogr_geojson_read_fields_with_different_case():
         f.DumpReadable()
         pytest.fail()
 
-    
+
 ###############################################################################
 # Test bugfix for https://github.com/OSGeo/gdal/issues/1068
 
@@ -3677,9 +2929,6 @@ def test_ogr_geojson_single_feature_random_reading_with_id():
 
 def test_ogr_geojson_3D_geom_type():
 
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
-
     ds = ogr.Open("""{"type": "FeatureCollection", "features":[
 {"type": "Feature", "geometry": {"type":"Point","coordinates":[1,2,3]}, "properties": null},
 {"type": "Feature", "geometry": {"type":"Point","coordinates":[1,2,4]}, "properties": null}
@@ -3704,9 +2953,6 @@ def test_ogr_geojson_3D_geom_type():
 ###############################################################################
 
 def test_ogr_geojson_update_in_loop():
-
-    if gdaltest.geojson_drv is None:
-        pytest.skip()
 
     tmpfilename = '/vsimem/temp.json'
 
@@ -3744,45 +2990,167 @@ def test_ogr_geojson_update_in_loop():
     assert fids == [1, 3]
     ds = None
 
+    gdal.Unlink(tmpfilename)
+
+###############################################################################
+# Test fix for https://github.com/OSGeo/gdal/issues/2720
+
+def test_ogr_geojson_starting_with_coordinates():
+
+    tmpfilename = '/vsimem/temp.json'
+    gdal.FileFromMemBuffer(tmpfilename, '{ "coordinates": [' + (' ' * 10000) + '2,49], "type": "Point"}')
+    ds = gdal.OpenEx(tmpfilename, gdal.OF_VECTOR)
+    assert ds is not None
+
+    gdal.Unlink(tmpfilename)
+
+###############################################################################
+# Test fix for https://github.com/OSGeo/gdal/issues/2787
+
+def test_ogr_geojson_starting_with_geometry_coordinates():
+
+    tmpfilename = '/vsimem/temp.json'
+    gdal.FileFromMemBuffer(tmpfilename, '{ "geometry": {"coordinates": [' + (' ' * 10000) + '2,49], "type": "Point"}, "type": "Feature", "properties": {} }')
+    ds = gdal.OpenEx(tmpfilename, gdal.OF_VECTOR)
+    assert ds is not None
 
     gdal.Unlink(tmpfilename)
 
 
 ###############################################################################
+# Test serialization of Float32 values
+
+def test_ogr_geojson_write_float32():
+
+    def cast_as_float(x):
+        return struct.unpack('f', struct.pack('f', x))[0]
+
+    filename = '/vsimem/test_ogr_geojson_write_float32.json'
+    ds = ogr.GetDriverByName('GeoJSON').CreateDataSource(filename)
+    lyr = ds.CreateLayer('foo')
+
+    fldn_defn = ogr.FieldDefn('float32', ogr.OFTReal)
+    fldn_defn.SetSubType(ogr.OFSTFloat32)
+    lyr.CreateField(fldn_defn)
+
+    fldn_defn = ogr.FieldDefn('float32list', ogr.OFTRealList)
+    fldn_defn.SetSubType(ogr.OFSTFloat32)
+    lyr.CreateField(fldn_defn)
+
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f['float32'] = cast_as_float(0.35)
+    f['float32list'] = [
+        cast_as_float(123.0),
+        cast_as_float(0.35),
+        cast_as_float(0.15),
+        cast_as_float(0.12345678),
+        cast_as_float(1.2345678e-15),
+        cast_as_float(1.2345678e15),
+        cast_as_float(0.123456789), # more decimals than Float32 can hold
+    ]
+    lyr.CreateFeature(f)
+
+    ds = None
+
+    fp = gdal.VSIFOpenL(filename, 'rb')
+    data = gdal.VSIFReadL(1, 10000, fp).decode('ascii')
+    gdal.VSIFCloseL(fp)
+
+    gdal.Unlink(filename)
+
+    data = data.replace('e+0', 'e+').replace('e-0', 'e-')
+
+    assert '"float32": 0.35,' in data
+    assert '"float32list": [ 123.0, 0.35, 0.15, 0.12345678, 1.2345678e-15, 1.2345678e+15, 0.12345679 ]' in data
 
 
-def test_ogr_geojson_cleanup():
+###############################################################################
+# Test bugfix for #3172
 
-    gdal.SetConfigOption('CPL_CURL_ENABLE_VSIMEM', None)
+def test_ogr_geojson_write_float_exponential_without_dot():
 
-    try:
-        if gdaltest.tests is not None:
-            gdal.PushErrorHandler('CPLQuietErrorHandler')
-            for i in range(len(gdaltest.tests)):
+    filename = '/vsimem/test_ogr_geojson_write_float_exponential_without_dot.json'
+    ds = ogr.GetDriverByName('GeoJSON').CreateDataSource(filename)
+    lyr = ds.CreateLayer('foo')
 
-                fname = os.path.join('tmp', gdaltest.tests[i][0] + '.geojson')
-                ogr.GetDriverByName('GeoJSON').DeleteDataSource(fname)
+    fldn_defn = ogr.FieldDefn('float32', ogr.OFTReal)
+    fldn_defn.SetSubType(ogr.OFSTFloat32)
+    lyr.CreateField(fldn_defn)
 
-                fname = os.path.join('tmp', gdaltest.tests[i][0] + '.geojson.gz')
-                gdal.Unlink(fname)
+    fldn_defn = ogr.FieldDefn('float64', ogr.OFTReal)
+    lyr.CreateField(fldn_defn)
 
-                fname = os.path.join('tmp', gdaltest.tests[i][0] + '.geojson.gz.properties')
-                gdal.Unlink(fname)
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f['float32'] = 1e-7
+    f['float64'] = 1e-8
+    lyr.CreateFeature(f)
 
-            gdal.PopErrorHandler()
+    ds = None
 
-        gdaltest.tests = None
-    except:
-        pass
+    fp = gdal.VSIFOpenL(filename, 'rb')
+    data = gdal.VSIFReadL(1, 10000, fp).decode('ascii')
+    gdal.VSIFCloseL(fp)
 
-    try:
-        os.remove('tmp/out_ogr_geojson_14.geojson')
-    except OSError:
-        pass
+    gdal.Unlink(filename)
 
-    for f in gdal.ReadDir('/vsimem/geojson'):
-        gdal.Unlink('/vsimem/geojson/' + f)
-
-    
+    # Check that the json can be parsed
+    json.loads(data)
 
 
+###############################################################################
+# Test bugfix for #3280
+
+def test_ogr_geojson_feature_starting_with_big_properties():
+
+    filename = '/vsimem/test_ogr_geojson_feature_starting_with_big_properties.json'
+    gdal.FileFromMemBuffer(filename,
+                           '{"properties":{"foo":"%s"},"type":"Feature","geometry":null}' % ('x' * 10000))
+    assert ogr.Open(filename) is not None
+    gdal.Unlink(filename)
+
+
+###############################################################################
+
+def test_ogr_geojson_export_geometry_axis_order():
+
+    # EPSG:4326 and lat,long data order
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    g = ogr.CreateGeometryFromWkt('POINT (49 2)')
+    g.AssignSpatialReference(sr)
+    before_wkt = g.ExportToWkt()
+    assert json.loads(g.ExportToJson()) == { "type": "Point", "coordinates": [ 2.0, 49.0 ] }
+    assert g.ExportToWkt() == before_wkt
+
+    # EPSG:4326 and long,lat data order
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(4326)
+    sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    g = ogr.CreateGeometryFromWkt('POINT (2 49)')
+    g.AssignSpatialReference(sr)
+    assert json.loads(g.ExportToJson()) == { "type": "Point", "coordinates": [ 2.0, 49.0 ] }
+
+    # CRS84 with long,lat CRS and data order
+    sr = osr.SpatialReference()
+    sr.SetFromUserInput("OGC:CRS84")
+    g = ogr.CreateGeometryFromWkt('POINT (2 49)')
+    g.AssignSpatialReference(sr)
+    assert json.loads(g.ExportToJson()) == { "type": "Point", "coordinates": [ 2.0, 49.0 ] }
+
+    # Projected CRS with easting, northing order
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(32631)
+    g = ogr.CreateGeometryFromWkt('POINT (2 49)')
+    g.AssignSpatialReference(sr)
+    assert json.loads(g.ExportToJson()) == { "type": "Point", "coordinates": [ 2.0, 49.0 ] }
+
+    # Projected CRS with northing, easting order
+    sr = osr.SpatialReference()
+    sr.ImportFromEPSG(2393)
+    g = ogr.CreateGeometryFromWkt('POINT (49 2)')
+    g.AssignSpatialReference(sr)
+    assert json.loads(g.ExportToJson()) == { "type": "Point", "coordinates": [ 2.0, 49.0 ] }
+
+    # No CRS
+    g = ogr.CreateGeometryFromWkt('POINT (2 49)')
+    assert json.loads(g.ExportToJson()) == { "type": "Point", "coordinates": [ 2.0, 49.0 ] }

@@ -10,7 +10,9 @@ OBJ		=	netcdfdataset.obj \
 			netcdfsg.obj \
 			netcdflayersg.obj \
 			netcdfsgwriterutil.obj \
-			netcdfmultidim.obj
+			netcdfmultidim.obj \
+			netcdfvirtual.obj \
+			netcdf_sentinel3_sral_mwr.obj
 
 PLUGIN_DLL 	=	gdal_netCDF.dll
 
@@ -31,6 +33,9 @@ EXTRAFLAGS = $(EXTRAFLAGS) -DHAVE_HDF4
 !ENDIF
 !IFDEF HDF5_DIR
 EXTRAFLAGS = $(EXTRAFLAGS) -DHAVE_HDF5
+!ENDIF
+!IFDEF NETCDF_HAS_NETCDF_MEM
+EXTRAFLAGS = $(EXTRAFLAGS) -DHAVE_NETCDF_MEM
 !ENDIF
 
 default:	$(OBJ)

@@ -75,7 +75,7 @@ CPLString GetCompressionSoftwareName(){
 }
 #endif
 
-class GDALECWCompressor : public CNCSFile {
+class GDALECWCompressor final: public CNCSFile {
 
 public:
     GDALECWCompressor();
@@ -115,10 +115,10 @@ public:
 
     GDALDataset *m_poSrcDS;
 
-    VSIIOStream m_OStream;
+    std::shared_ptr<VSIIOStream> m_OStream;
     int m_nPercentComplete;
 
-    int m_bCancelled;
+    int m_bCanceled;
 
     GDALProgressFunc  pfnProgress;
     void             *pProgressData;
@@ -143,11 +143,11 @@ private:
 /************************************************************************/
 
 GDALECWCompressor::GDALECWCompressor() :
-    eWorkDT(GDT_Unknown)
+    m_OStream(std::make_shared<VSIIOStream>()), eWorkDT(GDT_Unknown)
 {
     m_poSrcDS = nullptr;
     m_nPercentComplete = -1;
-    m_bCancelled = FALSE;
+    m_bCanceled = FALSE;
     pfnProgress = GDALDummyProgress;
     pProgressData = nullptr;
     papoJP2UserBox = nullptr;
@@ -186,7 +186,7 @@ CPLErr GDALECWCompressor::CloseDown()
 
 {
     Close( true );
-    m_OStream.Close();
+    m_OStream->Close();
 
     return CE_None;
 }
@@ -246,7 +246,7 @@ void GDALECWCompressor::WriteStatus(IEEE4 fPercentComplete, const NCS::CString &
     std::string sStatusUTF8;
     sStatusText.utf8_str(sStatusUTF8);
 
-    m_bCancelled = !pfnProgress(
+    m_bCanceled = !pfnProgress(
                     fPercentComplete/100.0,
                     sStatusUTF8.c_str(),
                     pProgressData );
@@ -256,7 +256,7 @@ void GDALECWCompressor::WriteStatus(IEEE4 fPercentComplete, const NCS::CString &
 void GDALECWCompressor::WriteStatus( UINT32 nCurrentLine )
 
 {
-    m_bCancelled =
+    m_bCanceled =
         !pfnProgress( nCurrentLine / (float) sFileInfo.nSizeY,
                       nullptr, pProgressData );
 }
@@ -268,7 +268,7 @@ void GDALECWCompressor::WriteStatus( UINT32 nCurrentLine )
 bool GDALECWCompressor::WriteCancel()
 
 {
-    return (bool) m_bCancelled;
+    return (bool) m_bCanceled;
 }
 
 /************************************************************************/
@@ -1008,7 +1008,7 @@ CPLErr GDALECWCompressor::Initialize(
             return CE_Failure;
         }
 
-        m_OStream.Access( fpVSIL, TRUE, (BOOLEAN) bSeekable, pszFilename,
+        m_OStream->Access( fpVSIL, TRUE, (BOOLEAN) bSeekable, pszFilename,
                           0, -1 );
     }
     else
@@ -1114,8 +1114,13 @@ CPLErr GDALECWCompressor::Initialize(
                 oError = GetCNCSError(Open( (char *) pszFilename, false, true ));
             }
         }
-        else
-            oError = CNCSJP2FileView::Open( &(m_OStream) );
+        else {
+#if ECWSDK_VERSION>=55
+            oError = CNCSJP2FileView::Open(m_OStream);
+#else
+            oError = CNCSJP2FileView::Open(m_OStream.get());
+#endif
+        }
     }
 
     if( oError.GetErrorNumber() == NCS_SUCCESS )
@@ -1584,7 +1589,7 @@ class IRasterIORequest
 };
 #endif
 
-class ECWWriteDataset : public GDALDataset
+class ECWWriteDataset final: public GDALDataset
 {
     friend class ECWWriteRasterBand;
 
@@ -1648,7 +1653,7 @@ class ECWWriteDataset : public GDALDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ECWWriteRasterBand : public GDALRasterBand
+class ECWWriteRasterBand final: public GDALRasterBand
 {
     friend class ECWWriteDataset;
 

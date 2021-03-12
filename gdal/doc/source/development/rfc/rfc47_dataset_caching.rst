@@ -1,7 +1,7 @@
 .. _rfc-47:
 
 =======================================================================================
-RFC 47: Per Dataset Caching and GDALRasterBand Multithreading
+RFC 47: Per Dataset Caching and GDALRasterBand Multithreading (not implemented)
 =======================================================================================
 
 Author: Blake Thompson
@@ -115,7 +115,7 @@ GDALRasterBlockManager
        void        DestroyRBMMutex();
    };
 
-Many of the operations originally done by statics within GDALRasterBlock
+Many of the operations originally done by statistics:* within GDALRasterBlock
 are now moved into the GDALRasterBlockManager.
 
 GDALDataset

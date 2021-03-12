@@ -244,7 +244,7 @@ bool OGRGeocodeHasStringValidFormat(const char* pszQueryTemplate)
  *
  * @param papszOptions NULL, or a NULL-terminated list of string options.
  *
- * @return an handle that should be freed with OGRGeocodeDestroySession(), or
+ * @return a handle that should be freed with OGRGeocodeDestroySession(), or
  *         NULL in case of failure.
  *
  * @since GDAL 1.10
@@ -316,6 +316,7 @@ OGRGeocodingSessionH OGRGeocodeCreateSession( char** papszOptions )
 
     const char* pszDelayBetweenQueries = OGRGeocodeGetParameter(papszOptions,
                                                                 "DELAY", "1.0");
+    // coverity[tainted_data]
     hSession->dfDelayBetweenQueries = CPLAtofM(pszDelayBetweenQueries);
 
     const char* pszQueryTemplateDefault = nullptr;

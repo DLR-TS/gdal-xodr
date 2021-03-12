@@ -2298,7 +2298,7 @@ static int NITFFormatRPC00BCoefficient( char* pszBuffer, double dfVal,
     // with 3 digits + 1 terminating byte
     char szTemp[12+2+1];
 #if defined(DEBUG) || defined(WIN32)
-    size_t nLen;
+    int nLen;
 #endif
 
     if( fabs(dfVal) > 9.999999e9 )
@@ -2310,7 +2310,8 @@ static int NITFFormatRPC00BCoefficient( char* pszBuffer, double dfVal,
 
     CPLsnprintf( szTemp, sizeof(szTemp), "%+.6E", dfVal);
 #if defined(DEBUG) || defined(WIN32)
-    nLen = strlen(szTemp);
+    nLen = (int)strlen(szTemp);
+    CPL_IGNORE_RET_VAL_INT(nLen);
 #endif
     CPLAssert( szTemp[9] == 'E' );
 #ifdef WIN32
@@ -2325,7 +2326,7 @@ static int NITFFormatRPC00BCoefficient( char* pszBuffer, double dfVal,
         }
         szTemp[11] = szTemp[13];
     }
-    else // behaviour of the standard: 2 digits for the exponent
+    else // behavior of the standard: 2 digits for the exponent
 #endif
     {
         CPLAssert( nLen == 13 );
@@ -2352,7 +2353,7 @@ static int NITFFormatRPC00BCoefficient( char* pszBuffer, double dfVal,
 
 char* NITFFormatRPC00BFromMetadata( char** papszRPC, int* pbPrecisionLoss )
 {
-    GDALRPCInfo sRPC;
+    GDALRPCInfoV2 sRPC;
     char* pszRPC00B;
     double dfErrBIAS;
     double dfErrRAND;
@@ -2364,15 +2365,19 @@ char* NITFFormatRPC00BFromMetadata( char** papszRPC, int* pbPrecisionLoss )
 
     if( pbPrecisionLoss ) *pbPrecisionLoss = FALSE;
 
-    if( !GDALExtractRPCInfo( papszRPC, &sRPC ) )
+    if( !GDALExtractRPCInfoV2( papszRPC, &sRPC ) )
         return NULL;
 
     pszRPC00B = (char*) CPLMalloc(1041 + 1);
     pszRPC00B[0] = '1'; /* success flag */
     nOffset = 1;
 
-    dfErrBIAS = CPLAtof(CSLFetchNameValueDef(papszRPC, "ERR_BIAS", "0"));
-    if( dfErrBIAS < 0 )
+    dfErrBIAS = sRPC.dfERR_BIAS;
+    if( dfErrBIAS == -1.0 ) // value by default to indicate unknown
+    {
+        dfErrBIAS = 0.0;
+    }
+    else if( dfErrBIAS < 0 )
     {
         CPLError(CE_Warning, CPLE_AppDefined,
                  "Correcting ERR_BIAS from %f to 0", dfErrBIAS);
@@ -2387,8 +2392,12 @@ char* NITFFormatRPC00BFromMetadata( char** papszRPC, int* pbPrecisionLoss )
     CPLsnprintf(pszRPC00B + nOffset, nLength + 1, "%07.2f", dfErrBIAS);
     nOffset += nLength;
 
-    dfErrRAND = CPLAtof(CSLFetchNameValueDef(papszRPC, "ERR_RAND", "0"));
-    if( dfErrRAND < 0 )
+    dfErrRAND = sRPC.dfERR_RAND;
+    if( dfErrRAND == -1.0 ) // value by default to indicate unknown
+    {
+        dfErrRAND = 0.0;
+    }
+    else if( dfErrRAND < 0 )
     {
         CPLError(CE_Warning, CPLE_AppDefined,
                  "Correcting ERR_RAND from %f to 0", dfErrRAND);
@@ -3422,12 +3431,12 @@ static void NITFLoadColormapSubSection( NITFImage *psImage )
 
     for (i=0; bOK && i<nOffsetRecs; i++)
     {
-        if( VSIFSeekL( psFile->fp, nLocBaseColormapSubSection + colormapRecords[i].colorTableOffset,
-                    SEEK_SET ) != 0  )
+        vsi_l_offset nOffset = (vsi_l_offset)nLocBaseColormapSubSection + colormapRecords[i].colorTableOffset;
+        if( VSIFSeekL( psFile->fp, nOffset, SEEK_SET ) != 0  )
         {
             CPLError( CE_Failure, CPLE_FileIO,
-                    "Failed to seek to %d.",
-                    nLocBaseColormapSubSection + colormapRecords[i].colorTableOffset );
+                    "Failed to seek to " CPL_FRMT_GUIB ".",
+                    nOffset );
             CPLFree(colormapRecords);
             return;
         }
@@ -3701,7 +3710,7 @@ static void NITFLoadLocationTable( NITFImage *psImage )
         }
     }
 
-    if( nHeaderOffset != 0 )
+    if( nHeaderOffset > 11 )
     {
         char achHeaderChunk[1000];
 
@@ -3874,7 +3883,7 @@ static int NITFLoadVQTables( NITFImage *psImage, int bTryGuessingOffset )
         bOK &= VSIFReadL( &nVQVector, 1, 4, psImage->psFile->fp ) == 4;
         nVQVector = CPL_MSBWORD32( nVQVector );
 
-        bOK &= VSIFSeekL( psImage->psFile->fp, nVQOffset + nVQVector, SEEK_SET ) == 0;
+        bOK &= VSIFSeekL( psImage->psFile->fp, (vsi_l_offset)(nVQOffset) + nVQVector, SEEK_SET ) == 0;
         bOK &= VSIFReadL( psImage->apanVQLUT[i], 4, 4096, psImage->psFile->fp ) == 4096;
         if( !bOK )
         {

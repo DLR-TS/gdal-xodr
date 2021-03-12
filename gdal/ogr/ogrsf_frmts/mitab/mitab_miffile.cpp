@@ -558,7 +558,7 @@ int MIFFile::ParseMIFHeader(int* pbIsEmpty)
         return -1;
     }
 
-    if ((pszLine = m_poMIFFile->GetLastLine()) == nullptr ||
+    if (m_poMIFFile->GetLastLine() == nullptr ||
         STARTS_WITH_CI(m_poMIFFile->GetLastLine(), "DATA") == FALSE)
     {
         CPLError(CE_Failure, CPLE_NotSupported,
@@ -1871,6 +1871,7 @@ int MIFFile::SetSpatialRef( OGRSpatialReference * poSpatialRef )
 
 {
     CPLFree( m_pszCoordSys );
+    m_pszCoordSys = nullptr;
 
     char* pszCoordSys = MITABSpatialRef2CoordSys( poSpatialRef );
     if( pszCoordSys )

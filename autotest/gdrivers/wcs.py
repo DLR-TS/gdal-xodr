@@ -30,19 +30,12 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+from http.server import BaseHTTPRequestHandler
 import os
 import numbers
 import re
 import shutil
-
-try:
-    import urllib.parse as urlparse
-except ImportError:
-    import urlparse
-try:
-    from BaseHTTPServer import BaseHTTPRequestHandler
-except ImportError:
-    from http.server import BaseHTTPRequestHandler
+import urllib.parse
 
 import pytest
 
@@ -107,7 +100,7 @@ def test_wcs_3():
     gt = gdaltest.wcs_ds.GetGeoTransform()
     expected_gt = (-130.85167999999999, 0.070036907426246159, 0.0, 54.114100000000001, 0.0, -0.055867725752508368)
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 0.00001, 'wrong geotransform'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=0.00001), 'wrong geotransform'
 
     assert gdaltest.wcs_ds.GetRasterBand(1).GetOverviewCount() >= 1, 'no overviews!'
 
@@ -184,7 +177,7 @@ def old_wcs_3():
     assert wkt[:12] == 'GEOGCS["NAD8', ('Got wrong SRS: ' + wkt)
 
     gt = gdaltest.wcs_ds.GetGeoTransform()
-    assert abs(gt[0] - -180.0041667) <= 0.00001 and abs(gt[3] - 90.004167) <= 0.00001 and abs(gt[1] - 0.00833333) <= 0.00001 and abs(gt[2] - 0) <= 0.00001 and abs(gt[5] - -0.00833333) <= 0.00001 and abs(gt[4] - 0) <= 0.00001, \
+    assert gt[0] == pytest.approx(-180.0041667, abs=0.00001) and gt[3] == pytest.approx(90.004167, abs=0.00001) and gt[1] == pytest.approx(0.00833333, abs=0.00001) and gt[2] == pytest.approx(0, abs=0.00001) and gt[5] == pytest.approx(-0.00833333, abs=0.00001) and gt[4] == pytest.approx(0, abs=0.00001), \
         'wrong geotransform'
 
     assert gdaltest.wcs_ds.GetRasterBand(1).GetOverviewCount() >= 1, 'no overviews!'
@@ -297,8 +290,8 @@ class WCSHTTPHandler(BaseHTTPRequestHandler):
             f = open('/tmp/log.txt', 'a')
             f.write('GET %s\n' % self.path)
             f.close()
-        split = urlparse.urlparse(self.path)
-        query = urlparse.parse_qs(split.query)
+        split = urllib.parse.urlparse(self.path)
+        query = urllib.parse.parse_qs(split.query)
         query2 = {}
         for key in query:
             query2[key.lower()] = query[key]
@@ -311,7 +304,7 @@ class WCSHTTPHandler(BaseHTTPRequestHandler):
         key = server + '-' + version
         if key in urls and test in urls[key]:
             _, got = self.path.split('SERVICE=WCS')
-            got = re.sub('\&test=.*', '', got)
+            got = re.sub(r'\&test=.*', '', got)
             _, have = urls[key][test].split('SERVICE=WCS')
             have += '&server=' + server
             if got == have:

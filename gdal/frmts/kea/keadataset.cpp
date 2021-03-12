@@ -196,60 +196,60 @@ int KEADataset::Identify( GDALOpenInfo * poOpenInfo )
 H5::H5File *KEADataset::CreateLL( const char * pszFilename,
                                   int nXSize, int nYSize, int nBands,
                                   GDALDataType eType,
-                                  char ** papszParmList  )
+                                  char ** papszParamList  )
 {
     GDALDriverH hDriver = GDALGetDriverByName( "KEA" );
-    if( ( hDriver == nullptr ) || !GDALValidateCreationOptions( hDriver, papszParmList ) )
+    if( ( hDriver == nullptr ) || !GDALValidateCreationOptions( hDriver, papszParamList ) )
     {
         CPLError( CE_Failure, CPLE_OpenFailed,
                   "Attempt to create file `%s' failed. Invalid creation option(s)\n", pszFilename);
         return nullptr;
     }
-    // process any creation options in papszParmList
+    // process any creation options in papszParamList
     // default value
     unsigned int nimageblockSize = kealib::KEA_IMAGE_CHUNK_SIZE;
     // see if they have provided a different value
-    const char *pszValue = CSLFetchNameValue( papszParmList, "IMAGEBLOCKSIZE" );
+    const char *pszValue = CSLFetchNameValue( papszParamList, "IMAGEBLOCKSIZE" );
     if( pszValue != nullptr )
         nimageblockSize = (unsigned int) atol( pszValue );
 
     unsigned int nattblockSize = kealib::KEA_ATT_CHUNK_SIZE;
-    pszValue = CSLFetchNameValue( papszParmList, "ATTBLOCKSIZE" );
+    pszValue = CSLFetchNameValue( papszParamList, "ATTBLOCKSIZE" );
     if( pszValue != nullptr )
         nattblockSize = (unsigned int) atol( pszValue );
 
     unsigned int nmdcElmts = kealib::KEA_MDC_NELMTS;
-    pszValue = CSLFetchNameValue( papszParmList, "MDC_NELMTS" );
+    pszValue = CSLFetchNameValue( papszParamList, "MDC_NELMTS" );
     if( pszValue != nullptr )
         nmdcElmts = (unsigned int) atol( pszValue );
 
     hsize_t nrdccNElmts = kealib::KEA_RDCC_NELMTS;
-    pszValue = CSLFetchNameValue( papszParmList, "RDCC_NELMTS" );
+    pszValue = CSLFetchNameValue( papszParamList, "RDCC_NELMTS" );
     if( pszValue != nullptr )
         nrdccNElmts = (unsigned int) atol( pszValue );
 
     hsize_t nrdccNBytes = kealib::KEA_RDCC_NBYTES;
-    pszValue = CSLFetchNameValue( papszParmList, "RDCC_NBYTES" );
+    pszValue = CSLFetchNameValue( papszParamList, "RDCC_NBYTES" );
     if( pszValue != nullptr )
         nrdccNBytes = (unsigned int) atol( pszValue );
 
     double nrdccW0 = kealib::KEA_RDCC_W0;
-    pszValue = CSLFetchNameValue( papszParmList, "RDCC_W0" );
+    pszValue = CSLFetchNameValue( papszParamList, "RDCC_W0" );
     if( pszValue != nullptr )
         nrdccW0 = CPLAtof( pszValue );
 
     hsize_t nsieveBuf = kealib::KEA_SIEVE_BUF;
-    pszValue = CSLFetchNameValue( papszParmList, "SIEVE_BUF" );
+    pszValue = CSLFetchNameValue( papszParamList, "SIEVE_BUF" );
     if( pszValue != nullptr )
         nsieveBuf = (unsigned int) atol( pszValue );
 
     hsize_t nmetaBlockSize = kealib::KEA_META_BLOCKSIZE;
-    pszValue = CSLFetchNameValue( papszParmList, "META_BLOCKSIZE" );
+    pszValue = CSLFetchNameValue( papszParamList, "META_BLOCKSIZE" );
     if( pszValue != nullptr )
         nmetaBlockSize = (unsigned int) atol( pszValue );
 
     unsigned int ndeflate = kealib::KEA_DEFLATE;
-    pszValue = CSLFetchNameValue( papszParmList, "DEFLATE" );
+    pszValue = CSLFetchNameValue( papszParamList, "DEFLATE" );
     if( pszValue != nullptr )
         ndeflate = (unsigned int) atol( pszValue );
 
@@ -287,15 +287,15 @@ H5::H5File *KEADataset::CreateLL( const char * pszFilename,
 GDALDataset *KEADataset::Create( const char * pszFilename,
                                   int nXSize, int nYSize, int nBands,
                                   GDALDataType eType,
-                                  char ** papszParmList  )
+                                  char ** papszParamList  )
 {
     H5::H5File *keaImgH5File = CreateLL( pszFilename, nXSize, nYSize, nBands,
-                                         eType, papszParmList  );
+                                         eType, papszParamList  );
     if( keaImgH5File == nullptr )
         return nullptr;
 
     bool bThematic =
-        CPLTestBool(CSLFetchNameValueDef( papszParmList, "THEMATIC", "FALSE" ));
+        CPLTestBool(CSLFetchNameValueDef( papszParamList, "THEMATIC", "FALSE" ));
 
     try
     {
@@ -326,7 +326,7 @@ GDALDataset *KEADataset::Create( const char * pszFilename,
 }
 
 GDALDataset *KEADataset::CreateCopy( const char * pszFilename, GDALDataset *pSrcDs,
-                                CPL_UNUSED int bStrict, char **  papszParmList,
+                                CPL_UNUSED int bStrict, char **  papszParamList,
                                 GDALProgressFunc pfnProgress, void *pProgressData )
 {
     // get the data out of the input dataset
@@ -336,12 +336,12 @@ GDALDataset *KEADataset::CreateCopy( const char * pszFilename, GDALDataset *pSrc
 
     GDALDataType eType = (nBands == 0) ? GDT_Unknown : pSrcDs->GetRasterBand(1)->GetRasterDataType();
     H5::H5File *keaImgH5File = CreateLL( pszFilename, nXSize, nYSize, nBands,
-                                         eType, papszParmList  );
+                                         eType, papszParamList  );
     if( keaImgH5File == nullptr )
         return nullptr;
 
     bool bThematic =
-        CPLTestBool(CSLFetchNameValueDef( papszParmList, "THEMATIC", "FALSE" ));
+        CPLTestBool(CSLFetchNameValueDef( papszParamList, "THEMATIC", "FALSE" ));
 
     try
     {
@@ -423,12 +423,14 @@ GDALDataset *KEADataset::CreateCopy( const char * pszFilename, GDALDataset *pSrc
 // constructor
 KEADataset::KEADataset( H5::H5File *keaImgH5File, GDALAccess eAccessIn )
 {
+    this->m_hMutex = CPLCreateMutex();
+    CPLReleaseMutex( this->m_hMutex );
     try
     {
         // Create the image IO and initialize the refcount.
         m_pImageIO = new kealib::KEAImageIO();
-        m_pnRefcount = new int(1);
-
+        m_pRefcount = new LockedRefCount();
+        
         // NULL until we read them in.
         m_papszMetadataList = nullptr;
         m_pGCPs = nullptr;
@@ -450,7 +452,7 @@ KEADataset::KEADataset( H5::H5File *keaImgH5File, GDALAccess eAccessIn )
             // Note: GDAL uses indices starting at 1 and so does kealib.
             // Create band object.
             KEARasterBand *pBand = new KEARasterBand(
-                this, nCount + 1, eAccess, m_pImageIO, m_pnRefcount );
+                this, nCount + 1, eAccess, m_pImageIO, m_pRefcount );
             // read in overviews
             pBand->readExistingOverviews();
             // set the band into this dataset
@@ -470,11 +472,14 @@ KEADataset::KEADataset( H5::H5File *keaImgH5File, GDALAccess eAccessIn )
 
 KEADataset::~KEADataset()
 {
-    // destroy the metadata
-    CSLDestroy(m_papszMetadataList);
-    // decrement the refcount and delete if needed
-    (*m_pnRefcount)--;
-    if( *m_pnRefcount == 0 )
+    {
+        CPLMutexHolderD( &m_hMutex );
+        // destroy the metadata
+        CSLDestroy(m_papszMetadataList);
+        this->DestroyGCPs();
+        CPLFree( m_pszGCPProjection );
+    }
+    if( m_pRefcount->DecRef() )
     {
         try
         {
@@ -484,15 +489,17 @@ KEADataset::~KEADataset()
         {
         }
         delete m_pImageIO;
-        delete m_pnRefcount;
+        delete m_pRefcount;
     }
-    this->DestroyGCPs();
-    CPLFree( m_pszGCPProjection );
+    
+    CPLDestroyMutex( m_hMutex );
+    m_hMutex = nullptr;
 }
 
 // read in the metadata into our CSLStringList
 void KEADataset::UpdateMetadataList()
 {
+    CPLMutexHolderD( &m_hMutex );
     std::vector< std::pair<std::string, std::string> > odata;
     // get all the metadata
     odata = this->m_pImageIO->getImageMetaData();
@@ -632,6 +639,7 @@ CPLErr KEADataset::IBuildOverviews(const char *pszResampling, int nOverviews, in
 // set a single metadata item
 CPLErr KEADataset::SetMetadataItem(const char *pszName, const char *pszValue, const char *pszDomain)
 {
+    CPLMutexHolderD( &m_hMutex );
     // only deal with 'default' domain - no geolocation etc
     if( ( pszDomain != nullptr ) && ( *pszDomain != '\0' ) )
         return CE_Failure;
@@ -654,6 +662,7 @@ CPLErr KEADataset::SetMetadataItem(const char *pszName, const char *pszValue, co
 // get a single metadata item
 const char *KEADataset::GetMetadataItem (const char *pszName, const char *pszDomain)
 {
+    CPLMutexHolderD( &m_hMutex );
     // only deal with 'default' domain - no geolocation etc
     if( ( pszDomain != nullptr ) && ( *pszDomain != '\0' ) )
         return nullptr;
@@ -661,7 +670,7 @@ const char *KEADataset::GetMetadataItem (const char *pszName, const char *pszDom
     return CSLFetchNameValue(m_papszMetadataList, pszName);
 }
 
-// get the whole metadata as CSLStringList
+// get the whole metadata as CSLStringList - note may be thread safety issues
 char **KEADataset::GetMetadata(const char *pszDomain)
 {
     // only deal with 'default' domain - no geolocation etc
@@ -674,6 +683,7 @@ char **KEADataset::GetMetadata(const char *pszDomain)
 // set the whole metadata as a CSLStringList
 CPLErr KEADataset::SetMetadata(char **papszMetadata, const char *pszDomain)
 {
+    CPLMutexHolderD( &m_hMutex );
     // only deal with 'default' domain - no geolocation etc
     if( ( pszDomain != nullptr ) && ( *pszDomain != '\0' ) )
         return CE_Failure;
@@ -756,7 +766,7 @@ CPLErr KEADataset::AddBand(GDALDataType eType, char **papszOptions)
     // create a new band and add it to the dataset
     // note GDAL uses indices starting at 1 and so does kealib
     KEARasterBand *pBand = new KEARasterBand(this, this->nBands+1, this->eAccess,
-            m_pImageIO, m_pnRefcount);
+            m_pImageIO, m_pRefcount);
     this->SetBand(this->nBands+1, pBand);
 
     return CE_None;
@@ -776,6 +786,7 @@ int KEADataset::GetGCPCount()
 
 const char* KEADataset::_GetGCPProjection()
 {
+    CPLMutexHolderD( &m_hMutex );
     if( m_pszGCPProjection == nullptr )
     {
         try
@@ -793,6 +804,7 @@ const char* KEADataset::_GetGCPProjection()
 
 const GDAL_GCP* KEADataset::GetGCPs()
 {
+    CPLMutexHolderD( &m_hMutex );
     if( m_pGCPs == nullptr )
     {
         // convert to GDAL data structures
@@ -829,6 +841,7 @@ const GDAL_GCP* KEADataset::GetGCPs()
 
 CPLErr KEADataset::_SetGCPs(int nGCPCount, const GDAL_GCP *pasGCPList, const char *pszGCPProjection)
 {
+    CPLMutexHolderD( &m_hMutex );
     this->DestroyGCPs();
     CPLFree( m_pszGCPProjection );
     m_pszGCPProjection = nullptr;
@@ -871,6 +884,7 @@ CPLErr KEADataset::_SetGCPs(int nGCPCount, const GDAL_GCP *pasGCPList, const cha
 
 void KEADataset::DestroyGCPs()
 {
+    CPLMutexHolderD( &m_hMutex );
     if( m_pGCPs != nullptr )
     {
         // we assume this is always the same as the internal list...

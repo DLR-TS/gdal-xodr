@@ -334,18 +334,18 @@ GDALDataset *NDFDataset::Open( GDALOpenInfo * poOpenInfo )
 /* -------------------------------------------------------------------- */
 /*      Fetch and parse USGS projection parameters.                     */
 /* -------------------------------------------------------------------- */
-    double adfUSGSParms[15] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-    char **papszParmTokens =
+    double adfUSGSParams[15] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+    char **papszParamTokens =
         CSLTokenizeStringComplex( poDS->Get( "USGS_PROJECTION_NUMBER", "" ),
                                   ",", FALSE, TRUE );
 
-    if( CSLCount( papszParmTokens ) >= 15 )
+    if( CSLCount( papszParamTokens ) >= 15 )
     {
         for( int i = 0; i < 15; i++ )
-            adfUSGSParms[i] = CPLAtof(papszParmTokens[i]);
+            adfUSGSParams[i] = CPLAtof(papszParamTokens[i]);
     }
-    CSLDestroy(papszParmTokens);
-    papszParmTokens = nullptr;
+    CSLDestroy(papszParamTokens);
+    papszParamTokens = nullptr;
 
 /* -------------------------------------------------------------------- */
 /*      Minimal georef support ... should add full USGS style           */
@@ -355,7 +355,7 @@ GDALDataset *NDFDataset::Open( GDALOpenInfo * poOpenInfo )
     const int nZone = atoi(poDS->Get("USGS_MAP_ZONE","0"));
 
     OGRSpatialReference oSRS;
-    oSRS.importFromUSGS( nUSGSProjection, nZone, adfUSGSParms, 12 );
+    oSRS.importFromUSGS( nUSGSProjection, nZone, adfUSGSParams, 12 );
 
     const CPLString osDatum = poDS->Get( "HORIZONTAL_DATUM", "" );
     if( EQUAL(osDatum,"WGS84") || EQUAL(osDatum,"NAD83")
@@ -449,7 +449,7 @@ void GDALRegister_NDF()
     poDriver->SetDescription( "NDF" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "NLAPS Data Format" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#NDF" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/ndf.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 
     poDriver->pfnIdentify = NDFDataset::Identify;

@@ -52,11 +52,7 @@ OGRMSSQLSpatialLayer::~OGRMSSQLSpatialLayer()
                   poFeatureDefn->GetName() );
     }
 
-    if( poStmt )
-    {
-        delete poStmt;
-        poStmt = nullptr;
-    }
+    ClearStatement();
 
     CPLFree( pszGeomColumn );
     CPLFree( pszFIDColumn );
@@ -245,6 +241,12 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
                 oField.SetType( OFTDateTime );
                 break;
 
+            case SQL_C_GUID:
+                oField.SetType( OFTString );
+                oField.SetSubType( OFSTUUID );
+                break;
+
+
             default:
                 /* leave it as OFTString */;
         }
@@ -313,13 +315,33 @@ CPLErr OGRMSSQLSpatialLayer::BuildFeatureDefn( const char *pszLayerName,
 }
 
 /************************************************************************/
+/*                           ClearStatement()                           */
+/************************************************************************/
+
+void OGRMSSQLSpatialLayer::ClearStatement()
+
+{
+    if( poStmt != nullptr )
+    {
+        delete poStmt;
+        poStmt = nullptr;
+    }
+}
+
+/************************************************************************/
 /*                            ResetReading()                            */
 /************************************************************************/
 
 void OGRMSSQLSpatialLayer::ResetReading()
 
 {
-    iNextShapeId = 0;
+    if( m_bResetNeeded )
+    {
+        iNextShapeId = 0;
+        ClearStatement();
+        m_bEOF = false;
+        m_bResetNeeded = false;
+    }
 }
 
 /************************************************************************/
@@ -329,13 +351,19 @@ void OGRMSSQLSpatialLayer::ResetReading()
 OGRFeature *OGRMSSQLSpatialLayer::GetNextFeature()
 
 {
+    if( m_bEOF )
+        return nullptr;
+
     while( true )
     {
         OGRFeature      *poFeature;
 
         poFeature = GetNextRawFeature();
         if( poFeature == nullptr )
+        {
+            m_bEOF = true;
             return nullptr;
+        }
 
         if( (m_poFilterGeom == nullptr
             || FilterGeometry( poFeature->GetGeometryRef() ) )
@@ -354,6 +382,7 @@ OGRFeature *OGRMSSQLSpatialLayer::GetNextFeature()
 OGRFeature *OGRMSSQLSpatialLayer::GetNextRawFeature()
 
 {
+    m_bResetNeeded = true;
     if( GetStatement() == nullptr )
         return nullptr;
 

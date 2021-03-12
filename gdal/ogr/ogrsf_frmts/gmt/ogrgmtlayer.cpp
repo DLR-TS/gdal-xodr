@@ -572,6 +572,8 @@ OGRFeature *OGRGmtLayer::GetNextRawFeature()
                     }
                 }
 
+                CPLAssert( poGeom != nullptr );
+                // cppcheck-suppress nullPointerRedundantCheck
                 switch( wkbFlatten(poGeom->getGeometryType()) )
                 {
                   case wkbPoint:
@@ -678,34 +680,6 @@ OGRFeature *OGRGmtLayer::GetNextRawFeature()
     m_nFeaturesRead++;
 
     return poFeature;
-}
-
-/************************************************************************/
-/*                           GetNextFeature()                           */
-/************************************************************************/
-
-OGRFeature *OGRGmtLayer::GetNextFeature()
-
-{
-    while( true )
-    {
-        OGRFeature *poFeature = GetNextRawFeature();
-
-        if( poFeature == nullptr )
-            return nullptr;
-
-        if( (m_poFilterGeom == nullptr
-             || FilterGeometry( poFeature->GetGeometryRef() ) )
-            && (m_poAttrQuery == nullptr
-                || m_poAttrQuery->Evaluate( poFeature ) ) )
-        {
-            return poFeature;
-        }
-
-        delete poFeature;
-    }
-
-    return nullptr;
 }
 
 /************************************************************************/

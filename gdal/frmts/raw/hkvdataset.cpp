@@ -49,7 +49,7 @@ CPL_CVSID("$Id$")
 
 class HKVDataset;
 
-class HKVRasterBand : public RawRasterBand
+class HKVRasterBand final: public RawRasterBand
 {
     friend class HKVDataset;
 
@@ -224,7 +224,7 @@ class HKVDataset final: public RawDataset
     static GDALDataset *Open( GDALOpenInfo * );
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
-                                GDALDataType eType, char ** papszParmList );
+                                GDALDataType eType, char ** papszParamList );
     static GDALDataset *CreateCopy( const char * pszFilename,
                                     GDALDataset *poSrcDS,
                                     int bStrict, char ** papszOptions,
@@ -874,7 +874,7 @@ CPLErr HKVDataset::_SetProjection( const char * pszNewProjection )
     }
     else
     {
-        // Default to previous behaviour if spheroid not found by radius and
+        // Default to previous behavior if spheroid not found by radius and
         // inverse flattening.
         if( strstr(pszNewProjection,"Bessel") != nullptr )
         {
@@ -1533,7 +1533,7 @@ GDALDataset *HKVDataset::Open( GDALOpenInfo * poOpenInfo )
 GDALDataset *HKVDataset::Create( const char * pszFilenameIn,
                                  int nXSize, int nYSize, int nBands,
                                  GDALDataType eType,
-                                 char ** /* papszParmList */ )
+                                 char ** /* papszParamList */ )
 
 {
 /* -------------------------------------------------------------------- */
@@ -1879,7 +1879,7 @@ void GDALRegister_HKV()
     poDriver->SetDescription( "MFF2" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Vexcel MFF2 (HKV) Raster" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_mff2.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/mff2.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Int32 UInt32 CInt16 "
                                "CInt32 Float32 Float64 CFloat32 CFloat64" );

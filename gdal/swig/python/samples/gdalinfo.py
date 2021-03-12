@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # *****************************************************************************
 # $Id$
 #
@@ -50,12 +50,12 @@ def Usage():
 def EQUAL(a, b):
     return a.lower() == b.lower()
 
-# **********************************************************************
-#                                main()
-# **********************************************************************
-
 
 def main(argv=None):
+    version_num = int(gdal.VersionInfo('VERSION_NUM'))
+    if version_num < 1800:  # because of GetGeoTransform(can_return_null)
+        print('ERROR: Python bindings of GDAL 1.8.0 or later required')
+        return 1
 
     bComputeMinMax = False
     bShowGCPs = True
@@ -391,7 +391,7 @@ def main(argv=None):
 
         if bReportHistograms:
 
-            hist = hBand.GetDefaultHistogram(force=True, callback=gdal.TermProgress)
+            hist = hBand.GetDefaultHistogram(force=True, callback=gdal.TermProgress_nocb)
             if hist is not None:
                 dfMin = hist[0]
                 dfMax = hist[1]
@@ -607,9 +607,4 @@ def GDALInfoReportCorner(hDataset, hTransform, corner_name, x, y):
 
 
 if __name__ == '__main__':
-    version_num = int(gdal.VersionInfo('VERSION_NUM'))
-    if version_num < 1800:  # because of GetGeoTransform(can_return_null)
-        print('ERROR: Python bindings of GDAL 1.8.0 or later required')
-        sys.exit(1)
-
     sys.exit(main(sys.argv))

@@ -1,7 +1,7 @@
 /******************************************************************************
  * $Id$
  *
- * Project:  ElasticSearch Translator
+ * Project:  Elasticsearch Translator
  * Purpose:
  * Author:
  *
@@ -37,6 +37,7 @@
 #include "ogr_p.h"
 #include "cpl_http.h"
 
+#include <map>
 #include <memory>
 #include <set>
 #include <vector>
@@ -50,7 +51,6 @@ typedef enum
 
 class OGRElasticDataSource;
 
-// cppcheck-suppress copyCtorAndEqOperator
 class OGRESSortDesc
 {
     public:
@@ -60,9 +60,6 @@ class OGRESSortDesc
         OGRESSortDesc( const CPLString& osColumnIn, bool bAscIn ) :
             osColumn(osColumnIn),
             bAsc(bAscIn) {}
-        OGRESSortDesc(const OGRESSortDesc& other) :
-            osColumn(other.osColumn),
-            bAsc(other.bAsc) {}
 };
 
 /************************************************************************/
@@ -107,7 +104,7 @@ class OGRElasticLayer final: public OGRLayer {
 
     CPLString                             m_osScrollID;
     GIntBig                               m_iCurID;
-    GIntBig                               m_nNextFID;
+    GIntBig                               m_nNextFID; // for creation
     int                                   m_iCurFeatureInPage;
     std::vector<OGRFeature*>              m_apoCachedFeatures;
     bool                                  m_bEOF;
@@ -121,6 +118,20 @@ class OGRElasticLayer final: public OGRLayer {
     bool                                  m_bDotAsNestedField;
 
     bool                                  m_bAddPretty;
+    bool                                  m_bGeoShapeAsGeoJSON;
+
+    CPLString                             m_osSingleQueryTimeout;
+    double                                m_dfSingleQueryTimeout = 0;
+    double                                m_dfFeatureIterationTimeout = 0;
+    //! Timestamp after which the query must be terminated
+    double                                m_dfEndTimeStamp = 0;
+
+    GIntBig                               m_nReadFeaturesSinceResetReading = 0;
+    GIntBig                               m_nSingleQueryTerminateAfter = 0;
+    GIntBig                               m_nFeatureIterationTerminateAfter = 0;
+    CPLString                             m_osSingleQueryTerminateAfter;
+
+    bool                                  m_bUseSingleQueryParams = false;
 
     bool                                  PushIndex();
     CPLString                             BuildMap();
@@ -160,6 +171,8 @@ class OGRElasticLayer final: public OGRLayer {
                                                     swq_expr_node* poValNode );
     json_object*                          TranslateSQLToFilter(swq_expr_node* poNode);
     json_object*                          BuildSort();
+
+    void                                  AddTimeoutTerminateAfterToURL( CPLString& osURL );
 
 public:
                         OGRElasticLayer( const char* pszLayerName,
@@ -228,6 +241,7 @@ class OGRElasticDataSource final: public GDALDataset {
     std::vector<std::unique_ptr<OGRElasticLayer>> m_apoLayers;
     bool                m_bAllLayersListed = false;
     std::map<OGRLayer*, OGRLayer*> m_oMapResultSet;
+    std::map<std::string, std::string> m_oMapHeadersFromEnv{};
 
     bool                CheckVersion();
     int                 GetLayerIndex( const char* pszName );
@@ -245,14 +259,15 @@ public:
     int                 m_nFeatureCountToEstablishFeatureDefn;
     bool                m_bJSonField;
     bool                m_bFlattenNestedAttributes;
-    int                 m_nMajorVersion;
+    int                 m_nMajorVersion = 0;
+    int                 m_nMinorVersion = 0;
 
     int Open(GDALOpenInfo* poOpenInfo);
 
     int Create(const char *pszFilename,
                char **papszOptions);
 
-    CPLHTTPResult*      HTTPFetch(const char* pszURL, char** papszOptions);
+    CPLHTTPResult*      HTTPFetch(const char* pszURL, CSLConstList papszOptions);
 
     const char         *GetURL() { return m_osURL.c_str(); }
 

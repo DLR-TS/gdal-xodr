@@ -54,12 +54,12 @@ See :ref:`license`
 What operating systems does GDAL-OGR run on?
 ++++++++++++++++++++++++++++++++++++++++++++
 
-You can use GDAL/OGR on all modern flavors of Unix: Linux, FreeBSD, Mac OS X; all supported versions of Microsoft Windows; mobile environements (Android and iOS). Both, 32-bit and 64-bit architectures are supported.
+You can use GDAL/OGR on all modern flavors of Unix: Linux, FreeBSD, Mac OS X; all supported versions of Microsoft Windows; mobile environments (Android and iOS). Both 32-bit and 64-bit architectures are supported.
 
 Is there a graphical user interface to GDAL/OGR?
 ++++++++++++++++++++++++++++++++++++++++++++++++
 
-See :ref:`software_using_gdal`
+See :ref:`software_using_gdal`:
 
 .. toctree::
    :hidden:

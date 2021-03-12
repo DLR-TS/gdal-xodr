@@ -8,7 +8,9 @@ OBJ	=	netcdfdataset.o \
 		netcdfsg.o \
 		netcdflayersg.o \
 		netcdfsgwriterutil.o \
-		netcdfmultidim.o
+		netcdfmultidim.o \
+		netcdfvirtual.o \
+		netcdf_sentinel3_sral_mwr.o
 
 XTRA_OPT =
 ifeq ($(NETCDF_HAS_NC4),yes)
@@ -25,6 +27,10 @@ XTRA_OPT := -DHAVE_HDF5 $(XTRA_OPT)
 endif
 
 CPPFLAGS	:=	 $(CPPFLAGS) $(XTRA_OPT)
+
+ifeq ($(NETCDF_MEM),yes)
+CPPFLAGS	:=	$(CPPFLAGS) -DHAVE_NETCDF_MEM
+endif
 
 ifeq ($(ENABLE_UFFD),yes)
 ifeq ($(NETCDF_MEM),yes)

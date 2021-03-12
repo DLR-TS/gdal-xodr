@@ -243,7 +243,7 @@ static VSICryptAlg GetAlg( const char* pszName )
     CASE_ALG(DES_EDE2)
     CASE_ALG(DES_EDE3)
     // CASE_ALG(DES_XEX3) (obsolete)
-    // CASE_ALG(Gost) (obsolete)
+    // CASE_ALG(Ghost) (obsolete)
     CASE_ALG(MARS)
     CASE_ALG(IDEA)
     // CASE_ALG(RC2) (obsolete)
@@ -447,10 +447,19 @@ VSICryptFileHeader::CryptKeyCheck( CryptoPP::BlockCipher* poEncCipher )
     CPLAssert( osIV.size() == poEncCipher->BlockSize() );
     // Generate a unique IV with a sector offset of 0xFFFFFFFFFFFFFFFF.
     std::string osCheckIV(VSICryptGenerateSectorIV(osIV, ~(static_cast<vsi_l_offset>(0))));
-    CryptoPP::StringSink* poSink = new CryptoPP::StringSink(osKeyCheckRes);
-    CryptoPP::StreamTransformation* poMode =
-        new CryptoPP::CBC_Mode_ExternalCipher::Encryption(
+    CryptoPP::StreamTransformation* poMode;
+    try
+    {
+        poMode = new CryptoPP::CBC_Mode_ExternalCipher::Encryption(
             *poEncCipher, reinterpret_cast<const cryptopp_byte*>(osCheckIV.c_str()));
+    }
+    catch( const std::exception& e )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "CryptoPP exception: %s", e.what());
+        return std::string();
+    }
+    CryptoPP::StringSink* poSink = new CryptoPP::StringSink(osKeyCheckRes);
     CryptoPP::StreamTransformationFilter* poEnc =
         new CryptoPP::StreamTransformationFilter(
             *poMode, poSink,
@@ -607,6 +616,7 @@ int VSICryptFileHeader::ReadFromFile( VSIVirtualHandle* fp,
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                     "CryptoPP exception: %s", e.what());
+            delete poEncCipher;
             return FALSE;
         }
 
@@ -893,23 +903,32 @@ void VSICryptFileHandle::EncryptBlock( GByte* pabyData, vsi_l_offset nOffset )
     std::string osIV(VSICryptGenerateSectorIV(poHeader->osIV, nOffset));
     CPLAssert( static_cast<int>(osIV.size()) == nBlockSize );
 
-    CryptoPP::StringSink* poSink = new CryptoPP::StringSink(osRes);
     CryptoPP::StreamTransformation* poMode;
-    if( poHeader->eMode == MODE_CBC )
-        poMode = new CryptoPP::CBC_Mode_ExternalCipher::Encryption(
-            *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
-    else if( poHeader->eMode == MODE_CFB )
-        poMode = new CryptoPP::CFB_Mode_ExternalCipher::Encryption(
-            *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
-    else if( poHeader->eMode == MODE_OFB )
-        poMode = new CryptoPP::OFB_Mode_ExternalCipher::Encryption(
-            *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
-    else if( poHeader->eMode == MODE_CTR )
-        poMode = new CryptoPP::CTR_Mode_ExternalCipher::Encryption(
-            *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
-    else
-        poMode = new CryptoPP::CBC_CTS_Mode_ExternalCipher::Encryption(
-            *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
+    try
+    {
+        if( poHeader->eMode == MODE_CBC )
+            poMode = new CryptoPP::CBC_Mode_ExternalCipher::Encryption(
+                *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
+        else if( poHeader->eMode == MODE_CFB )
+            poMode = new CryptoPP::CFB_Mode_ExternalCipher::Encryption(
+                *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
+        else if( poHeader->eMode == MODE_OFB )
+            poMode = new CryptoPP::OFB_Mode_ExternalCipher::Encryption(
+                *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
+        else if( poHeader->eMode == MODE_CTR )
+            poMode = new CryptoPP::CTR_Mode_ExternalCipher::Encryption(
+                *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
+        else
+            poMode = new CryptoPP::CBC_CTS_Mode_ExternalCipher::Encryption(
+                *poEncCipher, reinterpret_cast<const cryptopp_byte *>(osIV.c_str()) );
+    }
+    catch( const std::exception& e )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "cryptopp exception: %s", e.what());
+        return;
+    }
+    CryptoPP::StringSink* poSink = new CryptoPP::StringSink(osRes);
     CryptoPP::StreamTransformationFilter* poEnc =
         new CryptoPP::StreamTransformationFilter(
             *poMode, poSink, CryptoPP::StreamTransformationFilter::NO_PADDING);
@@ -1416,7 +1435,8 @@ public:
 
     VSIVirtualHandle *Open( const char *pszFilename,
                             const char *pszAccess,
-                            bool bSetError ) override;
+                            bool bSetError,
+                            CSLConstList /* papszOptions */ ) override;
     int Stat( const char *pszFilename, VSIStatBufL *pStatBuf,
               int nFlags ) override;
     int Unlink( const char *pszFilename ) override;
@@ -1527,7 +1547,8 @@ static CPLString GetKey( const char* pszFilename )
 
 VSIVirtualHandle *VSICryptFilesystemHandler::Open( const char *pszFilename,
                                                    const char *pszAccess,
-                                                   bool /* bSetError */ )
+                                                   bool /* bSetError */,
+                                                   CSLConstList /* papszOptions */ )
 {
 #ifdef VERBOSE_VSICRYPT
     CPLDebug("VSICRYPT", "Open(%s, %s)", pszFilename, pszAccess);
@@ -2057,7 +2078,8 @@ public:
 
     VSIVirtualHandle *Open( const char * /* pszFilename */,
                             const char * /* pszAccess */,
-                            bool /* bSetError */ ) override
+                            bool /* bSetError */,
+                            CSLConstList /* papszOptions */ ) override
     {
         CPLError(CE_Failure, CPLE_NotSupported,
                  "%s support not available in this build", VSICRYPT_PREFIX);

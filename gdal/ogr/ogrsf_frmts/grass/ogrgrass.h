@@ -37,17 +37,13 @@ extern "C" {
     #include <grass/gprojects.h>
     #include <grass/gis.h>
     #include <grass/dbmi.h>
-#if GRASS_VERSION_MAJOR  >= 7
     #include <grass/vector.h>
-#else
-    #include <grass/Vect.h>
-#endif
 }
 
 /************************************************************************/
 /*                            OGRGRASSLayer                             */
 /************************************************************************/
-class OGRGRASSLayer : public OGRLayer
+class OGRGRASSLayer final: public OGRLayer
 {
   public:
                         OGRGRASSLayer( int layer, struct Map_info * map );
@@ -125,7 +121,7 @@ class OGRGRASSLayer : public OGRLayer
 /************************************************************************/
 /*                          OGRGRASSDataSource                          */
 /************************************************************************/
-class OGRGRASSDataSource : public OGRDataSource
+class OGRGRASSDataSource final: public OGRDataSource
 {
   public:
                         OGRGRASSDataSource();
@@ -159,7 +155,7 @@ class OGRGRASSDataSource : public OGRDataSource
 /************************************************************************/
 /*                            OGRGRASSDriver                            */
 /************************************************************************/
-class OGRGRASSDriver : public OGRSFDriver
+class OGRGRASSDriver final: public OGRSFDriver
 {
   public:
                         virtual ~OGRGRASSDriver();

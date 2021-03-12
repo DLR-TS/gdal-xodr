@@ -791,6 +791,12 @@ GDALDataset *HDF4Dataset::Open( GDALOpenInfo * poOpenInfo )
         return nullptr;
     }
 
+    if( poOpenInfo->nOpenFlags & GDAL_OF_MULTIDIM_RASTER )
+    {
+        poDS->OpenMultiDim(poOpenInfo->pszFilename, poOpenInfo->papszOpenOptions);
+        return poDS;
+    }
+
 /* -------------------------------------------------------------------- */
 /*              Now read Global Attributes.                             */
 /* -------------------------------------------------------------------- */
@@ -865,7 +871,6 @@ GDALDataset *HDF4Dataset::Open( GDALOpenInfo * poOpenInfo )
     int32 iRank = 0;
     int32 iNumType = 0;
     int32 nAttrs = 0;
-    bool bIsHDF = true;
 
     // Sometimes "HDFEOSVersion" attribute is not defined and we will
     // determine HDF-EOS datasets using other records
@@ -1121,13 +1126,14 @@ GDALDataset *HDF4Dataset::Open( GDALOpenInfo * poOpenInfo )
             CSLDestroy( papszGrids );
         }
         GDclose( hHDF4 );
-
-        bIsHDF = ( nSubDatasets == 0 ); // Try to read as HDF
     }
 
     char szName[VSNAMELENMAX + 1];
 
-    if( bIsHDF )
+    const char* pszListSDS =
+        CSLFetchNameValueDef(poOpenInfo->papszOpenOptions, "LIST_SDS", "AUTO");
+    if( (poDS->papszSubDatasets == nullptr && EQUAL(pszListSDS, "AUTO")) ||
+        (!EQUAL(pszListSDS, "AUTO") && CPLTestBool(pszListSDS)) )
     {
 
 /* -------------------------------------------------------------------- */
@@ -1148,7 +1154,7 @@ GDALDataset *HDF4Dataset::Open( GDALOpenInfo * poOpenInfo )
                             &nAttrs) != 0 )
                 return nullptr;
 
-            if ( iRank == 1 )  // Skip 1D datsets
+            if ( iRank == 1 )  // Skip 1D datasets
                     continue;
 
             // Do sort of known datasets. We will display only image bands
@@ -1343,9 +1349,21 @@ void GDALRegister_HDF4()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Hierarchical Data Format Release 4" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_hdf4.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/hdf4.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "hdf" );
     poDriver->SetMetadataItem( GDAL_DMD_SUBDATASETS, "YES" );
+
+    poDriver->SetMetadataItem( GDAL_DCAP_MULTIDIM_RASTER, "YES" );
+
+    poDriver->SetMetadataItem( GDAL_DMD_OPENOPTIONLIST,
+"<OpenOptionList>"
+"  <Option name='LIST_SDS' type='string-select' "
+        "description='Whether to report Scientific Data Sets' default='AUTO'>"
+"       <Value>AUTO</Value>"
+"       <Value>YES</Value>"
+"       <Value>NO</Value>"
+"  </Option>"
+"</OpenOptionList>");
 
     poDriver->pfnOpen = HDF4Dataset::Open;
     poDriver->pfnIdentify = HDF4Dataset::Identify;

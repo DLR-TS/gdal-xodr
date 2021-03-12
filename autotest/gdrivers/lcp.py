@@ -30,6 +30,9 @@
 ###############################################################################
 
 import os
+import random
+import struct
+
 from osgeo import gdal
 
 
@@ -42,7 +45,7 @@ import pytest
 
 def test_lcp_1():
 
-    ds = gdal.Open('data/test_FARSITE_UTM12.LCP')
+    ds = gdal.Open('data/lcp/test_FARSITE_UTM12.LCP')
     assert ds.RasterCount == 8, 'wrong number of bands'
 
     assert ds.GetProjectionRef().find('NAD83 / UTM zone 12N') != -1, \
@@ -59,7 +62,7 @@ def test_lcp_1():
     check_gt = (285807.932887174887583, 30, 0, 5379230.386217921040952, 0, -30)
     new_gt = ds.GetGeoTransform()
     for i in range(6):
-        if abs(new_gt[i] - check_gt[i]) > 1e-5:
+        if new_gt[i] != pytest.approx(check_gt[i], abs=1e-5):
             print('')
             print('old = ', check_gt)
             print('new = ', new_gt)
@@ -133,7 +136,7 @@ def test_lcp_1():
 
 def test_lcp_2():
 
-    ds = gdal.Open('data/test_USGS_LFNM_Alb83.lcp')
+    ds = gdal.Open('data/lcp/test_USGS_LFNM_Alb83.lcp')
     assert ds.RasterCount == 8, 'wrong number of bands'
 
     metadata = [('LATITUDE', '48'),
@@ -147,7 +150,7 @@ def test_lcp_2():
     check_gt = (-1328145, 30, 0, 2961735, 0, -30)
     new_gt = ds.GetGeoTransform()
     for i in range(6):
-        if abs(new_gt[i] - check_gt[i]) > 1e-5:
+        if new_gt[i] != pytest.approx(check_gt[i], abs=1e-5):
             print('')
             print('old = ', check_gt)
             print('new = ', new_gt)
@@ -221,7 +224,7 @@ def test_lcp_2():
 
 def test_lcp_3():
 
-    ds = gdal.Open('data/test_USGS_LFNM_Alb83.lcp')
+    ds = gdal.Open('data/lcp/test_USGS_LFNM_Alb83.lcp')
     assert ds is not None
     wkt = ds.GetProjection()
     assert wkt is not None, 'Got None from GetProjection()'
@@ -232,7 +235,7 @@ def test_lcp_3():
 
 def test_lcp_4():
 
-    ds = gdal.Open('data/test_USGS_LFNM_Alb83.lcp')
+    ds = gdal.Open('data/lcp/test_USGS_LFNM_Alb83.lcp')
     assert ds is not None
     fl = ds.GetFileList()
     assert len(fl) == 1, 'Invalid file list'
@@ -243,7 +246,7 @@ def test_lcp_4():
 
 def test_lcp_5():
 
-    ds = gdal.Open('data/test_FARSITE_UTM12.LCP')
+    ds = gdal.Open('data/lcp/test_FARSITE_UTM12.LCP')
     assert ds is not None
     wkt = ds.GetProjection()
     assert not (wkt is None or wkt == ''), 'Got invalid wkt from GetProjection()'
@@ -255,7 +258,7 @@ def test_lcp_5():
 def test_lcp_6():
 
     retval = 'success'
-    ds = gdal.Open('data/test_FARSITE_UTM12.LCP')
+    ds = gdal.Open('data/lcp/test_FARSITE_UTM12.LCP')
     assert ds is not None
     fl = ds.GetFileList()
     if len(fl) != 2:
@@ -263,7 +266,7 @@ def test_lcp_6():
         retval = 'fail'
     ds = None
     try:
-        os.remove('data/test_FARSITE_UTM12.LCP.aux.xml')
+        os.remove('data/lcp/test_FARSITE_UTM12.LCP.aux.xml')
     except OSError:
         pass
 
@@ -762,11 +765,6 @@ def test_lcp_20():
 
 
 def test_lcp_21():
-    try:
-        import random
-        import struct
-    except ImportError:
-        pytest.skip()
     mem_drv = gdal.GetDriverByName('MEM')
     assert mem_drv is not None
     drv = gdal.GetDriverByName('LCP')
@@ -803,12 +801,8 @@ def test_lcp_21():
 
 
 def test_lcp_22():
-    try:
-        import random
-        import struct
-        import numpy
-    except ImportError:
-        pytest.skip()
+    numpy = pytest.importorskip('numpy')
+
     mem_drv = gdal.GetDriverByName('MEM')
     assert mem_drv is not None
     drv = gdal.GetDriverByName('LCP')

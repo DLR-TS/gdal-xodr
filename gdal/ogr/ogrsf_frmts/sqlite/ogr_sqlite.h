@@ -42,29 +42,23 @@
 #include "ogrsf_frmts.h"
 #include "ogrsf_frmts.h"
 #include "rasterlite2_header.h"
-#include "sqlite3.h"
 
-#ifdef HAVE_SPATIALITE
-  #ifdef SPATIALITE_AMALGAMATION
-    /*
-    / using an AMALGAMATED version of SpatiaLite
-    / a private internal copy of SQLite is included:
-    / so we are required including the SpatiaLite's
-    / own header
-    /
-    / IMPORTANT NOTICE: using AMALAGATION is only
-    / useful on Windows (to skip DLL hell related oddities)
-    */
-    #include <spatialite/sqlite3.h>
-  #else
-    /*
-    / You MUST NOT use AMALGAMATION on Linux or any
-    / other "sane" operating system !!!!
-    */
-    #include "sqlite3.h"
-  #endif
+#ifdef SPATIALITE_AMALGAMATION
+/*
+/ using an AMALGAMATED version of SpatiaLite
+/ a private internal copy of SQLite is included:
+/ so we are required including the SpatiaLite's
+/ own header
+/
+/ IMPORTANT NOTICE: using AMALAGATION is only
+/ useful on Windows (to skip DLL hell related oddities)
+/
+/ You MUST NOT use AMALGAMATION on Linux or any
+/ other "sane" operating system !!!!
+*/
+#include <spatialite/sqlite3.h>
 #else
-#include "sqlite3.h"
+#include <sqlite3.h>
 #endif
 
 #ifndef DO_NOT_INCLUDE_SQLITE_CLASSES
@@ -220,7 +214,7 @@ class IOGRSQLiteGetSpatialWhere
                                           OGRGeometry* poFilterGeom) = 0;
 };
 
-class OGRSQLiteLayer : public OGRLayer, public IOGRSQLiteGetSpatialWhere
+class OGRSQLiteLayer CPL_NON_FINAL: public OGRLayer, public IOGRSQLiteGetSpatialWhere
 {
   private:
     static OGRErr       createFromSpatialiteInternal(const GByte *pabyData,
@@ -254,6 +248,7 @@ class OGRSQLiteLayer : public OGRLayer, public IOGRSQLiteGetSpatialWhere
 
     sqlite3_stmt        *hStmt;
     int                  bDoStep;
+    bool                 m_bEOF = false;
 
     OGRSQLiteDataSource *poDS;
 
@@ -345,7 +340,7 @@ class OGRSQLiteLayer : public OGRLayer, public IOGRSQLiteGetSpatialWhere
 /*                         OGRSQLiteTableLayer                          */
 /************************************************************************/
 
-class OGRSQLiteTableLayer : public OGRSQLiteLayer
+class OGRSQLiteTableLayer final: public OGRSQLiteLayer
 {
     int                 bLaunderColumnNames;
     int                 bSpatialite2D;
@@ -487,7 +482,7 @@ class OGRSQLiteTableLayer : public OGRSQLiteLayer
 /*                         OGRSQLiteViewLayer                           */
 /************************************************************************/
 
-class OGRSQLiteViewLayer : public OGRSQLiteLayer
+class OGRSQLiteViewLayer final: public OGRSQLiteLayer
 {
     CPLString           osWHERE;
     CPLString           osQuery;
@@ -615,9 +610,9 @@ class OGRSQLiteSelectLayerCommonBehaviour
 /*                         OGRSQLiteSelectLayer                         */
 /************************************************************************/
 
-class OGRSQLiteSelectLayer : public OGRSQLiteLayer, public IOGRSQLiteSelectLayer
+class OGRSQLiteSelectLayer CPL_NON_FINAL: public OGRSQLiteLayer, public IOGRSQLiteSelectLayer
 {
-    OGRSQLiteSelectLayerCommonBehaviour* poBehaviour;
+    OGRSQLiteSelectLayerCommonBehaviour* poBehavior;
 
     virtual OGRErr      ResetStatement() override;
 
@@ -693,14 +688,13 @@ class OGRSQLiteSingleFeatureLayer final : public OGRLayer
 /************************************************************************/
 
 /* Used by both OGRSQLiteDataSource and OGRGeoPackageDataSource */
-class OGRSQLiteBaseDataSource : public GDALPamDataset
+class OGRSQLiteBaseDataSource CPL_NON_FINAL: public GDALPamDataset
 {
   protected:
     char               *m_pszFilename;
     bool                m_bCallUndeclareFileNotToOpen = false;
 
     sqlite3             *hDB;
-    int                 bUpdate;
 
     sqlite3_vfs*        pMyVFS;
 
@@ -736,7 +730,7 @@ class OGRSQLiteBaseDataSource : public GDALPamDataset
                         virtual ~OGRSQLiteBaseDataSource();
 
     sqlite3            *GetDB() { return hDB; }
-    int                 GetUpdate() const { return bUpdate; }
+    inline bool         GetUpdate() const { return eAccess == GA_Update; }
 
     void                NotifyFileOpened (const char* pszFilename,
                                           VSILFILE* fp);
@@ -746,13 +740,15 @@ class OGRSQLiteBaseDataSource : public GDALPamDataset
 
     virtual std::pair<OGRLayer*, IOGRSQLiteGetSpatialWhere*> GetLayerWithGetSpatialWhereByName( const char* pszName ) = 0;
 
+    virtual OGRErr     AbortSQL() override;
+
     virtual OGRErr      StartTransaction(int bForce = FALSE) override;
     virtual OGRErr      CommitTransaction() override;
     virtual OGRErr      RollbackTransaction() override;
 
     virtual int         TestCapability( const char * ) override;
 
-    virtual void *GetInternalHandle( const char * ) override;
+    virtual void        *GetInternalHandle( const char * ) override;
 
     OGRErr              SoftStartTransaction();
     OGRErr              SoftCommitTransaction();
@@ -874,7 +870,7 @@ class OGRSQLiteDataSource final : public OGRSQLiteBaseDataSource
     int                 FetchSRSId( const OGRSpatialReference * poSRS );
     OGRSpatialReference*FetchSRS( int nSRID );
 
-    void                SetUpdate(int bUpdateIn) { bUpdate = bUpdateIn; }
+    void                DisableUpdate() { eAccess = GA_ReadOnly; }
 
     void                SetName(const char* pszNameIn);
 
@@ -895,6 +891,7 @@ class OGRSQLiteDataSource final : public OGRSQLiteBaseDataSource
     void                ReloadLayers();
 
 #ifdef HAVE_RASTERLITE2
+    void*               GetRL2Context() const { return m_hRL2Ctxt; }
     rl2CoveragePtr      GetRL2CoveragePtr() const { return m_pRL2Coverage; }
     GIntBig             GetSectionId() const { return m_nSectionId; }
     const double*       GetGeoTransform() const { return m_adfGeoTransform; }

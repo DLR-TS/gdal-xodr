@@ -33,6 +33,8 @@
 #include "ogr_spatialref.h"
 #include <set>
 #include <map>
+#include <utility>
+#include <vector>
 
 CPL_CVSID("$Id$")
 
@@ -514,20 +516,20 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
     if (STARTS_WITH_CI(poOpenInfo->pszFilename, "SENTINEL1_DS:"))
     {
       osMDFilename = poOpenInfo->pszFilename + strlen("SENTINEL1_DS:");
-      const char* pszSelection1 = strrchr(osMDFilename.c_str(), ':');
-      if (pszSelection1 == nullptr || pszSelection1 == osMDFilename.c_str() )
+      size_t nPosColon = osMDFilename.find(':');
+      if (nPosColon == std::string::npos || nPosColon == 0)
       {
           CPLError(CE_Failure, CPLE_AppDefined, "Invalid syntax for SENTINEL1_DS:");
           return nullptr;
       }
-      osMDFilename.resize( pszSelection1 - osMDFilename.c_str() );
-      osSelectedSubDS1 = pszSelection1 + strlen(":");
+      osSelectedSubDS1 = osMDFilename.substr(nPosColon+1);
+      osMDFilename.resize( nPosColon );
 
-      const char* pszSelection2 = strchr(osSelectedSubDS1.c_str(), '_');
-      if (pszSelection2 != nullptr && pszSelection2 != pszSelection1 )
+      size_t nPosUnderscore = osSelectedSubDS1.find('_');
+      if (nPosUnderscore != std::string::npos && nPosUnderscore != 0)
       {
-          osSelectedSubDS1.resize( pszSelection2 - osSelectedSubDS1.c_str() );
-          osSelectedSubDS2 = pszSelection2 + strlen("_");
+          osSelectedSubDS2 = osSelectedSubDS1.substr(nPosUnderscore+1);
+          osSelectedSubDS1.resize( nPosUnderscore );
       }
 
       //update directory check:
@@ -623,6 +625,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
     CPLXMLNode *psAnnotation = nullptr;
     //Map with all measures aggregated by swath
     std::map<CPLString, std::set<CPLString> > oMapSwaths2Pols;
+    std::vector<std::pair<CPLString, CPLString>> oWVImages;
 
     for( CPLXMLNode *psContentUnit = psContentUnits->psChild;
          psContentUnit != nullptr;
@@ -755,24 +758,44 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
                 psAnnotation, "=product.adsHeader.mode", "UNK" );
             CPLString osSwath = CPLGetXMLValue(
                 psAnnotation, "=product.adsHeader.swath", "UNK" );
+            CPLString osImageNumber = CPLGetXMLValue(
+                psAnnotation, "=product.adsHeader.imageNumber", "" );
 
-            oMapSwaths2Pols[osSwath].insert(osPolarisation);
-
-            if (osSelectedSubDS1.empty()) {
-              // If not subdataset was selected,
-              // open the first one we can find.
-              osSelectedSubDS1 = osSwath;
+            if( osMode == "WV" )
+            {
+                if( (!osSelectedSubDS1.empty() &&
+                     osSelectedSubDS1 != "WV") ||
+                    (!osSelectedSubDS2.empty() &&
+                     osSelectedSubDS2 != osImageNumber) )
+                {
+                    continue;
+                }
+                if( osSelectedSubDS1.empty() )
+                {
+                    oWVImages.push_back(std::pair<CPLString, CPLString>(osSwath, osImageNumber));
+                    continue;
+                }
             }
+            else
+            {
+                oMapSwaths2Pols[osSwath].insert(osPolarisation);
 
-            if (!EQUAL(osSelectedSubDS1.c_str(), osSwath.c_str())) {
-              //do not mix swath, otherwise it does not work for SLC products
-              continue;
-            }
+                if (osSelectedSubDS1.empty()) {
+                    // If not subdataset was selected,
+                    // open the first one we can find.
+                    osSelectedSubDS1 = osSwath;
+                }
 
-            if (!osSelectedSubDS2.empty()
-              && (osSelectedSubDS2.find(osPolarisation)== std::string::npos)) {
-              // Add only selected polarisations.
-              continue;
+                if (!EQUAL(osSelectedSubDS1.c_str(), osSwath.c_str())) {
+                    //do not mix swath, otherwise it does not work for SLC products
+                    continue;
+                }
+
+                if (!osSelectedSubDS2.empty()
+                    && (osSelectedSubDS2.find(osPolarisation)== std::string::npos)) {
+                    // Add only selected polarisations.
+                    continue;
+                }
             }
 
             poDS->SetMetadataItem("PRODUCT_TYPE", osProductType.c_str());
@@ -857,6 +880,11 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
             }
 
             CPLFree( pszFullname );
+
+            if( osMode == "WV" )
+            {
+                break;
+            }
         }
     }
 
@@ -901,8 +929,19 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
             iSubDS++;
         }
     }
+    for( const auto& pair: oWVImages )
+    {
+        SAFEDataset::AddSubDataset(poDS, iSubDS,
+            CPLSPrintf("SENTINEL1_DS:%s:WV_%s",
+                osPath.c_str(),
+                pair.second.c_str()),
+            CPLSPrintf("Image %s of %s swath",
+                pair.second.c_str(), pair.first.c_str())
+        );
+        iSubDS++;
+    }
 
-    if (poDS->GetRasterCount() == 0) {
+    if (poDS->GetRasterCount() == 0 && oWVImages.empty()) {
         CPLError( CE_Failure, CPLE_OpenFailed, "Measurement bands not found." );
         delete poDS;
         if( psAnnotation )
@@ -920,7 +959,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
     CPLXMLNode *psPlatformAttrs = SAFEDataset::GetMetaDataObject(
         psMetaDataObjects, "platform");
 
-    if (psPlatformAttrs != nullptr) {
+    if (poDS->GetRasterCount() != 0 && psPlatformAttrs != nullptr) {
         const char *pszItem = CPLGetXMLValue(
                 psPlatformAttrs,
                 "metadataWrap.xmlData.safe:platform"
@@ -954,7 +993,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
     CPLXMLNode *psAcquisitionAttrs = SAFEDataset::GetMetaDataObject(
         psMetaDataObjects, "acquisitionPeriod");
 
-    if (psAcquisitionAttrs != nullptr) {
+    if (poDS->GetRasterCount() != 0 && psAcquisitionAttrs != nullptr) {
             const char *pszItem = CPLGetXMLValue(
             psAcquisitionAttrs,
             "metadataWrap.xmlData.safe:acquisitionPeriod"
@@ -973,7 +1012,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
     CPLXMLNode *psProcessingAttrs = SAFEDataset::GetMetaDataObject(
         psMetaDataObjects, "processing");
 
-    if (psProcessingAttrs != nullptr) {
+    if (poDS->GetRasterCount() != 0 && psProcessingAttrs != nullptr) {
         const char *pszItem = CPLGetXMLValue(
             psProcessingAttrs,
             "metadataWrap.xmlData.safe:processing.safe:facility.name", "UNK" );
@@ -986,7 +1025,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
     CPLXMLNode *psOrbitAttrs = SAFEDataset::GetMetaDataObject(
         psMetaDataObjects, "measurementOrbitReference");
 
-    if (psOrbitAttrs != nullptr) {
+    if (poDS->GetRasterCount() != 0 && psOrbitAttrs != nullptr) {
         const char *pszItem = CPLGetXMLValue( psOrbitAttrs,
             "metadataWrap.xmlData.safe:orbitReference"
             ".safe:orbitNumber", "UNK" );
@@ -1004,7 +1043,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
         CPLGetXMLNode( psAnnotation,
                        "=product.imageAnnotation.processingInformation" );
 
-    if ( psProcessingInfo != nullptr ) {
+    if ( poDS->GetRasterCount() != 0 && psProcessingInfo != nullptr ) {
         OGRSpatialReference oLL, oPrj;
 
         const char *pszEllipsoidName = CPLGetXMLValue(
@@ -1046,7 +1085,7 @@ GDALDataset *SAFEDataset::Open( GDALOpenInfo * poOpenInfo )
         CPLGetXMLNode( psAnnotation,
                        "=product.geolocationGrid.geolocationGridPointList" );
 
-    if( psGeoGrid != nullptr ) {
+    if( poDS->GetRasterCount() != 0 && psGeoGrid != nullptr ) {
         /* count GCPs */
         poDS->nGCPCount = 0;
 
@@ -1219,7 +1258,7 @@ void GDALRegister_SAFE()
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Sentinel-1 SAR SAFE Product" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_safe.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/safe.html" );
 
     poDriver->pfnOpen = SAFEDataset::Open;
     poDriver->pfnIdentify = SAFEDataset::Identify;

@@ -38,6 +38,7 @@
 
 CPL_CVSID("$Id$")
 
+namespace {
 enum ePolarization {
     HH=0,
     HV,
@@ -52,6 +53,7 @@ enum eProductType {
     eGEC,
     eUnknown
 };
+} // namespace
 
 /************************************************************************/
 /* Helper Functions                                                     */
@@ -60,16 +62,16 @@ enum eProductType {
 /* GetFilePath: return a relative path to a file within an XML node.
  * Returns Null on failure
  */
-static const char *GetFilePath(CPLXMLNode *psXMLNode, const char **pszNodeType) {
+static CPLString GetFilePath(CPLXMLNode *psXMLNode, const char **pszNodeType) {
     const char *pszDirectory = CPLGetXMLValue( psXMLNode, "file.location.path", "" );
     const char *pszFilename = CPLGetXMLValue( psXMLNode, "file.location.filename", "" );
     *pszNodeType = CPLGetXMLValue (psXMLNode, "type", " " );
 
     if (pszDirectory == nullptr || pszFilename == nullptr) {
-        return nullptr;
+        return "";
     }
 
-    return CPLFormFilename( pszDirectory, pszFilename, "" );
+    return CPLString( pszDirectory ) + '/' + pszFilename;
 }
 
 /************************************************************************/
@@ -78,7 +80,7 @@ static const char *GetFilePath(CPLXMLNode *psXMLNode, const char **pszNodeType) 
 /* ==================================================================== */
 /************************************************************************/
 
-class TSXDataset : public GDALPamDataset {
+class TSXDataset final: public GDALPamDataset {
     int nGCPCount;
     GDAL_GCP *pasGCPList;
 
@@ -118,7 +120,7 @@ private:
 /* ==================================================================== */
 /************************************************************************/
 
-class TSXRasterBand : public GDALPamRasterBand {
+class TSXRasterBand final: public GDALPamRasterBand {
     GDALDataset *poBand;
     ePolarization ePol;
 public:
@@ -558,7 +560,7 @@ GDALDataset *TSXDataset::Open( GDALOpenInfo *poOpenInfo ) {
         const char *pszType = nullptr;
         const char *pszPath = CPLFormFilename(
                 CPLGetDirname( osFilename ),
-                GetFilePath(psComponent, &pszType),
+                GetFilePath(psComponent, &pszType).c_str(),
                 "" );
         const char *pszPolLayer = CPLGetXMLValue(psComponent, "polLayer", " ");
 
@@ -802,7 +804,7 @@ void GDALRegister_TSX()
     poDriver->SetDescription( "TSX" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "TerraSAR-X Product" );
-    // poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_tsx.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/tsx.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 
     poDriver->pfnOpen = TSXDataset::Open;

@@ -106,7 +106,7 @@ Working with a feature branch
    git push my_user_name my_new_feature_branch
    From GitHub UI, issue a pull request
 
-If the pull request discussion or Travis-CI/AppVeyor checks require
+If the pull request discussion or CI checks require
 changes, commit locally and push. To get a reasonable history, you may
 need to ``git rebase -i master``, in which case you will have to
 force-push your branch with
@@ -121,7 +121,7 @@ Backporting bugfixes from master to a stable branch
    With git log, identify the sha1sum of the commit you want to backport
    git checkout 2.2 (if you want to backport to 2.2)
    git pull origin 2.2
-   (git checkout -b branh_name: if you intend to submit the backport as a pull request)
+   (git checkout -b branch_name: if you intend to submit the backport as a pull request)
    git cherry-pick the_sha1_sum
    git push ...
 

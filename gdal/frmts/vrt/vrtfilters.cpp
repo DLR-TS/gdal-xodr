@@ -298,13 +298,15 @@ VRTFilteredSource::RasterIO( GDALDataType eBandDataType,
 /*      Load the data.                                                  */
 /* -------------------------------------------------------------------- */
     {
+        GDALRasterIOExtraArg sExtraArgs;
+        INIT_RASTERIO_EXTRA_ARG(sExtraArgs);
         const bool bIsComplex = CPL_TO_BOOL( GDALDataTypeIsComplex(eOperDataType) );
         const CPLErr eErr
             = VRTComplexSource::RasterIOInternal<float>(
                 nFileXOff, nFileYOff, nFileXSize, nFileYSize,
                 pabyWorkData + nLineOffset * nTopFill + nPixelOffset * nLeftFill,
                 nFileXSize, nFileYSize, eOperDataType,
-                nPixelOffset, nLineOffset, psExtraArg,
+                nPixelOffset, nLineOffset, &sExtraArgs,
                 bIsComplex ? GDT_CFloat32 : GDT_Float32 );
 
         if( eErr != CE_None )
@@ -494,7 +496,7 @@ CPLErr VRTKernelFilteredSource::FilterData( int nXSize, int nYSize,
 /* -------------------------------------------------------------------- */
 /*      Float32 case.                                                   */
 /* -------------------------------------------------------------------- */
-    if( eType == GDT_Float32 )
+    // if( eType == GDT_Float32 )
     {
         float *pafSrcData = reinterpret_cast<float *>( pabySrcData );
         float *pafDstData = reinterpret_cast<float *>( pabyDstData );

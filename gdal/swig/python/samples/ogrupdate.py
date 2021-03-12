@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ###############################################################################
 # $Id$
@@ -195,7 +195,7 @@ def ogrupdate_analyse_args(argv, progress=None, progress_arg=None):
         return 1
 
     if matchfieldname is None and dst_layer.TestCapability(ogr.OLCRandomRead) == 0 and not quiet:
-        print('Warning: target layer does not advertize fast random read capability. Update might be slow')
+        print('Warning: target layer does not advertise fast random read capability. Update might be slow')
 
     if papszSelFields is not None and compare_before_update:
         print('Warning: -select and -compare_before_update are not compatible. Ignoring -compare_before_update')
@@ -459,10 +459,11 @@ def ogrupdate_process(src_layer, dst_layer, matchfieldname=None, update_mode=DEF
 
     return ret
 
-###############################################################
-# Entry point
+
+def main(argv):
+    argv = ogr.GeneralCmdLineProcessor(argv)
+    return ogrupdate_analyse_args(argv[1:])
 
 
 if __name__ == '__main__':
-    argv = ogr.GeneralCmdLineProcessor(sys.argv)
-    sys.exit(ogrupdate_analyse_args(argv[1:]))
+    sys.exit(main(sys.argv))

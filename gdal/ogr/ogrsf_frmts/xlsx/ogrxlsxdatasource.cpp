@@ -528,15 +528,19 @@ static void SetField(OGRFeature* poFeature,
         strcmp(pszCellType, "datetime_ms") == 0)
     {
         struct tm sTm;
-        double dfNumberOfDaysSince1900 = CPLAtof(pszValue);
-        GIntBig nUnixTime = (GIntBig)((dfNumberOfDaysSince1900 -
-                                       NUMBER_OF_DAYS_BETWEEN_1900_AND_1970 )*
-                                                NUMBER_OF_SECONDS_PER_DAY);
+        const double dfNumberOfDaysSince1900 = CPLAtof(pszValue);
+        if( !(std::fabs(dfNumberOfDaysSince1900) < 365.0 * 10000) )
+            return;
+        double dfNumberOfSecsSince1900 = dfNumberOfDaysSince1900 * NUMBER_OF_SECONDS_PER_DAY;
+        if( std::fabs(dfNumberOfSecsSince1900 - std::round(dfNumberOfSecsSince1900)) < 1e-3 )
+            dfNumberOfSecsSince1900 = std::round(dfNumberOfSecsSince1900);
+        const GIntBig nUnixTime = static_cast<GIntBig>(dfNumberOfSecsSince1900) -
+                static_cast<GIntBig>(NUMBER_OF_DAYS_BETWEEN_1900_AND_1970) * NUMBER_OF_SECONDS_PER_DAY;
         CPLUnixTimeToYMDHMS(nUnixTime, &sTm);
 
         if (eType == OFTTime || eType == OFTDate || eType == OFTDateTime)
         {
-            double fFracSec = fmod(fmod(dfNumberOfDaysSince1900,1) * 3600 * 24, 1);
+            double fFracSec = fmod(dfNumberOfSecsSince1900, 1);
             poFeature->SetField(i, sTm.tm_year + 1900, sTm.tm_mon + 1, sTm.tm_mday,
                                 sTm.tm_hour, sTm.tm_min,
                                 static_cast<float>(sTm.tm_sec + fFracSec), 0 );
@@ -553,7 +557,7 @@ static void SetField(OGRFeature* poFeature,
         }
         else /* if (strcmp(pszCellType, "datetime") == 0) */
         {
-            double fFracSec = fmod(fmod(dfNumberOfDaysSince1900,1) * 3600 * 24, 1);
+            double fFracSec = fmod(dfNumberOfSecsSince1900, 1);
             poFeature->SetField(i,
                                 sTm.tm_year + 1900, sTm.tm_mon + 1, sTm.tm_mday,
                                 sTm.tm_hour, sTm.tm_min,
@@ -732,26 +736,6 @@ void OGRXLSXDataSource::endElementTable(CPL_UNUSED const char *pszNameIn)
 
         if (poCurLayer)
         {
-            /* Ensure that any fields still with an unknown type are set to String.
-             * This will only be the case if the field has no values */
-       
-            for( size_t i = 0; i < apoFirstLineValues.size(); i++ )
-            {
-                OGRFieldType eFieldType =
-                    poCurLayer->GetLayerDefn()->GetFieldDefn(static_cast<int>(i))->GetType();
-
-                if (eFieldType == OGRUnknownType)
-                {
-                    OGRFieldDefn oNewFieldDefn(
-                        poCurLayer->GetLayerDefn()->GetFieldDefn(static_cast<int>(i)));
-
-                    oNewFieldDefn.SetType(OFTString);
-                    poCurLayer->AlterFieldDefn(static_cast<int>(i), &oNewFieldDefn,
-                                                ALTER_TYPE_FLAG);
-
-                }
-            }
-
             ((OGRMemLayer*)poCurLayer)->SetUpdatable(CPL_TO_BOOL(bUpdatable));
             ((OGRMemLayer*)poCurLayer)->SetAdvertizeUTF8(true);
             ((OGRXLSXLayer*)poCurLayer)->SetUpdated(false);
@@ -875,16 +859,23 @@ void OGRXLSXDataSource::endElementRow(CPL_UNUSED const char *pszNameIn)
                     const char* pszFieldName = apoFirstLineValues[i].c_str();
                     if (pszFieldName[0] == '\0')
                         pszFieldName = CPLSPrintf("Field%d", (int)i + 1);
-                    OGRFieldType eType = OGRUnknownType;
+                    bool bUnknownType = true;
+                    OGRFieldType eType = OFTString;
                     OGRFieldSubType eSubType = OFSTNone;
                     if (i < apoCurLineValues.size() && !apoCurLineValues[i].empty())
                     {
                         eType = GetOGRFieldType(apoCurLineValues[i].c_str(),
                                                 apoCurLineTypes[i].c_str(),
                                                 eSubType);
+                        bUnknownType = false;
                     }
                     OGRFieldDefn oFieldDefn(pszFieldName, eType);
                     oFieldDefn.SetSubType(eSubType);
+                    if( bUnknownType)
+                    {
+                        poCurLayer->oSetFieldsOfUnknownType.insert(
+                            poCurLayer->GetLayerDefn()->GetFieldCount());
+                    }
                     if( poCurLayer->CreateField(&oFieldDefn) != OGRERR_NONE )
                     {
                         return;
@@ -973,17 +964,13 @@ void OGRXLSXDataSource::endElementRow(CPL_UNUSED const char *pszNameIn)
                         OGRFieldDefn* poFieldDefn =
                             poCurLayer->GetLayerDefn()->GetFieldDefn(static_cast<int>(i));
                         const OGRFieldType eFieldType = poFieldDefn->GetType();
-                        if (eFieldType == OGRUnknownType)
+                        auto oIter = poCurLayer->oSetFieldsOfUnknownType.find(static_cast<int>(i));
+                        if (oIter != poCurLayer->oSetFieldsOfUnknownType.end() )
                         {
-                            /* If the field type is unknown we have not encountered a value in the field yet so
-                             * set the field type to this elements type */
-                            OGRFieldDefn oNewFieldDefn(poFieldDefn);
+                            poCurLayer->oSetFieldsOfUnknownType.erase(oIter);
 
-                            oNewFieldDefn.SetType(eValType);
-                            oNewFieldDefn.SetSubType(eValSubType);
-                            poCurLayer->AlterFieldDefn(static_cast<int>(i), &oNewFieldDefn,
-                                                       ALTER_TYPE_FLAG);
-
+                            poFieldDefn->SetType(eValType);
+                            poFieldDefn->SetSubType(eValSubType);
                         }
                         else if (eFieldType == OFTDateTime &&
                             (eValType == OFTDate || eValType == OFTTime) )
@@ -1437,29 +1424,31 @@ void OGRXLSXDataSource::startElementWBCbk(const char *pszNameIn,
         const char* pszSheetName = GetAttributeValue(ppszAttr, "name", nullptr);
         const char* pszId = GetAttributeValue(ppszAttr, "r:id", nullptr);
         if (pszSheetName && pszId &&
-            oMapRelsIdToTarget.find(pszId) != oMapRelsIdToTarget.end() )
+            oMapRelsIdToTarget.find(pszId) != oMapRelsIdToTarget.end() &&
+            m_oSetSheetId.find(pszId) == m_oSetSheetId.end() )
         {
-            papoLayers = (OGRLayer**)CPLRealloc(papoLayers, (nLayers + 1) * sizeof(OGRLayer*));
+            const auto& osTarget(oMapRelsIdToTarget[pszId]);
+            m_oSetSheetId.insert(pszId);
             CPLString osFilename;
-            if( oMapRelsIdToTarget[pszId].empty() )
+            if( osTarget.empty() )
                 return;
-            if( oMapRelsIdToTarget[pszId][0] == '/' )
+            if( osTarget[0] == '/' )
             {
                 int nIdx = 1;
-                while( oMapRelsIdToTarget[pszId][nIdx] == '/' )
+                while( osTarget[nIdx] == '/' )
                     nIdx ++;
-                if( oMapRelsIdToTarget[pszId][nIdx] == '\0' )
+                if( osTarget[nIdx] == '\0' )
                     return;
                 // Is it an "absolute" path ?
-                osFilename = osPrefixedFilename +
-                             oMapRelsIdToTarget[pszId];
+                osFilename = osPrefixedFilename + osTarget;
             }
             else
             {
                 // or relative to the /xl subdirectory
                 osFilename = osPrefixedFilename +
-                             CPLString("/xl/") + oMapRelsIdToTarget[pszId];
+                             CPLString("/xl/") + osTarget;
             }
+            papoLayers = (OGRLayer**)CPLRealloc(papoLayers, (nLayers + 1) * sizeof(OGRLayer*));
             papoLayers[nLayers++] = new OGRXLSXLayer(this, osFilename,
                 pszSheetName);
         }
@@ -2307,6 +2296,8 @@ void OGRXLSXDataSource::FlushCache()
             return;
         }
     }
+
+    CPLConfigOptionSetter oZip64Disable("CPL_CREATE_ZIP64", "NO", false);
 
     /* Maintain new ZIP files opened */
     CPLString osTmpFilename(CPLSPrintf("/vsizip/%s", pszName));

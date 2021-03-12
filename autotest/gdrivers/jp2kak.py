@@ -36,19 +36,28 @@ from osgeo import gdal
 import gdaltest
 import pytest
 
+pytestmark = pytest.mark.require_driver('JP2KAK')
+
+###############################################################################
+@pytest.fixture(autouse=True, scope='module')
+def startup_and_cleanup():
+
+    gdaltest.jp2kak_drv = gdal.GetDriverByName('JP2KAK')
+    assert gdaltest.jp2kak_drv is not None
+
+    gdaltest.deregister_all_jpeg2000_drivers_but('JP2KAK')
+
+    yield
+
+    gdaltest.reregister_all_jpeg2000_drivers()
+
 ###############################################################################
 # Read test of simple byte reference data.
 
 
 def test_jp2kak_1():
 
-    gdaltest.jp2kak_drv = gdal.GetDriverByName('JP2KAK')
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    gdaltest.deregister_all_jpeg2000_drivers_but('JP2KAK')
-
-    tst = gdaltest.GDALTest('JP2KAK', 'byte.jp2', 1, 50054)
+    tst = gdaltest.GDALTest('JP2KAK', 'jpeg2000/byte.jp2', 1, 50054)
     return tst.testOpen()
 
 ###############################################################################
@@ -57,10 +66,7 @@ def test_jp2kak_1():
 
 def test_jp2kak_2():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    tst = gdaltest.GDALTest('JP2KAK', 'int16.jp2', 1, 4587)
+    tst = gdaltest.GDALTest('JP2KAK', 'jpeg2000/int16.jp2', 1, 4587)
     return tst.testOpen()
 
 ###############################################################################
@@ -69,10 +75,7 @@ def test_jp2kak_2():
 
 def test_jp2kak_3():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    tst = gdaltest.GDALTest('JP2KAK', 'byte.jp2', 1, 50054,
+    tst = gdaltest.GDALTest('JP2KAK', 'jpeg2000/byte.jp2', 1, 50054,
                             options=['QUALITY=100'])
 
     return tst.testCreateCopy()
@@ -82,9 +85,6 @@ def test_jp2kak_3():
 
 
 def test_jp2kak_4():
-
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
 
     tst = gdaltest.GDALTest('JP2KAK', 'rgbsmall.tif', 0, 0,
                             options=['GMLJP2=OFF'])
@@ -96,9 +96,6 @@ def test_jp2kak_4():
 
 
 def test_jp2kak_5():
-
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
 
     tst = gdaltest.GDALTest('JP2KAK', 'rgbsmall.tif', 0, 0,
                             options=['GEOJP2=OFF'])
@@ -112,10 +109,7 @@ def test_jp2kak_5():
 
 def test_jp2kak_8():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    tst = gdaltest.GDALTest('JP2KAK', 'byte.jp2', 1, 50054,
+    tst = gdaltest.GDALTest('JP2KAK', 'jpeg2000/byte.jp2', 1, 50054,
                             options=['QUALITY=100'])
 
     return tst.testCreateCopy(vsimem=1,
@@ -128,10 +122,7 @@ def test_jp2kak_8():
 
 def test_jp2kak_9():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    tst = gdaltest.GDALTest('JP2KAK', 'rgbwcmyk01_YeGeo_kakadu.jp2', 2, 32141)
+    tst = gdaltest.GDALTest('JP2KAK', 'jpeg2000/rgbwcmyk01_YeGeo_kakadu.jp2', 2, 32141)
     return tst.testOpen()
 
 ###############################################################################
@@ -142,10 +133,7 @@ def test_jp2kak_9():
 
 def test_jp2kak_10():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    ds = gdal.Open('data/rgbwcmyk01_YeGeo_kakadu.jp2')
+    ds = gdal.Open('data/jpeg2000/rgbwcmyk01_YeGeo_kakadu.jp2')
     data = ds.ReadRaster(0, 0, 800, 100, band_list=[2, 3]).decode('latin1')
     ds = None
 
@@ -165,10 +153,7 @@ def test_jp2kak_10():
 
 def test_jp2kak_11():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    ds = gdal.Open('data/gtsmall_11_int16.jp2')
+    ds = gdal.Open('data/jpeg2000/gtsmall_11_int16.jp2')
     cs = ds.GetRasterBand(1).Checksum()
     assert cs in (63475, 63472, 63452, 63471)
 
@@ -179,12 +164,9 @@ def test_jp2kak_11():
 
 def test_jp2kak_12():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    ds = gdal.Open('data/gtsmall_10_uint16.jp2')
+    ds = gdal.Open('data/jpeg2000/gtsmall_10_uint16.jp2')
     cs = ds.GetRasterBand(1).Checksum()
-    assert cs == 63360 or cs == 63357 or cs == 63358
+    assert cs in (63360, 63653, 63357, 63358)
 
 
 ###############################################################################
@@ -193,10 +175,7 @@ def test_jp2kak_12():
 
 def test_jp2kak_13():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    src_ds = gdal.Open('data/utm.pix')
+    src_ds = gdal.Open('data/pcidsk/utm.pix')
     jp2_ds = gdaltest.jp2kak_drv.CreateCopy('tmp/jp2kak_13.jp2', src_ds)
     src_ds = None
 
@@ -212,7 +191,7 @@ def test_jp2kak_13():
     # levels the overview is actually generated with no discard levels
     # and in the debug output we see 500x7 -> 500x7 -> 250x4.
     checksum = ov_band.Checksum()
-    assert checksum in (11776, 11736, 11801), 'did not get expected overview checksum'
+    assert checksum in (11767, 11776, 11736, 11801), 'did not get expected overview checksum'
 
 ###############################################################################
 # Test external overviews.
@@ -220,9 +199,6 @@ def test_jp2kak_13():
 
 
 def test_jp2kak_14():
-
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
 
     jp2_ds = gdal.Open('tmp/jp2kak_13.jp2')
 
@@ -237,14 +213,14 @@ def test_jp2kak_14():
         'did not get expected overview size.'
 
     checksum = ov_band.Checksum()
-    assert checksum in (12288, 12272, 12224), 'did not get expected overview checksum'
+    assert checksum in (12224, 12279, 12272, 12288), 'did not get expected overview checksum'
 
     ov_band = jp2_band.GetOverview(1)
     assert ov_band.XSize == 125 and ov_band.YSize == 2, \
         'did not get expected overview size. (2)'
 
     checksum = ov_band.Checksum()
-    assert checksum in (2957, 2980, 2990), 'did not get expected overview checksum (2)'
+    assert checksum in (2918, 2957, 2980, 2990), 'did not get expected overview checksum (2)'
 
     jp2_ds = None
     gdaltest.jp2kak_drv.Delete('tmp/jp2kak_13.jp2')
@@ -256,10 +232,7 @@ def test_jp2kak_14():
 
 def test_jp2kak_15():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    jp2_ds = gdal.Open('data/small_200ppcm.jp2')
+    jp2_ds = gdal.Open('data/jpeg2000/small_200ppcm.jp2')
 
     md = jp2_ds.GetMetadata()
 
@@ -276,10 +249,7 @@ def test_jp2kak_15():
 
 def test_jp2kak_16():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    jp2_ds = gdal.Open('data/small_200ppcm.jp2')
+    jp2_ds = gdal.Open('data/jpeg2000/small_200ppcm.jp2')
     out_ds = gdaltest.jp2kak_drv.CreateCopy('tmp/jp2kak_16.jp2', jp2_ds)
     del out_ds
     jp2_ds = None
@@ -306,23 +276,20 @@ def test_jp2kak_16():
 
 def test_jp2kak_17():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
     gdal.SetConfigOption('GDAL_JP2K_ALT_OFFSETVECTOR_ORDER', 'YES')
 
-    ds = gdal.Open('data/gmljp2_dtedsm_epsg_4326_axes_alt_offsetVector.jp2')
+    ds = gdal.Open('data/jpeg2000/gmljp2_dtedsm_epsg_4326_axes_alt_offsetVector.jp2')
 
     gt = ds.GetGeoTransform()
     gte = (42.999583333333369, 0.008271349862259, 0,
            34.000416666666631, 0, -0.008271349862259)
 
-    if (abs(gt[0] - gte[0]) > 0.0000001 or
-        abs(gt[3] - gte[3]) > 0.000001 or
-        abs(gt[1] - gte[1]) > 0.000000000005 or
-        abs(gt[2] - gte[2]) > 0.000000000005 or
-        abs(gt[4] - gte[4]) > 0.000000000005 or
-            abs(gt[5] - gte[5]) > 0.000000000005):
+    if (gt[0] != pytest.approx(gte[0], abs=0.0000001) or
+        gt[3] != pytest.approx(gte[3], abs=0.000001) or
+        gt[1] != pytest.approx(gte[1], abs=0.000000000005) or
+        gt[2] != pytest.approx(gte[2], abs=0.000000000005) or
+        gt[4] != pytest.approx(gte[4], abs=0.000000000005) or
+            gt[5] != pytest.approx(gte[5], abs=0.000000000005)):
         print('got: ', gt)
         gdal.SetConfigOption('GDAL_JP2K_ALT_OFFSETVECTOR_ORDER', 'NO')
         pytest.fail('did not get expected geotransform')
@@ -337,9 +304,6 @@ def test_jp2kak_17():
 
 def test_jp2kak_18():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
     tst = gdaltest.GDALTest('JP2KAK', 'int16.tif', 1, 4672,
                             options=['QUALITY=100'])
 
@@ -350,9 +314,6 @@ def test_jp2kak_18():
 
 
 def test_jp2kak_19():
-
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
 
     tst = gdaltest.GDALTest('JP2KAK', '../gcore/data/uint16.tif', 1, 4672,
                             options=['QUALITY=100'], filename_absolute=1)
@@ -365,10 +326,7 @@ def test_jp2kak_19():
 
 def test_jp2kak_20():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
-    ds = gdal.Open('data/stefan_full_rgba_alpha_1bit.jp2')
+    ds = gdal.Open('data/jpeg2000/stefan_full_rgba_alpha_1bit.jp2')
     fourth_band = ds.GetRasterBand(4)
     assert fourth_band.GetMetadataItem('NBITS', 'IMAGE_STRUCTURE') is None
     got_cs = fourth_band.Checksum()
@@ -399,7 +357,7 @@ def test_jp2kak_20():
     #    gdaltest.post_reason('fail')
     #    return 'fail'
 
-    ds = gdal.OpenEx('data/stefan_full_rgba_alpha_1bit.jp2',
+    ds = gdal.OpenEx('data/jpeg2000/stefan_full_rgba_alpha_1bit.jp2',
                      open_options=['1BIT_ALPHA_PROMOTION=NO'])
     fourth_band = ds.GetRasterBand(4)
     assert fourth_band.GetMetadataItem('NBITS', 'IMAGE_STRUCTURE') == '1'
@@ -409,9 +367,6 @@ def test_jp2kak_20():
 
 
 def test_jp2kak_21():
-
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
 
     tmp_ds = gdaltest.jp2kak_drv.CreateCopy(
         '/vsimem/jp2kak_21.jp2',
@@ -442,9 +397,6 @@ def test_jp2kak_21():
 
 def test_jp2kak_22():
 
-    if gdaltest.jp2kak_drv is None:
-        pytest.skip()
-
     src_ds = gdal.Open('../gcore/data/stefan_full_rgba.tif')
     gdaltest.jp2kak_drv.CreateCopy('/vsimem/jp2kak_22.jp2', src_ds, options=['QUALITY=100'])
     ds = gdal.Open('/vsimem/jp2kak_22.jp2')
@@ -458,13 +410,25 @@ def test_jp2kak_22():
 
     gdal.Unlink('/vsimem/jp2kak_22.jp2')
 
+###############################################################################
+# Test accessing overview levels when the dimensions of the full resolution
+# image are not a multiple of 2^numresolutions
+
+
+def test_jp2kak_odd_dimensions():
+
+    ds = gdal.Open('data/jpeg2000/513x513.jp2')
+    cs = ds.GetRasterBand(1).GetOverview(0).Checksum()
+    ds = None
+
+    assert cs == 29642
 
 ###############################################################################
-# Cleanup.
-
-def test_jp2kak_cleanup():
-
-    gdaltest.reregister_all_jpeg2000_drivers()
+# Test reading an image whose origin is not (0,0)
 
 
+def test_jp2kak_image_origin_not_zero():
 
+    ds = gdal.Open('data/jpeg2000/byte_image_origin_not_zero.jp2')
+    assert ds.GetRasterBand(1).Checksum() == 4672
+    assert ds.GetRasterBand(1).ReadRaster(0,0,20,20,10,10) is not None

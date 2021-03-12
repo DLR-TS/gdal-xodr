@@ -50,7 +50,7 @@ operating systems (excluding Windows target compilers where long is
 continuing to use these interfaces on 64bit operating systems.
 
 A layer that can discover in a relatively cheap way that it holds
-features with 64bit FID should advertize the OLMD_FID64 metadata item to
+features with 64bit FID should advertise the OLMD_FID64 metadata item to
 "YES", so ogr2ogr can pass the FID64 creation option to drivers that
 support it.
 
@@ -181,7 +181,7 @@ A new option is added to ogr2ogr : -mapFieldType. Can be used like this
 -mapFieldType Integer64=Integer,Date=String to mean that Integer64 field
 in the source layer should be created as Integer, and Date as String.
 ogr2ogr will also warn if attempting to create a field in an output
-driver that advertizes a GDAL_DMD_CREATIONFIELDDATATYPES metadata item
+driver that advertises a GDAL_DMD_CREATIONFIELDDATATYPES metadata item
 that does not mention the required field type. For Integer64 fields, if
 it is not advertized in GDAL_DMD_CREATIONFIELDDATATYPES metadata item or
 GDAL_DMD_CREATIONFIELDDATATYPES is missing, conversion to Real is done
@@ -215,7 +215,7 @@ list of changes is :
    specifying integer that require 10 or 11 characters. the field is
    dynamically extended like managed since a few versions). OFTInteger64
    fields are created by default with a width of 18 digits, so to be
-   unambiguously read as OFTInteger64, and extented to 19 or 20 if
+   unambiguously read as OFTInteger64, and extended to 19 or 20 if
    needed. Integer fields of width between 10 and 18 will be read as
    OFTInteger64. Above they will be treated as OFTReal. In previous GDAL
    versions, Integer fields were created with a default with of 10, and
@@ -279,7 +279,7 @@ list of changes is :
 -  WFS: Integer64, Integer64List and 64 bit FID supported in read/write.
    GetFeatureCount() modified to return 64 bit values.
 -  CartoDB: Integer64 supported on creation. On read returned as Real
-   (CartoDB only advertizes a 'Number' type). GetFeatureCount() modified
+   (CartoDB only advertises a 'Number' type). GetFeatureCount() modified
    to return 64 bit values.
 -  XLSX: Integer64 supported in read/write.
 -  ODS: Integer64 supported in read/write.
@@ -321,7 +321,7 @@ Driver Code Changes
    sprintfs like statements to format them for output have been updated
    to use CPL_FRMT_GIB to format the FID. Failure to make these changes
    may result in code crashing. Due to the use of GCC annotation to
-   advertize printf()-like formatting syntax in CPL functions, we are
+   advertise printf()-like formatting syntax in CPL functions, we are
    reasonably confident to have done the required changes in in-tree
    drivers (except in some proprietary drivers, like SDE, IDB, INGRES,
    ArcObjects, where this couldn't be compiled-checked). The same holds

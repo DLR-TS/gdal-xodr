@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,7 +53,7 @@
 #include "ogrsqlite3ext.h"
 #include "ogrsqlitesqlfunctions.h"
 #include "ogrsqliteutility.h"
-#include "swq.h"
+#include "ogr_swq.h"
 #include "sqlite3.h"
 
 /************************************************************************/
@@ -608,6 +609,7 @@ int OGR2SQLITE_ConnectCreate(sqlite3* hDB, void *pAux,
 
     OGRFeatureDefn* poFDefn = poLayer->GetLayerDefn();
     bool bHasOGR_STYLEField = false;
+    std::set<std::string> oSetNamesUC;
     for( int i = 0; i < poFDefn->GetFieldCount(); i++ )
     {
         if( bAddComma )
@@ -618,8 +620,21 @@ int OGR2SQLITE_ConnectCreate(sqlite3* hDB, void *pAux,
         if( EQUAL(poFieldDefn->GetNameRef(), "OGR_STYLE") )
             bHasOGR_STYLEField = true;
 
+        CPLString osFieldName(poFieldDefn->GetNameRef());
+        int nCounter = 2;
+        while( oSetNamesUC.find(CPLString(osFieldName).toupper()) != oSetNamesUC.end() )
+        {
+            do
+            {
+                osFieldName.Printf("%s%d", poFieldDefn->GetNameRef(), nCounter);
+                nCounter++;
+            }
+            while( poFDefn->GetFieldIndex(osFieldName) >= 0 );
+        }
+        oSetNamesUC.insert(CPLString(osFieldName).toupper());
+
         osSQL += "\"";
-        osSQL += SQLEscapeName(poFieldDefn->GetNameRef());
+        osSQL += SQLEscapeName(osFieldName);
         osSQL += "\"";
         osSQL += " ";
         osSQL += OGRSQLiteFieldDefnToSQliteFieldDefn(poFieldDefn,
@@ -724,10 +739,10 @@ static bool OGR2SQLITE_IsHandledOp(int op)
 #ifdef SQLITE_INDEX_CONSTRAINT_NE
             /* SQLite >= 3.21 */
         case SQLITE_INDEX_CONSTRAINT_NE: return true;
-        case SQLITE_INDEX_CONSTRAINT_ISNOT: return true;
+        case SQLITE_INDEX_CONSTRAINT_ISNOT: return false; // OGR SQL only handles IS [NOT] NULL
         case SQLITE_INDEX_CONSTRAINT_ISNOTNULL: return true;
         case SQLITE_INDEX_CONSTRAINT_ISNULL: return true;;
-        case SQLITE_INDEX_CONSTRAINT_IS: return true;
+        case SQLITE_INDEX_CONSTRAINT_IS: return false; // OGR SQL only handles IS [NOT] NULL
 #endif
         default: break;
     }
@@ -1069,10 +1084,10 @@ int OGR2SQLITE_Filter(sqlite3_vtab_cursor* pCursor,
 #ifdef SQLITE_INDEX_CONSTRAINT_NE
             /* SQLite >= 3.21 */
             case SQLITE_INDEX_CONSTRAINT_NE: osAttributeFilter += " <> "; break;
-            case SQLITE_INDEX_CONSTRAINT_ISNOT: osAttributeFilter += " IS NOT "; break;
+            //case SQLITE_INDEX_CONSTRAINT_ISNOT: osAttributeFilter += " IS NOT "; break;
             case SQLITE_INDEX_CONSTRAINT_ISNOTNULL: osAttributeFilter += " IS NOT NULL"; bExpectRightOperator = false; break;
             case SQLITE_INDEX_CONSTRAINT_ISNULL: osAttributeFilter += " IS NULL"; bExpectRightOperator = false; break;
-            case SQLITE_INDEX_CONSTRAINT_IS: osAttributeFilter += " IS "; break;
+            //case SQLITE_INDEX_CONSTRAINT_IS: osAttributeFilter += " IS "; break;
 #endif
             default:
             {
@@ -1129,12 +1144,10 @@ int OGR2SQLITE_Filter(sqlite3_vtab_cursor* pCursor,
     }
 
     if( pMyCursor->poLayer->TestCapability(OLCFastFeatureCount) )
-    {
         pMyCursor->nFeatureCount = pMyCursor->poLayer->GetFeatureCount();
-        pMyCursor->poLayer->ResetReading();
-    }
     else
         pMyCursor->nFeatureCount = -1;
+    pMyCursor->poLayer->ResetReading();
 
     if( pMyCursor->nFeatureCount < 0 )
     {
@@ -2590,7 +2603,7 @@ int OGR2SQLITE_static_register (sqlite3 * hDB, char **pzErrMsg, void * _pApi)
 {
     const sqlite3_api_routines * pApi = (const sqlite3_api_routines * )_pApi;
 #ifndef WIN32
-    if( pApi->create_module == nullptr )
+    if( ( pApi == nullptr ) || ( pApi->create_module == nullptr ) )
     {
         pApi = &OGRSQLITE_static_routines;
     }

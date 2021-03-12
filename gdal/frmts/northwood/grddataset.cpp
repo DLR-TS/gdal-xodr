@@ -88,7 +88,7 @@ public:
     static GDALDataset *Open(GDALOpenInfo *);
     static int Identify(GDALOpenInfo *);
     static GDALDataset *Create(const char * pszFilename, int nXSize, int nYSize,
-            int nBands, GDALDataType eType, char ** papszParmList);
+            int nBands, GDALDataType eType, char ** papszParamList);
     static GDALDataset *CreateCopy(const char * pszFilename,
             GDALDataset * poSrcDS, int bStrict, char **papszOptions,
             GDALProgressFunc pfnProgress, void * pProgressData);
@@ -231,7 +231,7 @@ CPLErr NWT_GRDRasterBand::IWriteBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
         return CE_Failure;
 
     // Ensure the blocksize is not beyond the system limits and
-    // initialise the size of the record
+    // initialize the size of the record
     if (nBlockXSize > INT_MAX / 2) {
         return CE_Failure;
     }
@@ -245,7 +245,7 @@ CPLErr NWT_GRDRasterBand::IWriteBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
     // Cast pImage to float
     float *pfImage = reinterpret_cast<float *>(pImage);
 
-    // Initialise output array
+    // Initialize output array
     GByte *pabyRecord = reinterpret_cast<GByte *>(VSI_MALLOC_VERBOSE(
                     nRecordSize));
     if (pabyRecord == nullptr)
@@ -576,7 +576,7 @@ GDALDataset *NWT_GRDDataset::Open(GDALOpenInfo * poOpenInfo) {
 
     poDS->pGrd->fp = poDS->fp;
 
-    if (!nwt_ParseHeader(poDS->pGrd, reinterpret_cast<char *>(poDS->abyHeader))
+    if (!nwt_ParseHeader(poDS->pGrd, poDS->abyHeader)
             || !GDALCheckDatasetDimensions(poDS->pGrd->nXSide,
                     poDS->pGrd->nYSide)) {
         delete poDS;
@@ -816,7 +816,7 @@ int NWT_GRDDataset::WriteTab() {
 /*                                Create()                              */
 /************************************************************************/
 GDALDataset *NWT_GRDDataset::Create(const char * pszFilename, int nXSize,
-        int nYSize, int nBands, GDALDataType eType, char ** papszParmList) {
+        int nYSize, int nBands, GDALDataType eType, char ** papszParamList) {
     if (nBands != 1) {
         CPLError(CE_Failure, CPLE_FileIO,
                 "Only single band datasets are supported for writing");
@@ -831,7 +831,7 @@ GDALDataset *NWT_GRDDataset::Create(const char * pszFilename, int nXSize,
     poDS->eAccess = GA_Update;
     poDS->pGrd = reinterpret_cast<NWT_GRID *>(calloc(1, sizeof(NWT_GRID)));
 
-    // We currently only support GRD grid types (could potentially support GRC in the papszParmList).
+    // We currently only support GRD grid types (could potentially support GRC in the papszParamList).
     // Also only support GDT_Float32 as the data type. GRD format allows for data to be stretched to
     // 32bit or 16bit integers on disk, so it would be feasible to support other data types
     poDS->pGrd->cFormat = 0x00;
@@ -854,16 +854,16 @@ GDALDataset *NWT_GRDDataset::Create(const char * pszFilename, int nXSize,
 
     float fZMin, fZMax;
     // See if the user passed the min/max values
-    if (CSLFetchNameValue(papszParmList, "ZMIN") == nullptr) {
+    if (CSLFetchNameValue(papszParamList, "ZMIN") == nullptr) {
         fZMin = (float) -2E+37;
     } else {
-        fZMin = static_cast<float>(CPLAtof(CSLFetchNameValue(papszParmList, "ZMIN")));
+        fZMin = static_cast<float>(CPLAtof(CSLFetchNameValue(papszParamList, "ZMIN")));
     }
 
-    if (CSLFetchNameValue(papszParmList, "ZMAX") == nullptr) {
+    if (CSLFetchNameValue(papszParamList, "ZMAX") == nullptr) {
         fZMax = (float) 2E+38;
     } else {
-        fZMax = static_cast<float>(CPLAtof(CSLFetchNameValue(papszParmList, "ZMAX")));
+        fZMax = static_cast<float>(CPLAtof(CSLFetchNameValue(papszParamList, "ZMAX")));
     }
 
     poDS->pGrd->fZMin = fZMin;
@@ -906,32 +906,32 @@ GDALDataset *NWT_GRDDataset::Create(const char * pszFilename, int nXSize,
     poDS->pGrd->fHillShadeAngle = 0;
 
     // Set the raster style settings. These aren't used anywhere other than to write the TAB file
-    if (CSLFetchNameValue(papszParmList, "BRIGHTNESS") == nullptr) {
+    if (CSLFetchNameValue(papszParamList, "BRIGHTNESS") == nullptr) {
         poDS->pGrd->style.iBrightness = 50;
     } else {
         poDS->pGrd->style.iBrightness = atoi(
-                CSLFetchNameValue(papszParmList, "BRIGHTNESS"));
+                CSLFetchNameValue(papszParamList, "BRIGHTNESS"));
     }
 
-    if (CSLFetchNameValue(papszParmList, "CONTRAST") == nullptr) {
+    if (CSLFetchNameValue(papszParamList, "CONTRAST") == nullptr) {
         poDS->pGrd->style.iContrast = 50;
     } else {
         poDS->pGrd->style.iContrast = atoi(
-                CSLFetchNameValue(papszParmList, "CONTRAST"));
+                CSLFetchNameValue(papszParamList, "CONTRAST"));
     }
 
-    if (CSLFetchNameValue(papszParmList, "TRANSCOLOR") == nullptr) {
+    if (CSLFetchNameValue(papszParamList, "TRANSCOLOR") == nullptr) {
         poDS->pGrd->style.iTransColour = 0;
     } else {
         poDS->pGrd->style.iTransColour = atoi(
-                CSLFetchNameValue(papszParmList, "TRANSCOLOR"));
+                CSLFetchNameValue(papszParamList, "TRANSCOLOR"));
     }
 
-    if (CSLFetchNameValue(papszParmList, "TRANSLUCENCY") == nullptr) {
+    if (CSLFetchNameValue(papszParamList, "TRANSLUCENCY") == nullptr) {
         poDS->pGrd->style.iTranslucency = 0;
     } else {
         poDS->pGrd->style.iTranslucency = atoi(
-                CSLFetchNameValue(papszParmList, "TRANSLUCENCY"));
+                CSLFetchNameValue(papszParamList, "TRANSLUCENCY"));
     }
 
     poDS->pGrd->style.bGreyscale = FALSE;
@@ -1036,7 +1036,7 @@ void GDALRegister_NWT_GRD() {
     poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     poDriver->SetMetadataItem(GDAL_DMD_LONGNAME,
             "Northwood Numeric Grid Format .grd/.tab");
-    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "frmt_nwtgrd.html");
+    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "drivers/raster/nwtgrd.html");
     poDriver->SetMetadataItem(GDAL_DMD_EXTENSION, "grd");
     poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
     poDriver->SetMetadataItem(GDAL_DMD_CREATIONDATATYPES, "Float32");

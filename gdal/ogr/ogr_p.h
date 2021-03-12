@@ -87,12 +87,18 @@ const char CPL_DLL * OGRWktReadPointsM( const char * pszInput,
                                         int * pnReadPoints );
 
 void CPL_DLL OGRMakeWktCoordinate( char *, double, double, double, int );
+std::string CPL_DLL OGRMakeWktCoordinate(double, double, double, int, OGRWktOptions opts );
 void CPL_DLL OGRMakeWktCoordinateM( char *, double, double, double, double, OGRBoolean, OGRBoolean );
+std::string CPL_DLL OGRMakeWktCoordinateM( double, double, double, double, OGRBoolean, OGRBoolean, OGRWktOptions opts );
 
 #endif
 
 void OGRFormatDouble( char *pszBuffer, int nBufferLen, double dfVal,
                       char chDecimalSep, int nPrecision = 15, char chConversionSpecifier = 'f' );
+std::string OGRFormatDouble(double val, const OGRWktOptions& opts);
+
+int OGRFormatFloat(char *pszBuffer, int nBufferLen, float fVal,
+                   int nPrecision, char chConversionSpecifier);
 
 /* -------------------------------------------------------------------- */
 /*      Date-time parsing and processing functions                      */
@@ -107,6 +113,7 @@ int CPL_DLL OGRParseRFC822DateTime( const char* pszRFC822DateTime,
                                     OGRField* psField );
 char CPL_DLL * OGRGetRFC822DateTime(const OGRField* psField);
 char CPL_DLL * OGRGetXMLDateTime(const OGRField* psField);
+char CPL_DLL * OGRGetXMLDateTime(const OGRField* psField, bool bAlwaysMillisecond);
 char CPL_DLL * OGRGetXML_UTF8_EscapedString(const char* pszString);
 
 int OGRCompareDate(const OGRField *psFirstTuple,

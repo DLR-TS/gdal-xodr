@@ -25,18 +25,22 @@ jobs:
       options: --privileged
     steps:
       - script: |
+          set -e
           python3 --version
           sphinx-build --version
         displayName: 'Sphinx version'
       - script: |
+          set -e
           cd gdal/doc
           if find . -name '*.rst' | xargs grep -P '\t'; then echo 'Tabs are bad, please use four spaces in .rst files.'; false; fi
         displayName: 'Lint .rst files'
       - script: |
+          set -e
           cd gdal/doc
-          make html
+          make html O="-D enable_redirects=1 -t website"
         displayName: 'Make html'
       - script: |
+          set -e
           cd gdal/doc
           make latexpdf
         displayName: 'Make pdf'
@@ -46,19 +50,21 @@ jobs:
         displayName: 'Get the deploy key'
         condition: notin(variables['Build.Reason'], 'PullRequest')
       - script: |
+          set -e
           mkdir ~/.ssh && mv $DOWNLOADSECUREFILE_SECUREFILEPATH ~/.ssh/id_rsa
           chmod 700 ~/.ssh && chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -t rsa github.com >> ~/.ssh/known_hosts
         displayName: 'Deploy the key'
         condition: notin(variables['Build.Reason'], 'PullRequest')
       - script: |
+          set -e
           mv gdal/doc/build/html gdal-docs
           rm gdal-docs/gdal.pdf
           cp gdal/doc/build/latex/gdal.pdf gdal-docs
           cp gdal/data/gdalicon.png gdal-docs # For GDAL autotest...
           cd gdal-docs
-          wget https://download.osgeo.org/gdal/for_doc/javadoc.zip -O /tmp/javadoc.zip
-          wget https://download.osgeo.org/gdal/for_doc/python-doc.tar.gz -O /tmp/python-doc.tar.gz
+          wget http://download.osgeo.org/gdal/for_doc/javadoc.zip -O /tmp/javadoc.zip
+          wget http://download.osgeo.org/gdal/for_doc/python-doc.tar.gz -O /tmp/python-doc.tar.gz
           unzip -q /tmp/javadoc.zip
           tar xzf /tmp/python-doc.tar.gz
           git init

@@ -31,7 +31,7 @@
 #ifndef DOXYGEN_SKIP
 
 #include "cpl_port.h"
-#include "swq.h"
+#include "ogr_swq.h"
 
 #include <cctype>
 #include <cstdio>
@@ -110,7 +110,7 @@ swq_expr_node::swq_expr_node( OGRGeometry *poGeomIn ):
 
 swq_expr_node::swq_expr_node( swq_op eOp ):
     eNodeType(SNT_OPERATION),
-    nOperation(static_cast<int>(eOp))
+    nOperation(eOp)
 {
 }
 
@@ -239,7 +239,7 @@ swq_expr_node::Check( swq_field_list *poFieldList,
     const swq_operation *poOp =
         (nOperation == SWQ_CUSTOM_FUNC && poCustomFuncRegistrar != nullptr ) ?
             poCustomFuncRegistrar->GetOperator(string_value) :
-            swq_op_registrar::GetOperator(static_cast<swq_op>(nOperation));
+            swq_op_registrar::GetOperator(nOperation);
 
     if( poOp == nullptr )
     {
@@ -323,7 +323,7 @@ void swq_expr_node::Dump( FILE * fp, int depth )
     CPLAssert( eNodeType == SNT_OPERATION );
 
     const swq_operation *op_def =
-        swq_op_registrar::GetOperator( static_cast<swq_op>(nOperation) );
+        swq_op_registrar::GetOperator( nOperation );
     if( op_def )
         fprintf( fp, "%s%s\n", spaces, op_def->pszName );
     else
@@ -523,7 +523,7 @@ CPLString swq_expr_node::UnparseOperationFromUnparsedSubExpr(char** apszSubExpr)
 /*      Put things together in a fashion depending on the operator.     */
 /* -------------------------------------------------------------------- */
     const swq_operation *poOp =
-        swq_op_registrar::GetOperator( static_cast<swq_op>(nOperation) );
+        swq_op_registrar::GetOperator( nOperation );
 
     if( poOp == nullptr && nOperation != SWQ_CUSTOM_FUNC )
     {
@@ -543,6 +543,7 @@ CPLString swq_expr_node::UnparseOperationFromUnparsedSubExpr(char** apszSubExpr)
       case SWQ_GE:
       case SWQ_LE:
       case SWQ_LIKE:
+      case SWQ_ILIKE:
       case SWQ_ADD:
       case SWQ_SUBTRACT:
       case SWQ_MULTIPLY:
@@ -574,7 +575,7 @@ CPLString swq_expr_node::UnparseOperationFromUnparsedSubExpr(char** apszSubExpr)
             osExpr += apszSubExpr[1];
             osExpr += ")";
         }
-        if( nOperation == SWQ_LIKE && nSubExprCount == 3 )
+        if( (nOperation == SWQ_LIKE || nOperation == SWQ_ILIKE) && nSubExprCount == 3 )
             osExpr += CPLSPrintf( " ESCAPE (%s)", apszSubExpr[2] );
         break;
 
@@ -773,7 +774,7 @@ swq_expr_node *swq_expr_node::Evaluate( swq_field_fetcher pfnFetcher,
     if( !bError )
     {
         const swq_operation *poOp =
-            swq_op_registrar::GetOperator( static_cast<swq_op>(nOperation) );
+            swq_op_registrar::GetOperator( nOperation );
         if( poOp == nullptr )
         {
             if( nOperation == SWQ_CUSTOM_FUNC )

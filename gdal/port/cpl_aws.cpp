@@ -42,13 +42,20 @@ CPL_CVSID("$Id$")
 
 // #define DEBUG_VERBOSE 1
 
+#ifdef WIN32
+#if defined(_MSC_VER)
+bool CPLFetchWindowsProductUUID(CPLString &osStr); // defined in cpl_aws_win32.cpp
+#endif
+const char* CPLGetWineVersion(); // defined in cpl_vsil_win32.cpp
+#endif
+
 #ifdef HAVE_CURL
-static CPLMutex *hMutex = nullptr;
-static CPLString osIAMRole;
-static CPLString osGlobalAccessKeyId;
-static CPLString osGlobalSecretAccessKey;
-static CPLString osGlobalSessionToken;
-static GIntBig nGlobalExpiration = 0;
+static CPLMutex *ghMutex = nullptr;
+static CPLString gosIAMRole;
+static CPLString gosGlobalAccessKeyId;
+static CPLString gosGlobalSecretAccessKey;
+static CPLString gosGlobalSessionToken;
+static GIntBig gnGlobalExpiration = 0;
 
 /************************************************************************/
 /*                         CPLGetLowerCaseHex()                         */
@@ -487,7 +494,8 @@ CPLString IVSIS3LikeHandleHelper::BuildCanonicalizedHeaders(
     const struct curl_slist* psIter = psExistingHeaders;
     for(; psIter != nullptr; psIter = psIter->next)
     {
-        if( STARTS_WITH_CI(psIter->data, pszHeaderPrefix) )
+        if( STARTS_WITH_CI(psIter->data, pszHeaderPrefix) ||
+            STARTS_WITH_CI(psIter->data, "Content-MD5") )
         {
             const char* pszColumn = strstr(psIter->data, ":");
             if( pszColumn )
@@ -601,21 +609,52 @@ static bool Iso8601ToUnixTime(const char* pszDT, GIntBig* pnUnixTime)
 
 static bool IsMachinePotentiallyEC2Instance()
 {
+#if defined(__linux) || defined(WIN32)
+    const auto IsMachinePotentiallyEC2InstanceFromLinuxHost = []()
+    {
+        // On the newer Nitro Hypervisor (C5, M5, H1, T3), use 
+        // /sys/devices/virtual/dmi/id/sys_vendor = 'Amazon EC2' instead.
+
+        // On older Xen hypervisor EC2 instances, a /sys/hypervisor/uuid file will
+        // exist with a string beginning with 'ec2'.
+
+        // If the files exist but don't contain the correct content, then we're not EC2 and
+        // do not attempt any network access
+
+        // Check for Xen Hypervisor instances
+        // This file doesn't exist on Nitro instances
+        VSILFILE* fp = VSIFOpenL("/sys/hypervisor/uuid", "rb");
+        if( fp != nullptr )
+        {
+            char uuid[36+1] = { 0 };
+            VSIFReadL( uuid, 1, sizeof(uuid)-1, fp );
+            VSIFCloseL(fp);
+            return EQUALN( uuid, "ec2", 3 );
+        }
+
+        // Check for Nitro Hypervisor instances
+        // This file may exist on Xen instances with a value of 'Xen'
+        // (but that doesn't mean we're on EC2)
+        fp = VSIFOpenL("/sys/devices/virtual/dmi/id/sys_vendor", "rb");
+        if( fp != nullptr )
+        {
+            char buf[10+1] = { 0 };
+            VSIFReadL( buf, 1, sizeof(buf)-1, fp );
+            VSIFCloseL(fp);
+            return EQUALN( buf, "Amazon EC2", 10 );
+        }
+
+        // Fallback: Check via the network
+        return true;
+    };
+#endif
+
 #ifdef __linux
     // Optimization on Linux to avoid the network request
     // See http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/identify_ec2_instances.html
     // Skip if either:
     // - CPL_AWS_AUTODETECT_EC2=NO
     // - CPL_AWS_CHECK_HYPERVISOR_UUID=NO (deprecated)
-
-    // On the newer Nitro Hypervisor (C5, M5, H1, T3), use 
-    // /sys/devices/virtual/dmi/id/sys_vendor = 'Amazon EC2' instead.
-
-    // On older Xen hypervisor EC2 instances, a /sys/hypervisor/uuid file will
-    // exist with a string beginning with 'ec2'.
-
-    // If the files exist but don't contain the correct content, then we're not EC2 and
-    // do not attempt any network access
 
     if( ! CPLTestBool(CPLGetConfigOption("CPL_AWS_AUTODETECT_EC2", "YES")) )
     {
@@ -634,35 +673,43 @@ static bool IsMachinePotentiallyEC2Instance()
         }
     }
 
-    // Check for Xen Hypervisor instances
-    // This file doesn't exist on Nitro instances
-    VSILFILE* fp = VSIFOpenL("/sys/hypervisor/uuid", "rb");
-    if( fp != nullptr )
+    return IsMachinePotentiallyEC2InstanceFromLinuxHost();
+
+#elif defined(WIN32)
+    if( ! CPLTestBool(CPLGetConfigOption("CPL_AWS_AUTODETECT_EC2", "YES")) )
     {
-        char uuid[36+1] = { 0 };
-        VSIFReadL( uuid, 1, sizeof(uuid)-1, fp );
-        VSIFCloseL(fp);
-        return EQUALN( uuid, "ec2", 3 );
+        return true;
     }
 
-    // Check for Nitro Hypervisor instances
-    // This file may exist on Xen instances with a value of 'Xen'
-    // (but that doesn't mean we're on EC2)
-    fp = VSIFOpenL("/sys/devices/virtual/dmi/id/sys_vendor", "rb");
-    if( fp != nullptr )
+    // Regular UUID is not valid for WINE, fetch from sysfs instead.
+    if( CPLGetWineVersion() != nullptr )
     {
-        char buf[10+1] = { 0 };
-        VSIFReadL( buf, 1, sizeof(buf)-1, fp );
-        VSIFCloseL(fp);
-        return EQUALN( buf, "Amazon EC2", 10 );
+        return IsMachinePotentiallyEC2InstanceFromLinuxHost();
+    }
+    else
+    {
+#if defined(_MSC_VER)
+        CPLString osMachineUUID;
+        if( CPLFetchWindowsProductUUID(osMachineUUID) )
+        {
+            if( osMachineUUID.length() >= 3 && EQUALN(osMachineUUID.c_str(), "EC2", 3) )
+            {
+                return true;
+            }
+            else if( osMachineUUID.length() >= 8 && osMachineUUID[4] == '2' &&
+                     osMachineUUID[6] == 'E' && osMachineUUID[7] == 'C' )
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+#endif
     }
 
     // Fallback: Check via the network
-    return true;
-#elif defined(WIN32)
-    // We might add later a way of detecting if we run on EC2 using WMI
-    // See http://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/identify_ec2_instances.html
-    // For now, unconditionally try
     return true;
 #else
     // At time of writing EC2 instances can be only Linux or Windows
@@ -678,64 +725,113 @@ bool VSIS3HandleHelper::GetConfigurationFromEC2(CPLString& osSecretAccessKey,
                                                 CPLString& osAccessKeyId,
                                                 CPLString& osSessionToken)
 {
-    CPLMutexHolder oHolder( &hMutex );
+    CPLMutexHolder oHolder( &ghMutex );
     time_t nCurTime;
     time(&nCurTime);
     // Try to reuse credentials if they are still valid, but
     // keep one minute of margin...
-    if( !osGlobalAccessKeyId.empty() && nCurTime < nGlobalExpiration - 60 )
+    if( !gosGlobalAccessKeyId.empty() && nCurTime < gnGlobalExpiration - 60 )
     {
-        osAccessKeyId = osGlobalAccessKeyId;
-        osSecretAccessKey = osGlobalSecretAccessKey;
-        osSessionToken = osGlobalSessionToken;
+        osAccessKeyId = gosGlobalAccessKeyId;
+        osSecretAccessKey = gosGlobalSecretAccessKey;
+        osSessionToken = gosGlobalSessionToken;
         return true;
     }
 
     CPLString osURLRefreshCredentials;
-    CPLString osCPL_AWS_EC2_CREDENTIALS_URL(
-        CPLGetConfigOption("CPL_AWS_EC2_CREDENTIALS_URL", ""));
+    const CPLString osEC2DefaultURL("http://169.254.169.254");
+    // coverity[tainted_data]
+    const CPLString osEC2RootURL(
+        CPLGetConfigOption("CPL_AWS_EC2_API_ROOT_URL", osEC2DefaultURL));
+    // coverity[tainted_data]
     const CPLString osECSRelativeURI(
         CPLGetConfigOption("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", ""));
-    if( osCPL_AWS_EC2_CREDENTIALS_URL.empty() && !osECSRelativeURI.empty() )
+    CPLString osToken;
+    if( osEC2RootURL == osEC2DefaultURL && !osECSRelativeURI.empty() )
     {
         // See https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html
         osURLRefreshCredentials = "http://169.254.170.2" + osECSRelativeURI;
     }
     else
     {
-        const CPLString osDefaultURL(
-            "http://169.254.169.254/latest/meta-data/iam/security-credentials/");
-        const CPLString osEC2CredentialsURL =
-            osCPL_AWS_EC2_CREDENTIALS_URL.empty() ? osDefaultURL : osCPL_AWS_EC2_CREDENTIALS_URL;
-        if( osIAMRole.empty() && !osEC2CredentialsURL.empty() )
+        if( !IsMachinePotentiallyEC2Instance() )
+            return false;
+
+        // Use IMDSv2 protocol:
+        // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html
+
+        // Retrieve IMDSv2 token
         {
-            // If we don't know yet the IAM role, fetch it
-            if( IsMachinePotentiallyEC2Instance() )
+            const CPLString osEC2_IMDSv2_api_token_URL =
+                osEC2RootURL + "/latest/api/token";
+            CPLStringList aosOptions;
+            aosOptions.SetNameValue("TIMEOUT", "1");
+            aosOptions.SetNameValue("CUSTOMREQUEST", "PUT");
+            aosOptions.SetNameValue("HEADERS",
+                                    "X-aws-ec2-metadata-token-ttl-seconds: 10");
+            CPLPushErrorHandler(CPLQuietErrorHandler);
+            CPLHTTPResult* psResult =
+                        CPLHTTPFetch( osEC2_IMDSv2_api_token_URL, aosOptions.List() );
+            CPLPopErrorHandler();
+            if( psResult )
             {
-                char** papszOptions = CSLSetNameValue(nullptr, "TIMEOUT", "1");
-                CPLPushErrorHandler(CPLQuietErrorHandler);
-                CPLHTTPResult* psResult =
-                            CPLHTTPFetch( osEC2CredentialsURL, papszOptions );
-                CPLPopErrorHandler();
-                CSLDestroy(papszOptions);
-                if( psResult )
+                if( psResult->nStatus == 0 && psResult->pabyData != nullptr )
                 {
-                    if( psResult->nStatus == 0 && psResult->pabyData != nullptr )
-                    {
-                        osIAMRole = reinterpret_cast<char*>(psResult->pabyData);
-                    }
-                    CPLHTTPDestroyResult(psResult);
+                    osToken = reinterpret_cast<char*>(psResult->pabyData);
                 }
+                else
+                {
+                    // Failure: either we are not running on EC2 (or something emulating it)
+                    // or this doesn't implement yet IDMSv2
+                    // Go on trying IDMSv1
+                }
+                CPLHTTPDestroyResult(psResult);
             }
         }
-        if( osIAMRole.empty() )
-            return false;
-        osURLRefreshCredentials = osEC2CredentialsURL + osIAMRole;
+
+        // If we don't know yet the IAM role, fetch it
+        const CPLString osEC2CredentialsURL =
+            osEC2RootURL + "/latest/meta-data/iam/security-credentials/";
+        if( gosIAMRole.empty() )
+        {
+            CPLStringList aosOptions;
+            aosOptions.SetNameValue("TIMEOUT", "1");
+            if( !osToken.empty() )
+            {
+                aosOptions.SetNameValue("HEADERS",
+                                ("X-aws-ec2-metadata-token: " + osToken).c_str());
+            }
+            CPLPushErrorHandler(CPLQuietErrorHandler);
+            CPLHTTPResult* psResult =
+                        CPLHTTPFetch( osEC2CredentialsURL, aosOptions.List() );
+            CPLPopErrorHandler();
+            if( psResult )
+            {
+                if( psResult->nStatus == 0 && psResult->pabyData != nullptr )
+                {
+                    gosIAMRole = reinterpret_cast<char*>(psResult->pabyData);
+                }
+                CPLHTTPDestroyResult(psResult);
+            }
+            if( gosIAMRole.empty() )
+            {
+                // We didn't get the IAM role. We are definitely not running
+                // on EC2 or an emulation of it.
+                return false;
+            }
+        }
+        osURLRefreshCredentials = osEC2CredentialsURL + gosIAMRole;
     }
 
     // Now fetch the refreshed credentials
     CPLStringList oResponse;
-    CPLHTTPResult* psResult = CPLHTTPFetch(osURLRefreshCredentials.c_str(), nullptr );
+    CPLStringList aosOptions;
+    if( !osToken.empty() )
+    {
+        aosOptions.SetNameValue("HEADERS",
+                            ("X-aws-ec2-metadata-token: " + osToken).c_str());
+    }
+    CPLHTTPResult* psResult = CPLHTTPFetch(osURLRefreshCredentials.c_str(), aosOptions.List() );
     if( psResult )
     {
         if( psResult->nStatus == 0 && psResult->pabyData != nullptr )
@@ -757,10 +853,10 @@ bool VSIS3HandleHelper::GetConfigurationFromEC2(CPLString& osSecretAccessKey,
         !osSecretAccessKey.empty() &&
         Iso8601ToUnixTime(osExpiration, &nExpirationUnix) )
     {
-        osGlobalAccessKeyId = osAccessKeyId;
-        osGlobalSecretAccessKey = osSecretAccessKey;
-        osGlobalSessionToken = osSessionToken;
-        nGlobalExpiration = nExpirationUnix;
+        gosGlobalAccessKeyId = osAccessKeyId;
+        gosGlobalSecretAccessKey = osSecretAccessKey;
+        gosGlobalSessionToken = osSessionToken;
+        gnGlobalExpiration = nExpirationUnix;
         CPLDebug("AWS", "Storing AIM credentials until %s",
                 osExpiration.c_str());
     }
@@ -810,7 +906,11 @@ bool VSIS3HandleHelper::GetConfigurationFromAWSConfigFiles(
                                                 CPLString& osCredentials)
 {
     // See http://docs.aws.amazon.com/cli/latest/userguide/cli-config-files.html
-    const char* pszProfile = CPLGetConfigOption("AWS_DEFAULT_PROFILE", "");
+    // If AWS_DEFAULT_PROFILE is set (obsolete, no longer documented), use it in priority
+    // Otherwise use AWS_PROFILE
+    // Otherwise fallback to "default"
+    const char* pszProfile = CPLGetConfigOption("AWS_DEFAULT_PROFILE",
+        CPLGetConfigOption("AWS_PROFILE", ""));
     const CPLString osProfile(pszProfile[0] != '\0' ? pszProfile : "default");
 
 #ifdef WIN32
@@ -887,7 +987,7 @@ bool VSIS3HandleHelper::GetConfigurationFromAWSConfigFiles(
     {
         osConfig = osDotAws;
         osConfig += SEP_STRING;
-        osConfig += "credentials";
+        osConfig += "config";
     }
     fp = VSIFOpenL( osConfig, "rb" );
     if( fp != nullptr )
@@ -1039,9 +1139,9 @@ bool VSIS3HandleHelper::GetConfiguration(CSLConstList papszOptions,
 
 void VSIS3HandleHelper::CleanMutex()
 {
-    if( hMutex != nullptr )
-        CPLDestroyMutex( hMutex );
-    hMutex = nullptr;
+    if( ghMutex != nullptr )
+        CPLDestroyMutex( ghMutex );
+    ghMutex = nullptr;
 }
 
 /************************************************************************/
@@ -1050,13 +1150,13 @@ void VSIS3HandleHelper::CleanMutex()
 
 void VSIS3HandleHelper::ClearCache()
 {
-    CPLMutexHolder oHolder( &hMutex );
+    CPLMutexHolder oHolder( &ghMutex );
 
-    osIAMRole.clear();
-    osGlobalAccessKeyId.clear();
-    osGlobalSecretAccessKey.clear();
-    osGlobalSessionToken.clear();
-    nGlobalExpiration = 0;
+    gosIAMRole.clear();
+    gosGlobalAccessKeyId.clear();
+    gosGlobalSecretAccessKey.clear();
+    gosGlobalSessionToken.clear();
+    gnGlobalExpiration = 0;
 }
 
 /************************************************************************/
@@ -1164,6 +1264,19 @@ void IVSIS3LikeHandleHelper::AddQueryParameter( const CPLString& osKey,
 }
 
 /************************************************************************/
+/*                           GetURLNoKVP()                              */
+/************************************************************************/
+
+CPLString IVSIS3LikeHandleHelper::GetURLNoKVP() const
+{
+    CPLString osURL(GetURL());
+    const auto nPos = osURL.find('?');
+    if( nPos != std::string::npos )
+        osURL.resize(nPos);
+    return osURL;
+}
+
+/************************************************************************/
 /*                           GetCurlHeaders()                           */
 /************************************************************************/
 
@@ -1255,7 +1368,8 @@ bool VSIS3HandleHelper::CanRestartOnError( const char* pszErrorMsg,
     if( pbUpdateMap != nullptr )
         *pbUpdateMap = true;
 
-    if( !STARTS_WITH(pszErrorMsg, "<?xml") )
+    if( !STARTS_WITH(pszErrorMsg, "<?xml") &&
+        !STARTS_WITH(pszErrorMsg, "<Error>") )
     {
         if( bSetError )
         {
@@ -1472,7 +1586,7 @@ CPLString VSIS3HandleHelper::GetSignedURL(CSLConstList papszOptions)
         m_osRequestPayer,
         "s3",
         osVerb,
-        nullptr, /* exhisting headers */
+        nullptr, /* existing headers */
         osHost,
         m_bUseVirtualHosting
         ? CPLAWSURLEncode("/" + m_osObjectKey, false).c_str() :
@@ -1484,6 +1598,58 @@ CPLString VSIS3HandleHelper::GetSignedURL(CSLConstList papszOptions)
 
     AddQueryParameter("X-Amz-Signature", osSignature);
     return m_osURL;
+}
+
+/************************************************************************/
+/*                        UpdateMapFromHandle()                         */
+/************************************************************************/
+
+std::mutex VSIS3UpdateParams::gsMutex{};
+std::map< CPLString, VSIS3UpdateParams > VSIS3UpdateParams::goMapBucketsToS3Params{};
+
+void VSIS3UpdateParams::UpdateMapFromHandle( IVSIS3LikeHandleHelper* poHandleHelper )
+{
+    std::lock_guard<std::mutex> guard(gsMutex);
+
+    VSIS3HandleHelper * poS3HandleHelper =
+        dynamic_cast<VSIS3HandleHelper *>(poHandleHelper);
+    CPLAssert( poS3HandleHelper );
+    if( !poS3HandleHelper )
+        return;
+    goMapBucketsToS3Params[ poS3HandleHelper->GetBucket() ] =
+        VSIS3UpdateParams ( poS3HandleHelper );
+}
+
+/************************************************************************/
+/*                         UpdateHandleFromMap()                        */
+/************************************************************************/
+
+void VSIS3UpdateParams::UpdateHandleFromMap( IVSIS3LikeHandleHelper* poHandleHelper )
+{
+    std::lock_guard<std::mutex> guard(gsMutex);
+
+    VSIS3HandleHelper * poS3HandleHelper =
+        dynamic_cast<VSIS3HandleHelper *>(poHandleHelper);
+    CPLAssert( poS3HandleHelper );
+    if( !poS3HandleHelper )
+        return;
+    std::map< CPLString, VSIS3UpdateParams>::iterator oIter =
+        goMapBucketsToS3Params.find(poS3HandleHelper->GetBucket());
+    if( oIter != goMapBucketsToS3Params.end() )
+    {
+        oIter->second.UpdateHandlerHelper(poS3HandleHelper);
+    }
+}
+
+/************************************************************************/
+/*                            ClearCache()                              */
+/************************************************************************/
+
+void VSIS3UpdateParams::ClearCache()
+{
+    std::lock_guard<std::mutex> guard(gsMutex);
+
+    goMapBucketsToS3Params.clear();
 }
 
 #endif

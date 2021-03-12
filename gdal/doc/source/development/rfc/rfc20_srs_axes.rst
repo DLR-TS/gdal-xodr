@@ -134,7 +134,7 @@ standard.
 
        OGRErr      importFromEPSGA( int );
 
-This works like importFromEPSG() but will assign the ESPG defined AXIS
+This works like importFromEPSG() but will assign the EPSG defined AXIS
 definition.
 
 Note that OGRSpatialReference::StripNodes( "AXIS" ); can be used to
@@ -179,7 +179,7 @@ OGRCoordinateTransformation
 
 If AXIS values are set on source and/or destination coordinate system,
 the OGRCoordinateTransformation code will take care of converting into
-normal easting/northing before calling PROJ.4.
+normal easting/northing before calling PROJ.
 
 The CPL config option "GDAL_IGNORE_AXIS_ORIENTATION" may also be set to
 "TRUE" to disable OGRCoordinateTransformation's checking, and

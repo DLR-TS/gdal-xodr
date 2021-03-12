@@ -494,6 +494,7 @@ static bool RequiresUnixPathSeparator(const char* pszPath)
             STARTS_WITH(pszPath, "/vsigs_streaming/") ||
             STARTS_WITH(pszPath, "/vsiaz/") ||
             STARTS_WITH(pszPath, "/vsiaz_streaming/") ||
+            STARTS_WITH(pszPath, "/vsiadls/") ||
             STARTS_WITH(pszPath, "/vsioss/") ||
             STARTS_WITH(pszPath, "/vsioss_streaming/") ||
             STARTS_WITH(pszPath, "/vsiswift/") ||
@@ -818,7 +819,9 @@ int CPLIsFilenameRelative( const char *pszFilename )
 {
     if( (pszFilename[0] != '\0'
          && (STARTS_WITH(pszFilename+1, ":\\")
-             || STARTS_WITH(pszFilename+1, ":/")))
+             || STARTS_WITH(pszFilename+1, ":/")
+             || strstr(pszFilename+1,"://") // http://, ftp:// etc....
+            ))
         || STARTS_WITH(pszFilename, "\\\\?\\")  // Windows extended Length Path.
         || pszFilename[0] == '\\'
         || pszFilename[0] == '/' )
@@ -1181,4 +1184,37 @@ const char *CPLGetHomeDir()
 #else
     return CPLGetConfigOption("HOME", nullptr);
 #endif
+}
+
+
+
+/************************************************************************/
+/*                        CPLLaunderForFilename()                       */
+/************************************************************************/
+
+/**
+ * Launder a string to be compatible of a filename.
+ *
+ * @param pszName The input string to launder.
+ * @param pszOutputPath The directory where the file would be created.
+ *                      Unused for now. May be NULL.
+ * @return the laundered name.
+ *
+ * @since GDAL 3.1
+ */
+
+const char* CPLLaunderForFilename(const char* pszName,
+                                  CPL_UNUSED const char* pszOutputPath )
+{
+    std::string osRet(pszName);
+    for( char& ch: osRet )
+    {
+        // https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file
+        if( ch == '<' || ch == '>' || ch == ':' || ch == '"' ||
+            ch == '/' || ch == '\\' || ch== '?' || ch == '*' )
+        {
+            ch = '_';
+        }
+    }
+    return CPLSPrintf("%s", osRet.c_str());
 }

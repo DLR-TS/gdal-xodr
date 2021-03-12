@@ -43,14 +43,14 @@ has a name, a multidimensional array, references a number of GDALDimension, and
 has a list of GDALAttribute.
 
 Most drivers use the row-major convention for dimensions: that is, when considering
-that the array elemnts are stored consecutively in memory, the first dimension
+that the array elements are stored consecutively in memory, the first dimension
 is the slowest varying one (in a 2D image, the row), and the last dimension the
-fastest varying one (in a 2D image, the colum). That convention is the default
+fastest varying one (in a 2D image, the column). That convention is the default
 convention used for NumPy arrays, the MEM driver and the HDF5 and netCDF APIs.
 The GDAL API is mostly agnostic
 about that convention, except when passing a NULL array as the *stride* parameter
 for the :cpp:func:`GDALAbstractMDArray::Read` and  :cpp:func:`GDALAbstractMDArray::Write` methods.
-You can refer to `NumPy documentation about multidimensional array indeing order issues <https://docs.scipy.org/doc/numpy/reference/internals.html#multidimensional-array-indexing-order-issues>`_
+You can refer to `NumPy documentation about multidimensional array indexing order issues <https://docs.scipy.org/doc/numpy/reference/internals.html#multidimensional-array-indexing-order-issues>`_
 
 a GDALMDArray has also optional properties:
 

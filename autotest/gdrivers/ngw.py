@@ -8,7 +8,7 @@
 # Author:   Dmitry Baryshnikov <polimax@mail.ru>
 #
 ###############################################################################
-# Copyright (c) 2018, NextGIS <info@nextgis.com>
+# Copyright (c) 2018-2020, NextGIS <info@nextgis.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -87,7 +87,7 @@ def test_ngw_1():
         gdaltest.ngw_drv = None
         pytest.skip()
 
-    gdaltest.ngw_test_server = 'https://sandbox.nextgis.com' # 'http://dev.nextgis.com/sandbox'
+    gdaltest.ngw_test_server = 'https://sandbox.nextgis.com'
 
     if check_availability(gdaltest.ngw_test_server) == False:
         gdaltest.ngw_drv = None
@@ -154,13 +154,27 @@ def test_ngw_4():
     resource_id = gdaltest.ngw_ds.GetMetadataItem('id', '')
     url = 'NGW:' + gdaltest.ngw_test_server + '/resource/' + resource_id + '/rgbsmall'
     ds = gdaltest.ngw_drv.CreateCopy(url, src_ds, options=['DESCRIPTION=Test raster create'])
+    src_ds = None
+
     assert ds is not None, 'Raster create failed'
 
     ds_resource_id = ds.GetMetadataItem('id', '')
     gdaltest.raster_id = ds_resource_id
     gdaltest.group_id = resource_id
+
     ds = None
 
+    # Upload 16bit raster
+    src_ds = gdal.Open('data/int16.tif')
+    url = 'NGW:' + gdaltest.ngw_test_server + '/resource/' + resource_id + '/int16'
+    ds = gdaltest.ngw_drv.CreateCopy(url, src_ds, options=[
+        'DESCRIPTION=Test 16bit raster create',
+        'RASTER_QML_PATH=data/ngw/96.qml'
+    ])
+    src_ds = None
+
+    assert ds is not None, 'Raster create failed'
+    ds = None
 
 ###############################################################################
 # Open the NGW dataset
@@ -200,19 +214,19 @@ def test_ngw_6():
 
     gt = gdaltest.ngw_ds.GetGeoTransform()
     # -20037508.34, 0.037322767712175846, 0.0, 20037508.34, 0.0, -0.037322767712175846
-    assert abs(gt[0] - -20037508.34) < 0.00001 \
-       or abs(gt[3] - 20037508.34) < 0.00001 \
-       or abs(gt[1] - 0.037322767712175846) < 0.00001 \
-       or abs(gt[2] - 0.0) < 0.00001 \
-       or abs(gt[5] - -0.037322767712175846) < 0.00001 \
-       or abs(gt[4] - 0.0) < 0.00001, 'Wrong geotransform. {}'.format(gt)
+    assert gt[0] == pytest.approx(-20037508.34, abs=0.00001) \
+       or gt[3] == pytest.approx(20037508.34, abs=0.00001) \
+       or gt[1] == pytest.approx(0.037322767712175846, abs=0.00001) \
+       or gt[2] == pytest.approx(0.0, abs=0.00001) \
+       or gt[5] == pytest.approx(-0.037322767712175846, abs=0.00001) \
+       or gt[4] == pytest.approx(0.0, abs=0.00001), 'Wrong geotransform. {}'.format(gt)
 
     assert gdaltest.ngw_ds.GetRasterBand(1).GetOverviewCount() > 0, 'No overviews!'
     assert gdaltest.ngw_ds.GetRasterBand(1).DataType == gdal.GDT_Byte, \
         'Wrong band data type.'
 
 ###############################################################################
-# Check checksum for a small region.
+# Check checksum execute success for a small region.
 
 def test_ngw_7():
 
@@ -224,22 +238,20 @@ def test_ngw_7():
         gdaltest.ngw_drv = None
         pytest.skip()
 
+    gdal.ErrorReset()
     gdal.SetConfigOption('CPL_ACCUM_ERROR_MSG', 'ON')
     gdal.PushErrorHandler('CPLQuietErrorHandler')
 
     ovr_band = gdaltest.ngw_ds.GetRasterBand(1).GetOverview(21)
-    cs = ovr_band.Checksum()
+    assert ovr_band is not None
+    ovr_band.Checksum()
 
     gdal.PopErrorHandler()
     gdal.SetConfigOption('CPL_ACCUM_ERROR_MSG', 'OFF')
     msg = gdal.GetLastErrorMsg()
+
+    assert gdal.GetLastErrorType() != gdal.CE_Failure, msg
     gdal.ErrorReset()
-
-    if msg is not None and msg != '':
-        print('Last error message: {}.'.format(msg))
-        pytest.skip()
-
-    assert cs == 5, 'Wrong checksum: ' + str(cs)
 
 ###############################################################################
 # Test getting subdatasets from GetCapabilities

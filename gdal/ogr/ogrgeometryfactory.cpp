@@ -1118,7 +1118,7 @@ OGRGeometry *OGRGeometryFactory::forceToMultiLineString( OGRGeometry *poGeom )
 
         for( auto&& poMember: poGC )
         {
-            if( poMember->getGeometryType() != wkbLineString )
+            if( wkbFlatten(poMember->getGeometryType()) != wkbLineString )
             {
                 return poGeom;
             }
@@ -1301,6 +1301,111 @@ OGRGeometryH OGR_G_ForceToMultiLineString( OGRGeometryH hGeom )
 }
 
 /************************************************************************/
+/*                      removeLowerDimensionSubGeoms()                  */
+/************************************************************************/
+
+/** \brief Remove sub-geometries from a geometry collection that do not have
+ *         the maximum topological dimensionality of the collection.
+ *
+ * This is typically to be used as a cleanup phase after running OGRGeometry::MakeValid()
+ *
+ * For example, MakeValid() on a polygon can return a geometry collection of
+ * polygons and linestrings. Calling this method will return either a polygon
+ * or multipolygon by dropping those linestrings.
+ *
+ * On a non-geometry collection, this will return a clone of the passed geometry.
+ *
+ * @param poGeom input geometry
+ * @return a new geometry.
+ *
+ * @since GDAL 3.1.0
+ */
+OGRGeometry* OGRGeometryFactory::removeLowerDimensionSubGeoms( const OGRGeometry* poGeom )
+{
+    if( poGeom == nullptr )
+        return nullptr;
+    if( wkbFlatten(poGeom->getGeometryType()) != wkbGeometryCollection ||
+        poGeom->IsEmpty() )
+    {
+        return poGeom->clone();
+    }
+    const OGRGeometryCollection* poGC = poGeom->toGeometryCollection();
+    int nMaxDim = 0;
+    OGRBoolean bHasCurve = FALSE;
+    for( const auto poSubGeom: *poGC )
+    {
+        nMaxDim = std::max(nMaxDim, poSubGeom->getDimension());
+        bHasCurve |= poSubGeom->hasCurveGeometry();
+    }
+    int nCountAtMaxDim = 0;
+    const OGRGeometry* poGeomAtMaxDim = nullptr;
+    for( const auto poSubGeom: *poGC )
+    {
+        if( poSubGeom->getDimension() == nMaxDim )
+        {
+            poGeomAtMaxDim = poSubGeom;
+            nCountAtMaxDim ++;
+        }
+    }
+    if( nCountAtMaxDim == 1 && poGeomAtMaxDim != nullptr )
+    {
+        return poGeomAtMaxDim->clone();
+    }
+    OGRGeometryCollection* poRet =
+        (nMaxDim == 0) ?               static_cast<OGRGeometryCollection*>(new OGRMultiPoint()) :
+        (nMaxDim == 1 && !bHasCurve) ? static_cast<OGRGeometryCollection*>(new OGRMultiLineString()) :
+        (nMaxDim == 1 && bHasCurve) ?  static_cast<OGRGeometryCollection*>(new OGRMultiCurve()) :
+        (nMaxDim == 2 && !bHasCurve) ? static_cast<OGRGeometryCollection*>(new OGRMultiPolygon()) :
+                                       static_cast<OGRGeometryCollection*>(new OGRMultiSurface());
+    for( const auto poSubGeom: *poGC )
+    {
+        if( poSubGeom->getDimension() == nMaxDim )
+        {
+            if( OGR_GT_IsSubClassOf(poSubGeom->getGeometryType(), wkbGeometryCollection) )
+            {
+                const OGRGeometryCollection* poSubGeomAsGC = poSubGeom->toGeometryCollection();
+                for( const auto poSubSubGeom: *poSubGeomAsGC )
+                {
+                    if( poSubSubGeom->getDimension() == nMaxDim )
+                    {
+                        poRet->addGeometryDirectly(poSubSubGeom->clone());
+                    }
+                }
+            }
+            else
+            {
+                poRet->addGeometryDirectly(poSubGeom->clone());
+            }
+        }
+    }
+    return poRet;
+}
+
+/************************************************************************/
+/*                  OGR_G_RemoveLowerDimensionSubGeoms()                */
+/************************************************************************/
+
+/** \brief Remove sub-geometries from a geometry collection that do not have
+ *         the maximum topological dimensionality of the collection.
+ *
+ * This function is the same as the C++ method
+ * OGRGeometryFactory::removeLowerDimensionSubGeoms().
+ *
+ * @param hGeom handle to the geometry to convert
+ * @return a new geometry.
+ *
+ * @since GDAL 3.1.0
+ */
+
+OGRGeometryH OGR_G_RemoveLowerDimensionSubGeoms( const OGRGeometryH hGeom )
+
+{
+    return OGRGeometry::ToHandle(
+        OGRGeometryFactory::removeLowerDimensionSubGeoms(
+            OGRGeometry::FromHandle(hGeom)));
+}
+
+/************************************************************************/
 /*                          organizePolygons()                          */
 /************************************************************************/
 
@@ -1308,6 +1413,8 @@ struct sPolyExtended
 {
     CPL_DISALLOW_COPY_ASSIGN(sPolyExtended)
     sPolyExtended() = default;
+    sPolyExtended(sPolyExtended&&) = default;
+    sPolyExtended& operator= (sPolyExtended&&) = default;
 
     OGRGeometry* poGeometry = nullptr;
     OGRCurvePolygon* poPolygon = nullptr;
@@ -1322,28 +1429,14 @@ struct sPolyExtended
     bool            bIsPolygon = false;
 };
 
-static int OGRGeometryFactoryCompareArea(const void* p1, const void* p2)
+static bool OGRGeometryFactoryCompareArea(const sPolyExtended& sPoly1, const sPolyExtended& sPoly2)
 {
-    const sPolyExtended* psPoly1 = reinterpret_cast<const sPolyExtended*>(p1);
-    const sPolyExtended* psPoly2 = reinterpret_cast<const sPolyExtended*>(p2);
-    if( psPoly2->dfArea < psPoly1->dfArea )
-        return -1;
-    else if( psPoly2->dfArea > psPoly1->dfArea )
-        return 1;
-    else
-        return 0;
+    return sPoly2.dfArea < sPoly1.dfArea;
 }
 
-static int OGRGeometryFactoryCompareByIndex(const void* p1, const void* p2)
+static bool OGRGeometryFactoryCompareByIndex(const sPolyExtended& sPoly1, const sPolyExtended& sPoly2)
 {
-    const sPolyExtended* psPoly1 = reinterpret_cast<const sPolyExtended*>(p1);
-    const sPolyExtended* psPoly2 = reinterpret_cast<const sPolyExtended*>(p2);
-    if( psPoly1->nInitialIndex < psPoly2->nInitialIndex )
-        return -1;
-    else if( psPoly1->nInitialIndex > psPoly2->nInitialIndex )
-        return 1;
-    else
-        return 0;
+    return sPoly1.nInitialIndex < sPoly2.nInitialIndex;
 }
 
 constexpr int N_CRITICAL_PART_NUMBER = 100;
@@ -1392,7 +1485,7 @@ enum OrganizePolygonMethod
  * with care.
  *
  * If the OGR_ORGANIZE_POLYGONS configuration option is defined, its value will override
- * the value of the METHOD option of papszOptions (useful to modify the behaviour of the
+ * the value of the METHOD option of papszOptions (useful to modify the behavior of the
  * shapefile driver)
  *
  * @param papoPolygons array of geometry pointers - should all be OGRPolygons.
@@ -1464,7 +1557,7 @@ OGRGeometry* OGRGeometryFactory::organizePolygons( OGRGeometry **papoPolygons,
 /* -------------------------------------------------------------------- */
 /*      Setup per polygon envelope and area information.                */
 /* -------------------------------------------------------------------- */
-    sPolyExtended* asPolyEx = new sPolyExtended[nPolygonCount];
+    std::vector<sPolyExtended> asPolyEx(nPolygonCount);
 
     bool bValidTopology = true;
     bool bMixedUpGeometries = false;
@@ -1584,7 +1677,7 @@ OGRGeometry* OGRGeometryFactory::organizePolygons( OGRGeometry **papoPolygons,
                 delete asPolyEx[i].poPolygon;
             }
         }
-        delete [] asPolyEx;
+
         if( pbIsValidGeometry )
             *pbIsValidGeometry = TRUE;
         return poCP;
@@ -1634,7 +1727,7 @@ OGRGeometry* OGRGeometryFactory::organizePolygons( OGRGeometry **papoPolygons,
                 delete asPolyEx[i].poPolygon;
             }
         }
-        delete [] asPolyEx;
+
         if( pbIsValidGeometry )
             *pbIsValidGeometry = TRUE;
         return poRet;
@@ -1714,9 +1807,8 @@ OGRGeometry* OGRGeometryFactory::organizePolygons( OGRGeometry **papoPolygons,
     if( !bMixedUpGeometries )
     {
         // STEP 1: Sort polygons by descending area.
-        // TODO(schwehr): Use std::sort.
-        qsort(asPolyEx, nPolygonCount, sizeof(sPolyExtended),
-              OGRGeometryFactoryCompareArea);
+        std::sort(asPolyEx.begin(), asPolyEx.end(),
+                  OGRGeometryFactoryCompareArea);
     }
     papoPolygons = nullptr;  // Just to use to avoid it afterwards.
 
@@ -1961,8 +2053,8 @@ OGRGeometry* OGRGeometryFactory::organizePolygons( OGRGeometry **papoPolygons,
     else
     {
         // STEP 3: Sort again in initial order.
-        qsort(asPolyEx, nPolygonCount, sizeof(sPolyExtended),
-              OGRGeometryFactoryCompareByIndex);
+        std::sort(asPolyEx.begin(), asPolyEx.end(),
+                  OGRGeometryFactoryCompareByIndex);
 
         // STEP 4: Add holes as rings of their enclosing polygon.
         for( int i = 0; i < nPolygonCount; i++ )
@@ -2000,8 +2092,6 @@ OGRGeometry* OGRGeometryFactory::organizePolygons( OGRGeometry **papoPolygons,
             geom = poGC;
         }
     }
-
-    delete[] asPolyEx;
 
     return geom;
 }
@@ -2101,17 +2191,13 @@ OGRGeometryFactory::createFromGEOS(
     {
         poGeometry = nullptr;
     }
-
-    if( pabyBuf != nullptr )
-    {
-        // Since GEOS 3.1.1, so we test 3.2.0.
+    // Since GEOS 3.1.1, so we test 3.2.0.
 #if GEOS_CAPI_VERSION_MAJOR >= 2 || \
     (GEOS_CAPI_VERSION_MAJOR == 1 && GEOS_CAPI_VERSION_MINOR >= 6)
-        GEOSFree_r( hGEOSCtxt, pabyBuf );
+    GEOSFree_r( hGEOSCtxt, pabyBuf );
 #else
-        free( pabyBuf );
+    free( pabyBuf );
 #endif
-    }
 
     return poGeometry;
 
@@ -2823,12 +2909,17 @@ static void CutGeometryOnDateLineAndAddToMulti( OGRGeometryCollection* poMulti,
                 {
                     double dfMaxSmallDiffLong = 0;
                     bool bHasBigDiff = false;
+                    bool bOnlyAtPlusMinus180 = poLS->getNumPoints() > 0 &&
+                        ( fabs(fabs(poLS->getX(0)) - 180) < 1e-10 );
                     // Detect big gaps in longitude.
                     for( int i = 1; i < poLS->getNumPoints(); i++ )
                     {
                         const double dfPrevX = poLS->getX(i-1) + dfXOffset;
                         const double dfX = poLS->getX(i) + dfXOffset;
                         const double dfDiffLong = fabs(dfX - dfPrevX);
+                        if( fabs(fabs(poLS->getX(i)) - 180) > 1e-10 )
+                            bOnlyAtPlusMinus180 = false;
+
                         if( dfDiffLong > dfDiffSpace &&
                             ((dfX > dfLeftBorderX &&
                               dfPrevX < dfRightBorderX) ||
@@ -2838,7 +2929,8 @@ static void CutGeometryOnDateLineAndAddToMulti( OGRGeometryCollection* poMulti,
                         else if( dfDiffLong > dfMaxSmallDiffLong )
                             dfMaxSmallDiffLong = dfDiffLong;
                     }
-                    if( bHasBigDiff && dfMaxSmallDiffLong < dfDateLineOffset )
+                    if( bHasBigDiff && !bOnlyAtPlusMinus180 &&
+                        dfMaxSmallDiffLong < dfDateLineOffset )
                     {
                         if( eGeomType == wkbLineString )
                             bSplitLineStringAtDateline = true;
@@ -3154,21 +3246,33 @@ static bool IsPolarToWGS84( OGRCoordinateTransformation* poCT,
         // Surprisingly, pole south projects correctly back &
         // forth for antarctic polar stereographic.  Therefore, check that
         // the projected value is not too big.
-        fabs(x) < 1e10 && fabs(y) < 1e10 &&
-        poCT->Transform(1, &x, &y) &&
-        fabs(y - 90.0) < 1e-10 )
+        fabs(x) < 1e10 && fabs(y) < 1e10 )
     {
-        bIsNorthPolar = true;
+        double x_tab[] = {x, x - 1e5, x + 1e5};
+        double y_tab[] = {y, y - 1e5, y + 1e5};
+        if( poCT->Transform(3, x_tab, y_tab) &&
+            fabs(y_tab[0] - (90.0)) < 1e-10 &&
+            fabs(x_tab[2] - x_tab[1]) > 170 &&
+            fabs(y_tab[2] - y_tab[1]) < 1e-10 )
+        {
+            bIsNorthPolar = true;
+        }
     }
 
     x = 0.0;
     y = -90.0;
     if( poRevCT->Transform( 1, &x, &y ) &&
-        fabs(x) < 1e10 && fabs(y) < 1e10 &&
-        poCT->Transform(1, &x, &y) &&
-        fabs(y - (-90.0)) < 1e-10 )
+        fabs(x) < 1e10 && fabs(y) < 1e10 )
     {
-        bIsSouthPolar = true;
+        double x_tab[] = {x, x - 1e5, x + 1e5};
+        double y_tab[] = {y, y - 1e5, y + 1e5};
+        if( poCT->Transform(3, x_tab, y_tab) &&
+            fabs(y_tab[0] - (-90.0)) < 1e-10 &&
+            fabs(x_tab[2] - x_tab[1]) > 170 &&
+            fabs(y_tab[2] - y_tab[1]) < 1e-10 )
+        {
+            bIsSouthPolar = true;
+        }
     }
 
     poCT->SetEmitErrors(bBackupEmitErrors);
@@ -3496,92 +3600,69 @@ static OGRGeometry* TransformBeforeAntimeridianToWGS84(
 
     const double EPS = 1e-9;
 
-    // Build a multipolygon (in projected space) with 2 parts: one part left
-    // of the antimeridian, one part east
-    const OGRwkbGeometryType eType = wkbFlatten(poDstGeom->getGeometryType());
-
-    // If we have lines, then to get better accuracy of the intersection with
-    // the main geometry, we need to add extra points
-    const bool bHasLines = (eType == wkbLineString ||
-                            eType == wkbMultiLineString);
-
-    OGRLinearRing* poLR1 = new OGRLinearRing();
-    poLR1->addPoint( sEnvelope.MinX, sEnvelope.MinY );
-    if( bHasLines )
+    // Build a very thin polygon cutting the antimeridian at our points
+    OGRLinearRing* poLR = new OGRLinearRing;
     {
-        double x = 180.0 - EPS;
+        double x = 180.0-EPS;
         double y = aoPoints[0].y-EPS;
         poRevCT->Transform(1, &x, &y);
-        poLR1->addPoint( x, y );
+        poLR->addPoint( x, y );
     }
     for( const auto& oPoint: aoPoints )
     {
-        double x = 180.0 - EPS;
+        double x = 180.0-EPS;
         double y = oPoint.y;
         poRevCT->Transform(1, &x, &y);
-        poLR1->addPoint( x, y );
+        poLR->addPoint( x, y );
     }
-    if( bHasLines )
     {
-        double x = 180.0 - EPS;
+        double x = 180.0-EPS;
         double y = aoPoints.back().y+EPS;
         poRevCT->Transform(1, &x, &y);
-        poLR1->addPoint( x, y );
+        poLR->addPoint( x, y );
     }
-    poLR1->addPoint( sEnvelope.MinX, sEnvelope.MaxY );
-    poLR1->addPoint( sEnvelope.MinX, sEnvelope.MinY );
-    OGRPolygon* poPoly1 = new OGRPolygon();
-    poPoly1->addRingDirectly( poLR1 );
-
-
-    OGRLinearRing* poLR2 = new OGRLinearRing();
-    poLR2->addPoint( sEnvelope.MaxX, sEnvelope.MinY );
-    if( bHasLines )
     {
-        double x = -180.0 + EPS;
+        double x = 180.0+EPS;
+        double y = aoPoints.back().y+EPS;
+        poRevCT->Transform(1, &x, &y);
+        poLR->addPoint( x, y );
+    }
+    for( size_t i = aoPoints.size(); i > 0; )
+    {
+        --i;
+        const OGRRawPoint& oPoint = aoPoints[i];
+        double x = 180.0+EPS;
+        double y = oPoint.y;
+        poRevCT->Transform(1, &x, &y);
+        poLR->addPoint( x, y );
+    }
+    {
+        double x = 180.0+EPS;
         double y = aoPoints[0].y-EPS;
         poRevCT->Transform(1, &x, &y);
-        poLR2->addPoint( x, y );
+        poLR->addPoint( x, y );
     }
-    for( const auto& oPoint: aoPoints )
-    {
-        double x = -180.0 + EPS;
-        double y = oPoint.y;
-        poRevCT->Transform(1, &x, &y);
-        poLR2->addPoint( x, y );
-    }
-    if( bHasLines )
-    {
-        double x = -180.0 + EPS;
-        double y = aoPoints.back().y+EPS;
-        poRevCT->Transform(1, &x, &y);
-        poLR2->addPoint( x, y );
-    }
-    poLR2->addPoint( sEnvelope.MaxX, sEnvelope.MaxY );
-    poLR2->addPoint( sEnvelope.MaxX, sEnvelope.MinY );
-    OGRPolygon* poPoly2 = new OGRPolygon();
-    poPoly2->addRingDirectly( poLR2 );
+    poLR->closeRings();
 
-    OGRMultiPolygon oMP;
-    oMP.addGeometryDirectly(poPoly1);
-    oMP.addGeometryDirectly(poPoly2);
+    OGRPolygon oPolyToCut;
+    oPolyToCut.addRingDirectly(poLR);
 
 #if DEBUG_VERBOSE
     char* pszWKT = NULL;
-    oMP.exportToWkt(&pszWKT);
-    CPLDebug("OGR", "MP without antimeridian: %s", pszWKT);
+    oPolyToCut.exportToWkt(&pszWKT);
+    CPLDebug("OGR", "Geometry to cut: %s", pszWKT);
     CPLFree(pszWKT);
 #endif
 
     // Get the geometry without the antimeridian
-    OGRGeometry* poInter = poDstGeom->Intersection(&oMP);
+    OGRGeometry* poInter = poDstGeom->Difference(&oPolyToCut);
     if( poInter != nullptr )
     {
         delete poDstGeom;
         poDstGeom = poInter;
+        bNeedPostCorrectionOut = true;
     }
 
-    bNeedPostCorrectionOut = true;
     return poDstGeom;
 }
 
@@ -3701,9 +3782,9 @@ OGRGeometryFactory::TransformWithOptionsCache::~TransformWithOptionsCache()
 
 /** Transform a geometry.
  * @param poSrcGeom source geometry
- * @param poCT coordinate transformation object.
- * @param papszOptions options. Including WRAPDATELINE=YES.
- * @param cache Cache. May increase performance if persisted between invokations
+ * @param poCT coordinate transformation object, or NULL.
+ * @param papszOptions options. Including WRAPDATELINE=YES and DATELINEOFFSET=.
+ * @param cache Cache. May increase performance if persisted between invocations
  * @return (new) transformed geometry.
  */
 OGRGeometry* OGRGeometryFactory::transformWithOptions(
@@ -3730,7 +3811,7 @@ OGRGeometry* OGRGeometryFactory::transformWithOptions(
                     !cache.d->poRevCT->GetTargetCS()->IsSame(poCT->GetSourceCS()) )
                 {
                     delete cache.d->poRevCT;
-                    cache.d->poRevCT = 
+                    cache.d->poRevCT =
                         OGRCreateCoordinateTransformation( &oSRSWGS84,
                                                        poCT->GetSourceCS() );
                     cache.d->bIsNorthPolar = false;
@@ -3861,12 +3942,118 @@ OGRGeometry* OGRGeometryFactory::transformWithOptions(
 }
 
 /************************************************************************/
+/*                         OGRGeomTransformer()                         */
+/************************************************************************/
+
+struct OGRGeomTransformer
+{
+    std::unique_ptr<OGRCoordinateTransformation> poCT{};
+    OGRGeometryFactory::TransformWithOptionsCache cache{};
+    CPLStringList aosOptions{};
+
+    OGRGeomTransformer() = default;
+    OGRGeomTransformer(const OGRGeomTransformer&) = delete;
+    OGRGeomTransformer& operator=(const OGRGeomTransformer&) = delete;
+};
+
+/************************************************************************/
+/*                     OGR_GeomTransformer_Create()                     */
+/************************************************************************/
+
+/** Create a geometry transformer.
+ *
+ * This is a enhanced version of OGR_G_Transform().
+ *
+ * When reprojecting geometries from a Polar Stereographic projection or a
+ * projection naturally crossing the antimeridian (like UTM Zone 60) to a
+ * geographic CRS, it will cut geometries along the antimeridian. So a
+ * LineString might be returned as a MultiLineString.
+ *
+ * The WRAPDATELINE=YES option might be specified for circumstances to correct
+ * geometries that incorrectly go from a longitude on a side of the antimeridian
+ * to the other side, like a LINESTRING(-179 0,179 0) will be transformed to
+ * a MULTILINESTRING ((-179 0,-180 0),(180 0,179 0)). For that use case, hCT
+ * might be NULL.
+ *
+ * @param hCT Coordinate transformation object (will be cloned) or NULL.
+ * @param papszOptions NULL terminated list of options, or NULL.
+ *                     Supported options are:
+ *                     <ul>
+ *                         <li>WRAPDATELINE=YES</li>
+ *                         <li>DATELINEOFFSET=longitude_gap_in_degree. Defaults to 10.</li>
+ *                     </ul>
+ * @return transformer object to free with OGR_GeomTransformer_Destroy()
+ * @since GDAL 3.1
+ */
+OGRGeomTransformerH OGR_GeomTransformer_Create( OGRCoordinateTransformationH hCT,
+                                                CSLConstList papszOptions )
+{
+    OGRGeomTransformer* transformer = new OGRGeomTransformer;
+    if( hCT )
+    {
+        transformer->poCT.reset(
+            OGRCoordinateTransformation::FromHandle(hCT)->Clone());
+    }
+    transformer->aosOptions.Assign(CSLDuplicate(papszOptions));
+    return transformer;
+}
+
+/************************************************************************/
+/*                     OGR_GeomTransformer_Transform()                  */
+/************************************************************************/
+
+/** Transforms a geometry.
+ *
+ * @param hTransformer transformer object.
+ * @param hGeom Source geometry.
+ * @return a new geometry (or NULL) to destroy with OGR_G_DestroyGeometry()
+ * @since GDAL 3.1
+ */
+OGRGeometryH OGR_GeomTransformer_Transform(OGRGeomTransformerH hTransformer,
+                                           OGRGeometryH hGeom)
+{
+    VALIDATE_POINTER1( hTransformer, "OGR_GeomTransformer_Transform", nullptr );
+    VALIDATE_POINTER1( hGeom, "OGR_GeomTransformer_Transform", nullptr );
+
+    return OGRGeometry::ToHandle(
+        OGRGeometryFactory::transformWithOptions(
+            OGRGeometry::FromHandle(hGeom),
+            hTransformer->poCT.get(),
+            hTransformer->aosOptions.List(),
+            hTransformer->cache));
+}
+
+/************************************************************************/
+/*                      OGR_GeomTransformer_Destroy()                   */
+/************************************************************************/
+
+/** Destroy a geometry transformer allocated with OGR_GeomTransformer_Create()
+ *
+ * @param hTransformer transformer object.
+ * @since GDAL 3.1
+ */
+void OGR_GeomTransformer_Destroy(OGRGeomTransformerH hTransformer)
+{
+    delete hTransformer;
+}
+
+/************************************************************************/
 /*                       OGRGF_GetDefaultStepSize()                     */
 /************************************************************************/
 
 static double OGRGF_GetDefaultStepSize()
 {
+    // coverity[tainted_data]
     return CPLAtofM(CPLGetConfigOption("OGR_ARC_STEPSIZE", "4"));
+}
+
+/************************************************************************/
+/*                              DISTANCE()                              */
+/************************************************************************/
+
+static inline double DISTANCE(double x1, double y1, double x2, double y2)
+{
+    return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
 /************************************************************************/
@@ -3883,6 +4070,11 @@ static double OGRGF_GetDefaultStepSize()
  * used.  This is currently 4 degrees unless the user has overridden the
  * value with the OGR_ARC_STEPSIZE configuration variable.
  *
+ * If the OGR_ARC_MAX_GAP configuration variable is set, the straight-line
+ * distance between adjacent pairs of interpolated points will be limited to
+ * the specified distance. If the distance between a pair of points exceeds
+ * this maximum, additional points are interpolated between the two points.
+ *
  * @see CPLSetConfigOption()
  *
  * @param dfCenterX center X
@@ -3895,6 +4087,7 @@ static double OGRGF_GetDefaultStepSize()
  * @param dfEndAngle angle to last point on arc (clockwise of X-positive)
  * @param dfMaxAngleStepSizeDegrees the largest step in degrees along the
  * arc, zero to use the default setting.
+ * @param bUseMaxGap Optional: whether to honor OGR_ARC_MAX_GAP.
  *
  * @return OGRLineString geometry representing an approximation of the arc.
  *
@@ -3905,7 +4098,7 @@ OGRGeometry* OGRGeometryFactory::approximateArcAngles(
     double dfCenterX, double dfCenterY, double dfZ,
     double dfPrimaryRadius, double dfSecondaryRadius, double dfRotation,
     double dfStartAngle, double dfEndAngle,
-    double dfMaxAngleStepSizeDegrees )
+    double dfMaxAngleStepSizeDegrees, const bool bUseMaxGap /* = false */ )
 
 {
     OGRLineString *poLine = new OGRLineString();
@@ -3916,6 +4109,14 @@ OGRGeometry* OGRGeometryFactory::approximateArcAngles(
     {
         dfMaxAngleStepSizeDegrees = OGRGF_GetDefaultStepSize();
     }
+
+    // Determine maximum interpolation gap. This is the largest straight-line
+    // distance allowed between pairs of interpolated points. Default zero,
+    // meaning no gap.
+    // coverity[tainted_data]
+    const double dfMaxInterpolationGap = bUseMaxGap ?
+        CPLAtofM(CPLGetConfigOption("OGR_ARC_MAX_GAP", "0")) :
+        0.0;
 
     // Is this a full circle?
     const bool bIsFullCircle = fabs( dfEndAngle - dfStartAngle ) == 360.0;
@@ -3938,6 +4139,9 @@ OGRGeometry* OGRGeometryFactory::approximateArcAngles(
 /* -------------------------------------------------------------------- */
 /*      Compute the interpolated points.                                */
 /* -------------------------------------------------------------------- */
+    double dfLastX = 0.0;
+    double dfLastY = 0.0;
+    int nTotalAddPoints = 0;
     for( int iPoint = 0; iPoint < nVertexCount; iPoint++ )
     {
         const double dfAngleOnEllipse =
@@ -3946,6 +4150,50 @@ OGRGeometry* OGRGeometryFactory::approximateArcAngles(
         // Compute position on the unrotated ellipse.
         const double dfEllipseX = cos(dfAngleOnEllipse) * dfPrimaryRadius;
         const double dfEllipseY = sin(dfAngleOnEllipse) * dfSecondaryRadius;
+
+        // Is this point too far from the previous point?
+        if( iPoint && dfMaxInterpolationGap != 0.0 )
+        {
+            const double dfDistFromLast =
+                DISTANCE(dfLastX, dfLastY, dfEllipseX, dfEllipseY);
+
+            if( dfDistFromLast > dfMaxInterpolationGap )
+            {
+                const int nAddPoints =
+                    static_cast<int>( dfDistFromLast / dfMaxInterpolationGap );
+                const double dfAddSlice = dfSlice / (nAddPoints + 1);
+
+                // Interpolate additional points
+                for( int iAddPoint = 0; iAddPoint < nAddPoints; iAddPoint++ )
+                {
+                    const double dfAddAngleOnEllipse = (dfStartAngle +
+                        (iPoint - 1) * dfSlice +
+                        (iAddPoint + 1) * dfAddSlice) * (M_PI / 180.0);
+
+                    poLine->setPoint( iPoint + nTotalAddPoints + iAddPoint,
+                        cos(dfAddAngleOnEllipse) * dfPrimaryRadius,
+                        sin(dfAddAngleOnEllipse) * dfSecondaryRadius,
+                        dfZ );
+                }
+
+                nTotalAddPoints += nAddPoints;
+            }
+        }
+
+        poLine->setPoint( iPoint + nTotalAddPoints,
+            dfEllipseX, dfEllipseY, dfZ );
+        dfLastX = dfEllipseX;
+        dfLastY = dfEllipseY;
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Rotate and translate the ellipse.                               */
+/* -------------------------------------------------------------------- */
+    nVertexCount = poLine->getNumPoints();
+    for( int iPoint = 0; iPoint < nVertexCount; iPoint++ )
+    {
+        const double dfEllipseX = poLine->getX( iPoint );
+        const double dfEllipseY = poLine->getY( iPoint );
 
         // Rotate this position around the center of the ellipse.
         const double dfArcX = dfCenterX
@@ -4615,13 +4863,8 @@ OGRGeometryH OGR_G_ForceTo( OGRGeometryH hGeom,
 }
 
 /************************************************************************/
-/*                         GetCurveParmeters()                          */
+/*                         GetCurveParameters()                          */
 /************************************************************************/
-
-static inline double DISTANCE(double x1, double y1, double x2, double y2)
-{
-    return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
-}
 
 /**
  * \brief Returns the parameter of an arc circle.
@@ -4646,7 +4889,7 @@ static inline double DISTANCE(double x1, double y1, double x2, double y2)
  * @since GDAL 2.0
  */
 
-int OGRGeometryFactory::GetCurveParmeters(
+int OGRGeometryFactory::GetCurveParameters(
     double x0, double y0, double x1, double y1, double x2, double y2,
     double& R, double& cx, double& cy,
     double& alpha0, double& alpha1, double& alpha2 )
@@ -4935,7 +5178,7 @@ OGRLineString* OGRGeometryFactory::curveToLineString(
 
     OGRLineString* poLine = new OGRLineString();
     bool bIsArc = true;
-    if( !GetCurveParmeters(x0, y0, x1, y1, x2, y2,
+    if( !GetCurveParameters(x0, y0, x1, y1, x2, y2,
                            R, cx, cy, alpha0, alpha1, alpha2))
     {
         bIsArc = false;
@@ -5148,7 +5391,7 @@ static int OGRGF_DetectArc( const OGRLineString* poLS, int i,
     double alpha0_1 = 0.0;
     double alpha1_1 = 0.0;
     double alpha2_1 = 0.0;
-    if( !(OGRGeometryFactory::GetCurveParmeters(p0.getX(), p0.getY(),
+    if( !(OGRGeometryFactory::GetCurveParameters(p0.getX(), p0.getY(),
                             p1.getX(), p1.getY(),
                             p2.getX(), p2.getY(),
                             R_1, cx_1, cy_1,
@@ -5216,7 +5459,7 @@ static int OGRGF_DetectArc( const OGRLineString* poLS, int i,
         double alpha2_2 = 0.0;
         // Check that the new candidate arc shares the same
         // radius, center and winding order.
-        if( !(OGRGeometryFactory::GetCurveParmeters(p1.getX(), p1.getY(),
+        if( !(OGRGeometryFactory::GetCurveParameters(p1.getX(), p1.getY(),
                                 p2.getX(), p2.getY(),
                                 p3.getX(), p3.getY(),
                                 R_2, cx_2, cy_2,
@@ -5704,7 +5947,9 @@ OGRCurve* OGRGeometryFactory::curveFromLineString(
     OGRCompoundCurve* poCC = nullptr;
     OGRCircularString* poCS = nullptr;
     OGRLineString* poLSNew = nullptr;
-    for( int i = 0; i < poLS->getNumPoints(); /* nothing */ )
+    const int nLSNumPoints = poLS->getNumPoints();
+    const bool bIsClosed = nLSNumPoints >= 4 && poLS->get_IsClosed();
+    for( int i = 0; i < nLSNumPoints; /* nothing */ )
     {
         const int iNewI = OGRGF_DetectArc(poLS, i, poCC, poCS, poLSNew);
         if( iNewI == -2 )
@@ -5736,10 +5981,12 @@ OGRCurve* OGRGeometryFactory::curveFromLineString(
         {
             double dfScale = std::max(1.0, fabs(p.getX()));
             dfScale = std::max(dfScale, fabs(p.getY()));
-            if( fabs(poLSNew->getX(poLSNew->getNumPoints()-1) -
-                     p.getX()) / dfScale > 1e-8 ||
-                fabs(poLSNew->getY(poLSNew->getNumPoints()-1) -
-                     p.getY()) / dfScale > 1e-8 )
+            if (bIsClosed && i == nLSNumPoints - 1)
+                dfScale = 0;
+            if( fabs(poLSNew->getX(poLSNew->getNumPoints()-1) - p.getX()) >
+                    1e-8 * dfScale ||
+                fabs(poLSNew->getY(poLSNew->getNumPoints()-1) - p.getY()) >
+                    1e-8 * dfScale )
             {
                 poLSNew->addPoint(&p);
             }

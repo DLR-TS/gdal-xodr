@@ -40,7 +40,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class CALSDataset : public GDALPamDataset
+class CALSDataset final: public GDALPamDataset
 {
     friend class CALSRasterBand;
 
@@ -73,7 +73,7 @@ class CALSDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class CALSRasterBand: public GDALPamRasterBand
+class CALSRasterBand final: public GDALPamRasterBand
 {
     GDALRasterBand* poUnderlyingBand;
 
@@ -134,7 +134,7 @@ class CALSRasterBand: public GDALPamRasterBand
 /* ==================================================================== */
 /************************************************************************/
 
-class CALSWrapperSrcBand: public GDALPamRasterBand
+class CALSWrapperSrcBand final: public GDALPamRasterBand
 {
         GDALDataset* poSrcDS;
         bool bInvertValues;
@@ -205,7 +205,7 @@ class CALSWrapperSrcBand: public GDALPamRasterBand
 /* ==================================================================== */
 /************************************************************************/
 
-class CALSWrapperSrcDataset: public GDALPamDataset
+class CALSWrapperSrcDataset final: public GDALPamDataset
 {
     public:
         CALSWrapperSrcDataset( GDALDataset* poSrcDS, const char* pszPadding )
@@ -501,7 +501,7 @@ GDALDataset *CALSDataset::CreateCopy( const char *pszFilename,
     VSIStatBufL sStat;
     if( VSIStatL(osTmpFilename, &sStat) != 0 )
     {
-        // Shoudln't happen really. Just to make Coverity happy.
+        // Shouldn't happen really. Just to make Coverity happy.
         CSLDestroy(papszOptions);
         return nullptr;
     }
@@ -526,7 +526,7 @@ GDALDataset *CALSDataset::CreateCopy( const char *pszFilename,
     // Now replace the TIFF header by the CALS header.
     VSILFILE* fp = VSIFOpenL(pszFilename, "rb+");
     if( fp == nullptr )
-        return nullptr; // Shoudln't happen normally.
+        return nullptr; // Shouldn't happen normally.
     memset(szBuffer, ' ', 2048);
     CPLString osField;
     osField = "srcdocid: NONE";
@@ -608,9 +608,9 @@ void GDALRegister_CALS()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "CALS (Type 1)" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_cals.html" );
+                               "drivers/raster/cals.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
-    poDriver->SetMetadataItem( GDAL_DMD_EXTENSIONS, ".cal .ct1");
+    poDriver->SetMetadataItem( GDAL_DMD_EXTENSIONS, "cal ct1");
 
     poDriver->pfnIdentify = CALSDataset::Identify;
     poDriver->pfnOpen = CALSDataset::Open;

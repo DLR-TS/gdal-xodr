@@ -66,9 +66,6 @@ public:
 class OGRDXFFeatureQueue
 {
         std::queue<OGRDXFFeature *> apoFeatures;
-        size_t                      nFeaturesSize = 0;
-
-        static size_t GetFeatureSize(OGRFeature* poFeature);
 
     public:
         OGRDXFFeatureQueue() {}
@@ -82,8 +79,6 @@ class OGRDXFFeatureQueue
         bool empty() const { return apoFeatures.empty(); }
 
         size_t size() const { return apoFeatures.size(); }
-
-        size_t GetFeaturesSize() const { return nFeaturesSize; }
 };
 
 /************************************************************************/
@@ -126,18 +121,15 @@ class OGRDXFBlocksLayer final: public OGRLayer
 class OGRDXFInsertTransformer final: public OGRCoordinateTransformation
 {
 public:
-    OGRDXFInsertTransformer() :
-        dfXOffset(0),dfYOffset(0),dfZOffset(0),
-        dfXScale(1.0),dfYScale(1.0),dfZScale(1.0),
-        dfAngle(0.0) {}
+    OGRDXFInsertTransformer() = default;
 
-    double dfXOffset;
-    double dfYOffset;
-    double dfZOffset;
-    double dfXScale;
-    double dfYScale;
-    double dfZScale;
-    double dfAngle;
+    double dfXOffset = 0.0;
+    double dfYOffset = 0.0;
+    double dfZOffset = 0.0;
+    double dfXScale = 1.0;
+    double dfYScale = 1.0;
+    double dfZScale = 1.0;
+    double dfAngle = 0.0;
 
     OGRDXFInsertTransformer GetOffsetTransformer()
     {
@@ -155,6 +147,10 @@ public:
         oResult.dfZScale = this->dfZScale;
         oResult.dfAngle = this->dfAngle;
         return oResult;
+    }
+
+    OGRCoordinateTransformation* Clone() const override {
+        return new OGRDXFInsertTransformer(*this);
     }
 
     OGRSpatialReference *GetSourceCS() override { return nullptr; }
@@ -200,54 +196,48 @@ class OGRDXFAffineTransform
 {
 public:
     OGRDXFAffineTransform() :
-        adfMatrix{{1.0,0.0,0.0},{0.0,1.0,0.0},{0.0,0.0,1.0}}, adfVector{0.0} {}
+        adfData{1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0, 0.0,0.0,0.0} {}
 
-    double adfMatrix[3][3]; // adfMatrix[1][2] is row 2, column 3
-    double adfVector[3];
+    double adfData[12]; // Column-major: adfMatrix[5] is column 2, row 3
+                        // Last 3 elements are translation
 
     // Left composition (composes oOther o this), modifying this
     void ComposeWith( const OGRDXFInsertTransformer& oCT )
     {
-        double adfNew[3][3];
+        double adfNew[12];
 
-        adfNew[0][0] = oCT.dfXScale * cos(oCT.dfAngle) * adfMatrix[0][0] -
-            oCT.dfYScale * sin(oCT.dfAngle) * adfMatrix[1][0];
-        adfNew[0][1] = oCT.dfXScale * cos(oCT.dfAngle) * adfMatrix[0][1] -
-            oCT.dfYScale * sin(oCT.dfAngle) * adfMatrix[1][1];
-        adfNew[0][2] = 0.0;
+        adfNew[0] = oCT.dfXScale * cos(oCT.dfAngle) * adfData[0] -
+            oCT.dfYScale * sin(oCT.dfAngle) * adfData[1];
+        adfNew[1] = oCT.dfXScale * sin(oCT.dfAngle) * adfData[0] +
+            oCT.dfYScale * cos(oCT.dfAngle) * adfData[1];
+        adfNew[2] = oCT.dfZScale * adfData[2];
 
-        adfNew[1][0] = oCT.dfXScale * sin(oCT.dfAngle) * adfMatrix[0][0] +
-            oCT.dfYScale * cos(oCT.dfAngle) * adfMatrix[1][0];
-        adfNew[1][1] = oCT.dfXScale * sin(oCT.dfAngle) * adfMatrix[0][1] +
-            oCT.dfYScale * cos(oCT.dfAngle) * adfMatrix[1][1];
-        adfNew[1][2] = 0.0;
+        adfNew[3] = oCT.dfXScale * cos(oCT.dfAngle) * adfData[3] -
+            oCT.dfYScale * sin(oCT.dfAngle) * adfData[4];
+        adfNew[4] = oCT.dfXScale * sin(oCT.dfAngle) * adfData[3] +
+            oCT.dfYScale * cos(oCT.dfAngle) * adfData[4];
+        adfNew[5] = oCT.dfZScale * adfData[5];
 
-        adfNew[2][0] = 0.0;
-        adfNew[2][1] = 0.0;
-        adfNew[2][2] = oCT.dfZScale * adfMatrix[2][2];
+        adfNew[6] = oCT.dfXScale * cos(oCT.dfAngle) * adfData[6] -
+            oCT.dfYScale * sin(oCT.dfAngle) * adfData[7];
+        adfNew[7] = oCT.dfXScale * sin(oCT.dfAngle) * adfData[6] +
+            oCT.dfYScale * cos(oCT.dfAngle) * adfData[7];
+        adfNew[8] = oCT.dfZScale * adfData[8];
 
-        memcpy( adfMatrix, adfNew, sizeof(adfNew) );
+        adfNew[9] = oCT.dfXScale * cos(oCT.dfAngle) * adfData[9] -
+            oCT.dfYScale * sin(oCT.dfAngle) * adfData[10] +
+            oCT.dfXOffset;
+        adfNew[10] = oCT.dfXScale * sin(oCT.dfAngle) * adfData[9] +
+            oCT.dfYScale * cos(oCT.dfAngle) * adfData[10] +
+            oCT.dfYOffset;
+        adfNew[11] = oCT.dfZScale * adfData[11] + oCT.dfZOffset;
 
-        double adfNewVector[3];
-
-        adfNewVector[0] = oCT.dfXScale * cos(oCT.dfAngle) * adfVector[0] -
-            oCT.dfYScale * sin(oCT.dfAngle) * adfVector[1];
-        adfNewVector[1] = oCT.dfXScale * sin(oCT.dfAngle) * adfVector[0] +
-            oCT.dfYScale * cos(oCT.dfAngle) * adfVector[1];
-        adfNewVector[2] = oCT.dfZScale * adfVector[2];
-
-        adfVector[0] = adfNewVector[0] + oCT.dfXOffset;
-        adfVector[1] = adfNewVector[1] + oCT.dfYOffset;
-        adfVector[2] = adfNewVector[2] + oCT.dfZOffset;
+        memcpy( adfData, adfNew, sizeof(adfNew) );
     }
 
     void SetField(OGRFeature* poFeature, const char* pszFieldName) const
     {
-        double* padfList = new double[12];
-        memcpy( padfList, adfMatrix, sizeof(adfMatrix) );
-        memcpy( padfList + 9, adfVector, sizeof(adfVector) );
-        poFeature->SetField(pszFieldName, 12, padfList);
-        delete[] padfList;
+        poFeature->SetField(pszFieldName, 12, adfData);
     }
 };
 
@@ -279,6 +269,10 @@ public:
         double *adfX, double *adfY, double *adfZ );
 
     void ComposeOnto( OGRDXFAffineTransform& poCT ) const;
+
+    OGRCoordinateTransformation* Clone() const override {
+        return new OGRDXFOCSTransformer(*this);
+    }
 };
 
 /************************************************************************/
@@ -392,6 +386,23 @@ class OGRDXFLayer final: public OGRLayer
     std::set<CPLString> oIgnoredEntities;
 
     OGRDXFFeatureQueue  apoPendingFeatures;
+
+    struct InsertState
+    {
+        OGRDXFInsertTransformer m_oTransformer{};
+        CPLString               m_osBlockName{};
+        CPLStringList           m_aosAttribs{};
+        int                     m_nColumnCount = 0;
+        int                     m_nRowCount = 0;
+        int                     m_iCurCol = 0;
+        int                     m_iCurRow = 0;
+        double                  m_dfColumnSpacing = 0.0;
+        double                  m_dfRowSpacing = 0.0;
+        std::vector<std::unique_ptr<OGRDXFFeature>> m_apoAttribs{};
+        std::unique_ptr<OGRDXFFeature> m_poTemplateFeature{};
+    };
+    InsertState         m_oInsertState{};
+
     void                ClearPendingFeatures();
 
     void                TranslateGenericProperty( OGRDXFFeature *poFeature,
@@ -414,7 +425,7 @@ class OGRDXFLayer final: public OGRLayer
     OGRDXFFeature *     TranslateARC();
     OGRDXFFeature *     TranslateSPLINE();
     OGRDXFFeature *     Translate3DFACE();
-    OGRDXFFeature *     TranslateINSERT();
+    bool                TranslateINSERT();
     OGRDXFFeature *     TranslateMTEXT();
     OGRDXFFeature *     TranslateTEXT( const bool bIsAttribOrAttdef );
     OGRDXFFeature *     TranslateDIMENSION();
@@ -424,13 +435,7 @@ class OGRDXFLayer final: public OGRLayer
     OGRDXFFeature *     TranslateMLEADER();
     OGRDXFFeature *     TranslateASMEntity();
 
-    void                TranslateINSERTCore( OGRDXFFeature* const poTemplateFeature,
-                                             const CPLString& osBlockName,
-                                             OGRDXFInsertTransformer oTransformer,
-                                             const double dfExtraXOffset,
-                                             const double dfExtraYOffset,
-                                             char** const papszAttribs,
-                         const std::vector<std::unique_ptr<OGRDXFFeature>>& apoAttribs );
+    bool                GenerateINSERTFeatures();
     OGRLineString *     InsertSplineWithChecks( const int nDegree,
                                                 std::vector<double>& adfControlPoints,
                                                 int nControlPoints,
@@ -492,6 +497,7 @@ class OGRDXFLayer final: public OGRLayer
 
 class OGRDXFReader
 {
+    int                 ReadValueRaw( char *pszValueBuffer, int nValueBufferSize );
 public:
     OGRDXFReader();
     ~OGRDXFReader();

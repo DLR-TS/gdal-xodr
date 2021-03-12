@@ -41,7 +41,7 @@
 
 CPL_CVSID("$Id$")
 
-class SRPDataset : public GDALPamDataset
+class SRPDataset final: public GDALPamDataset
 {
     friend class SRPRasterBand;
 
@@ -105,7 +105,7 @@ class SRPDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class SRPRasterBand : public GDALPamRasterBand
+class SRPRasterBand final: public GDALPamRasterBand
 {
     friend class SRPDataset;
 
@@ -199,7 +199,7 @@ CPLErr SRPRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
 /* -------------------------------------------------------------------- */
 /*      Is this a null block?                                           */
 /* -------------------------------------------------------------------- */
-    if (l_poDS->TILEINDEX && l_poDS->TILEINDEX[nBlock] == 0)
+    if (l_poDS->TILEINDEX && l_poDS->TILEINDEX[nBlock] <= 0)
     {
         memset(pImage, 0, 128 * 128);
         return CE_None;
@@ -580,7 +580,7 @@ bool SRPDataset::GetFromRecord( const char* pszFileName, DDFRecord * record )
         {
             TILEINDEX = new int [NFL * NFC];
         }
-        catch( const std::bad_alloc& )
+        catch( const std::exception& )
         {
             return false;
         }
@@ -729,7 +729,7 @@ bool SRPDataset::GetFromRecord( const char* pszFileName, DDFRecord * record )
                 // TODO: Translate to English or state why this should not be in
                 // English.
                 // Date de production du produit : QAL.QUV.DAT1
-                // Num�ro d'�dition  du produit : QAL.QUV.EDN
+                // Numero d'edition  du produit : QAL.QUV.EDN
 
                 const int EDN =
                     record->GetIntSubfield( "QUV", 0, "EDN", 0, &bSuccess );
@@ -1220,8 +1220,6 @@ void SRPDataset::AddMetadatafromFromTHF(const char* pszFileName)
     if (!module.Open(pszFileName, TRUE))
         return ;
 
-    CPLString osDirName(CPLGetDirname(pszFileName));
-
     while( true )
     {
         CPLPushErrorHandler( CPLQuietErrorHandler );
@@ -1374,7 +1372,7 @@ char** SRPDataset::GetIMGListFromGEN(const char* pszFileName,
             if ( strcmp(RTY, "GIN") != 0 )
                 continue;
 
-            /* make sure that the GEN file is part of a SRP dataset, not an ADRG dataset, by checking that the GEN field does not contain a NWO subfield */
+            /* make sure that the GEN file is part of a SRP dataset, not an ADRG dataset, by checking that the GEN field does not contain a NOW subfield */
             const char* NWO = record->GetStringSubfield("GEN", 0, "NWO", 0);
             if( NWO )
             {
@@ -1671,7 +1669,7 @@ void GDALRegister_SRP()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Standard Raster Product (ASRP/USRP)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#SRP" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/srp.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "img" );
     poDriver->SetMetadataItem( GDAL_DMD_SUBDATASETS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );

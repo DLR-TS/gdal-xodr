@@ -71,7 +71,7 @@ class FGdbDriver;
 /*                           FGdbBaseLayer                              */
 /************************************************************************/
 
-class FGdbBaseLayer : public OGRLayer
+class FGdbBaseLayer CPL_NON_FINAL: public OGRLayer
 {
 protected:
 
@@ -88,6 +88,7 @@ protected:
 
   bool  m_suppressColumnMappingError;
   bool  m_forceMulti;
+  bool  m_bTimeInUTC = false;
 
   bool OGRFeatureFromGdbRow(Row* pRow, OGRFeature** ppFeature);
 
@@ -223,6 +224,8 @@ protected:
 
   bool GDBToOGRFields(CPLXMLNode* psFields);
   bool ParseGeometryDef(CPLXMLNode* psGeometryDef);
+
+  static
   bool ParseSpatialReference(CPLXMLNode* psSpatialRefNode, std::string* pOutWkt,
                              std::string* pOutWKID, std::string* pOutLatestWKID);
 
@@ -239,7 +242,6 @@ protected:
 
   std::wstring m_wstrSubfields;
   std::wstring m_wstrWhereClause;
-  OGRGeometry* m_pOGRFilterGeometry;
 
   bool        m_bFilterDirty; //optimization to avoid multiple calls to search until necessary
 

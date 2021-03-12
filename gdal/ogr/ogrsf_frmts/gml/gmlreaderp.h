@@ -55,6 +55,8 @@ class GMLReader;
 
 typedef struct _GeometryNamesStruct GeometryNamesStruct;
 
+bool OGRGMLIsGeometryElement(const char* pszElement);
+
 /************************************************************************/
 /*                        GFSTemplateList                               */
 /************************************************************************/
@@ -356,6 +358,7 @@ class GMLReader final: public IGMLReader
     bool          SetupParserExpat();
     GMLFeature   *NextFeatureExpat();
     char         *pabyBuf;
+    CPLString     m_osErrorMessage{};
 #endif
 
     VSILFILE*     fpGML;
@@ -441,7 +444,6 @@ public:
                                        int iSqliteCacheMB ) override;
 
     bool             PrescanForSchema(bool bGetExtents = true,
-                                      bool bAnalyzeSRSPerFeature = true,
                                       bool bOnlyDetectSRS = false ) override;
     bool             PrescanForTemplate() override;
     bool             ReArrangeTemplateClasses( GFSTemplateList *pCC );

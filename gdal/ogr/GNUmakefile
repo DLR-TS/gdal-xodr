@@ -5,7 +5,7 @@ include ./file.lst
 
 INST_H_FILES	=	ogr_core.h ogr_feature.h ogr_geometry.h ogr_p.h \
 		ogr_spatialref.h ogr_srs_api.h ogrsf_frmts/ogrsf_frmts.h \
-		ogr_featurestyle.h ogr_api.h ogr_geocoding.h
+		ogr_featurestyle.h ogr_api.h ogr_geocoding.h ogr_swq.h
 
 ifeq ($(HAVE_GEOS),yes)
 CPPFLAGS 	:=	-DHAVE_GEOS=1 $(GEOS_CFLAGS) $(CPPFLAGS)
@@ -50,7 +50,7 @@ very-clean: clean
 
 lib:	sublibs $(OBJ:.o=.$(OBJ_EXT))
 
-$(OBJ): ogr_feature.h ogr_geometry.h swq.h
+$(OBJ): ogr_feature.h ogr_geometry.h ogr_swq.h
 
 obj:	$(OBJ)
 
@@ -94,6 +94,7 @@ parser:
 	sed -i.bak "s/(unsigned int) (YYX)/static_cast<unsigned int>(YYX)/" swq_parser.cpp
 	sed -i.bak "s/(char \*) YYSTACK_ALLOC (yymsg_alloc)/static_cast<char *>(YYSTACK_ALLOC (yymsg_alloc))/" swq_parser.cpp
 	sed -i.bak "s/(union yyalloc \*) YYSTACK_ALLOC (YYSTACK_BYTES (yystacksize))/static_cast<union yyalloc *>(YYSTACK_ALLOC (YYSTACK_BYTES (yystacksize)))/" swq_parser.cpp
+	sed -i.bak "s/const char \*yyformat = YY_NULLPTR;/const char *yyformat = \"\";/" swq_parser.cpp
 	rm swq_parser.cpp.bak
 
 swq_parser.$(OBJ_EXT):   swq_parser.cpp

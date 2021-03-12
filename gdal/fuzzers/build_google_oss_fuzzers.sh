@@ -19,6 +19,10 @@ if [ "$CXX" == "" ]; then
     exit 1
 fi
 
+if [ "$LIB_FUZZING_ENGINE" = "" ]; then
+    export LIB_FUZZING_ENGINE=-lFuzzingEngine
+fi
+
 SRC_DIR=$(dirname $0)/..
 
 build_fuzzer()
@@ -31,11 +35,11 @@ build_fuzzer()
     if test -d $SRC/install/lib; then
         $CXX $CXXFLAGS -std=c++11 -I$SRC_DIR/port -I$SRC_DIR/gcore -I$SRC_DIR/alg -I$SRC_DIR/apps -I$SRC_DIR/ogr -I$SRC_DIR/ogr/ogrsf_frmts -I$SRC_DIR/ogr/ogrsf_frmts/sqlite \
             $sourceFilename "$@" -o $OUT/$fuzzerName \
-            -lFuzzingEngine $SRC_DIR/libgdal.a $EXTRA_LIBS $SRC/install/lib/*.a
+            $LIB_FUZZING_ENGINE $SRC_DIR/libgdal.a $EXTRA_LIBS $SRC/install/lib/*.a
     else
         $CXX $CXXFLAGS -std=c++11 -I$SRC_DIR/port -I$SRC_DIR/gcore -I$SRC_DIR/alg -I$SRC_DIR/apps -I$SRC_DIR/ogr -I$SRC_DIR/ogr/ogrsf_frmts -I$SRC_DIR/ogr/ogrsf_frmts/sqlite \
             $sourceFilename "$@" -o $OUT/$fuzzerName \
-            -lFuzzingEngine $SRC_DIR/libgdal.a $EXTRA_LIBS
+            $LIB_FUZZING_ENGINE $SRC_DIR/libgdal.a $EXTRA_LIBS
     fi
 }
 
@@ -76,13 +80,14 @@ build_ogr_specialized_fuzzer shape OGRRegisterAll "/vsimem/test.tar" "/vsitar//v
 build_ogr_specialized_fuzzer mitab_mif OGRRegisterAll "/vsimem/test.tar" "/vsitar//vsimem/test.tar/my.mif"
 build_ogr_specialized_fuzzer mitab_tab OGRRegisterAll "/vsimem/test.tar" "/vsitar//vsimem/test.tar/my.tab"
 build_ogr_specialized_fuzzer csv RegisterOGRCSV "/vsimem/test.csv" "/vsimem/test.csv"
-build_ogr_specialized_fuzzer bna RegisterOGRBNA "/vsimem/test.bna" "/vsimem/test.bna"
 build_ogr_specialized_fuzzer wasp RegisterOGRWAsP "/vsimem/test.map" "/vsimem/test.map"
 build_ogr_specialized_fuzzer xlsx RegisterOGRXLSX "/vsimem/test.xlsx" "/vsitar/{/vsimem/test.xlsx}"
 build_ogr_specialized_fuzzer ods RegisterOGRODS "/vsimem/test.ods" "/vsitar/{/vsimem/test.ods}"
+build_ogr_specialized_fuzzer lvbag RegisterOGRLVBAG "/vsimem/test.xml" "/vsimem/test.xml"
 build_ogr_specialized_fuzzer avce00 RegisterOGRAVCE00 "/vsimem/test.e00" "/vsimem/test.e00"
 build_ogr_specialized_fuzzer avcbin RegisterOGRAVCBin "/vsimem/test.tar" "/vsitar/{/vsimem/test.tar}/testavc"
 build_ogr_specialized_fuzzer gml RegisterOGRGML "/vsimem/test.tar" "/vsitar//vsimem/test.tar/test.gml"
+build_ogr_specialized_fuzzer fgb RegisterOGRFlatGeobuf "/vsimem/test.fgb" "/vsimem/test.fgb"
 build_fuzzer cad_fuzzer $(dirname $0)/ogr_fuzzer.cpp -DREGISTER_FUNC=RegisterOGRCAD
 build_fuzzer rec_fuzzer $(dirname $0)/ogr_fuzzer.cpp -DREGISTER_FUNC=RegisterOGRREC -DUSE_FILESYSTEM -DEXTENSION="\"rec\""
 
@@ -123,4 +128,3 @@ echo "max_len = 100000" >> $OUT/spatialite_geom_import_fuzzer.options
 
 echo "[libfuzzer]" > $OUT/osr_set_from_user_input_fuzzer.options
 echo "max_len = 10000" >> $OUT/osr_set_from_user_input_fuzzer.options
-

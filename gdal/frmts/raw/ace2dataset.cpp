@@ -91,7 +91,7 @@ static const char * const apszCategoryConfidence[] =
 /* ==================================================================== */
 /************************************************************************/
 
-class ACE2Dataset : public GDALPamDataset
+class ACE2Dataset final: public GDALPamDataset
 {
     friend class ACE2RasterBand;
 
@@ -117,7 +117,7 @@ class ACE2Dataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class ACE2RasterBand : public RawRasterBand
+class ACE2RasterBand final: public RawRasterBand
 {
   public:
     ACE2RasterBand( VSILFILE* fpRaw,
@@ -394,7 +394,7 @@ void GDALRegister_ACE2()
     poDriver->SetDescription( "ACE2" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "ACE2" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#ACE2" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/ace2.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "ACE2" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

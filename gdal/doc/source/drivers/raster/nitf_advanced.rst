@@ -38,7 +38,7 @@ backslashes and double quotes will be backslashed escaped. The
 CPLUnescapeString() function can be used to unescape the data into
 binary format using scheme CPLES_BackslashQuotable.
 
-Since GDAL 1.8.0, to add CGM data to a NITF image, you can pass creation
+To add CGM data to a NITF image, you can pass creation
 options in the following format:
 
 ::
@@ -108,12 +108,12 @@ metadata will look something like:
 The argument to DATA_n is the raw text of the n'th (zero based) text
 segment with no escaping of any kind applied.
 
-Since GDAL 1.8.0, the TEXT segment header data is preserved in HEADER_n
+The TEXT segment header data is preserved in HEADER_n
 metadata item. The CreateCopy() method on the NITF driver also supports
 creating text segments on the output file as long as the input file has
 metadata in the TEXT domain as defined above.
 
-Since GDAL 1.8.0, to add TEXT data to a NITF image, you can also pass
+To add TEXT data to a NITF image, you can also pass
 creation options in the following format:
 
 ::
@@ -156,7 +156,7 @@ TRE name.
 TREs as xml:TRE
 ---------------
 
-Starting with GDAL 1.9.0, all TREs found in file and matching one of the
+All TREs found in file and matching one of the
 TRE description of the
 `nitf_spec.xml <http://trac.osgeo.org/gdal/browser/trunk/gdal/data/nitf_spec.xml>`__
 in GDAL data directory will be reported as XML content in the xml:TRE
@@ -212,6 +212,40 @@ metadata domain.
    [...]
      </tre>
    </tres>
+
+TRE creation from hexadecimal data
+----------------------------------
+
+TRE data can be added to a newly created NITF file in hexadecimal format to encode binary
+data such as unsigned int or floating point types.  The hexadecimal TRE creation option is
+supplied as "TRE=HEX/<tre_name>=<hex_tre_data>" or "FILE_TRE=HEX/<tre_name>=<hex_tre_data>
+
+.. code-block:: python
+
+    # Encode "ABC" as 3 bytes of hex data, "414243"
+    ds = gdal.GetDriverByName('NITF').Create('/vsimem/file.ntf', 1, 1, options=["TRE=HEX/TSTTRE=414243"])
+
+Data Extension Segments (xml:DES)
+---------------------------------
+Data Extension Segments (DESs) are user-defined metadata extensions to the NITF format.
+The DES metadata is available through the xml\:DES metadata domain.  The xml\:DES domain
+returns an XML string with standard and user-defined DES fields in plain text, and
+the user-defined DES data as Base64 encoded text.  The following is an example XML structure:
+
+::
+
+    <des_list>
+      <des name="TEST">
+        <field name="NITF_DESVER" value="02" />
+        <field name="NITF_DECLAS" value="U" />
+        <field name="NITF_DESCLSY" value="" />
+        [...]
+        <field name="NITF_DESCTLN" value="" />
+        <field name="NITF_DESSHL" value="0004" />
+        <field name="NITF_DESSHF" value="ABCD" />
+        <field name="NITF_DESDATA" value="MTIzNDU2Nzg5MA==" />
+      </des>
+    </des_list>
 
 Raw File / Image Headers
 ------------------------

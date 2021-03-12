@@ -41,7 +41,7 @@ import pytest
 
 def test_vrtfilt_1():
 
-    tst = gdaltest.GDALTest('VRT', 'avfilt.vrt', 1, 21890)
+    tst = gdaltest.GDALTest('VRT', 'vrt/avfilt.vrt', 1, 21890)
     return tst.testOpen()
 
 ###############################################################################
@@ -50,13 +50,13 @@ def test_vrtfilt_1():
 
 def test_vrtfilt_2():
 
-    ds = gdal.Open('data/test_vrt_filter_nodata.tif')
+    ds = gdal.Open('data/vrt/test_vrt_filter_nodata.tif')
     checksum = ds.GetRasterBand(1).Checksum()
     ds = None
 
     # This is a black&white checkboard, where black = nodata
     # Thus averaging it and taking nodata into account will not change it
-    tst = gdaltest.GDALTest('VRT', 'avfilt_nodata.vrt', 1, checksum)
+    tst = gdaltest.GDALTest('VRT', 'vrt/avfilt_nodata.vrt', 1, checksum)
     return tst.testOpen()
 
 ###############################################################################
@@ -147,8 +147,46 @@ def test_vrtfilt_5():
 
 def test_vrtfilt_6():
 
-    tst = gdaltest.GDALTest('VRT', 'avfilt_1d.vrt', 1, 22377)
+    tst = gdaltest.GDALTest('VRT', 'vrt/avfilt_1d.vrt', 1, 22377)
     return tst.testOpen()
+
+###############################################################################
+# Test block access
+
+
+def test_vrtfilt_7():
+
+    gdal.Translate('/vsimem/src.tif', 'data/rgbsmall.tif', options='-outsize 500 500 -r bilinear')
+
+    vrt_ds = gdal.GetDriverByName('VRT').Create('/vsimem/src.vrt', 500, 500, 1)
+
+    filterSourceXML = """    <KernelFilteredSource>
+      <SourceFilename>/vsimem/src.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SrcRect xOff="0" yOff="0" xSize="500" ySize="500"/>
+      <DstRect xOff="0" yOff="0" xSize="500" ySize="500"/>
+      <Kernel>
+        <Size>3</Size>
+        <Coefs>0.111111 0.111111 0.111111 0.111111 0.111111 0.111111 0.111111 0.111111 0.111111</Coefs>
+      </Kernel>
+    </KernelFilteredSource>"""
+
+    md = {}
+    md['source_0'] = filterSourceXML
+
+    vrt_ds.GetRasterBand(1).SetMetadata(md, 'vrt_sources')
+
+    ref_checksum = vrt_ds.GetRasterBand(1).Checksum()
+    vrt_ds = None
+
+    # Wrap our above VRT in a VRT that will use 128x128 blocks
+    # (use of -mo FOO=BAR forces a non trivial copy to be made)
+    out_ds = gdal.Translate('', '/vsimem/src.vrt', options='-of VRT -mo FOO=BAR')
+    assert ref_checksum == out_ds.GetRasterBand(1).Checksum()
+    out_ds = None
+
+    gdal.GetDriverByName('GTiff').Delete('/vsimem/src.tif')
+    gdal.GetDriverByName('VRT').Delete('/vsimem/src.vrt')
 
 ###############################################################################
 # Cleanup.

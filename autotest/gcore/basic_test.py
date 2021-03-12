@@ -58,10 +58,8 @@ def test_basic_test_1():
     pytest.fail('did not get expected error message, got %s' % gdal.GetLastErrorMsg())
 
 
+@pytest.mark.skipif(sys.platform != 'linux', reason='Incorrect platform')
 def test_basic_test_strace_non_existing_file():
-
-    if not sys.platform.startswith('linux'):
-        pytest.skip()
 
     python_exe = sys.executable
     cmd = "strace -f %s -c \"from osgeo import gdal; " % python_exe + (
@@ -433,10 +431,7 @@ def test_basic_test_14():
         ds.SetMetadata({5: 6})
     
 
-    if sys.version_info >= (3, 0, 0):
-        val = '\u00e9ven'
-    else:
-        exec("val = u'\\u00e9ven'")
+    val = '\u00e9ven'
 
     ds.SetMetadata({'bar': val})
     assert ds.GetMetadata()['bar'] == val
@@ -506,7 +501,7 @@ def test_basic_test_16():
     with gdaltest.error_handler():
         gdal.OpenEx('/vsimem/temp.tif', gdal.OF_UPDATE, open_options=['@NUM_THREADS=INVALID'])
     gdal.Unlink('/vsimem/temp.tif')
-    assert gdal.GetLastErrorMsg() == 'Invalid value for NUM_THREADS: INVALID'
+    assert 'Invalid value for NUM_THREADS: INVALID' in gdal.GetLastErrorMsg()
 
 ###############################################################################
 # Test mix of gdal/ogr.UseExceptions()/DontUseExceptions()
@@ -562,7 +557,7 @@ def test_gdal_setspatialref():
     ds = gdal.Open('data/byte.tif')
     sr = ds.GetSpatialRef()
     ds = gdal.GetDriverByName('MEM').Create('',1,1)
-    ds.SetSpatialRef(sr)
+    assert ds.SetSpatialRef(sr) == gdal.CE_None
     sr_got = ds.GetSpatialRef()
     assert sr_got
     assert sr_got.IsSame(sr)

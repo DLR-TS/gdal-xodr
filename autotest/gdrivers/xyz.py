@@ -34,6 +34,7 @@ from osgeo import gdal
 
 
 import gdaltest
+import pytest
 
 ###############################################################################
 # Test CreateCopy() of byte.tif
@@ -50,7 +51,7 @@ def test_xyz_1():
 
 def test_xyz_2():
 
-    src_ds = gdal.Open('data/float.img')
+    src_ds = gdal.Open('data/hfa/float.img')
     ds = gdal.GetDriverByName('XYZ').CreateCopy('tmp/float.xyz', src_ds, options=['COLUMN_SEPARATOR=,', 'ADD_HEADER_LINE=YES'])
     got_cs = ds.GetRasterBand(1).Checksum()
     expected_cs = src_ds.GetRasterBand(1).Checksum()
@@ -120,7 +121,7 @@ def test_xyz_4():
     got_gt = ds.GetGeoTransform()
     expected_gt = (440660.0, 60.0, 0.0, 3751350.0, 0.0, -120.0)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-5
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-5)
 
     assert ds.GetRasterBand(1).GetMinimum() == 1
     assert ds.GetRasterBand(1).GetMaximum() == 7
@@ -153,7 +154,7 @@ def test_xyz_5():
     gdal.Unlink('/vsimem/grid.xyz')
 
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-5
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-5)
 
     
 
@@ -179,7 +180,7 @@ def test_xyz_6():
     gdal.Unlink('/vsimem/grid.xyz')
 
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-5
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-5)
 
     
 
@@ -216,7 +217,7 @@ def test_xyz_7():
     gdal.Unlink('/vsimem/grid.xyz')
 
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
 
     assert cs == 146
 
@@ -256,17 +257,56 @@ def test_xyz_9():
 """
 
     with gdaltest.tempfile('/vsimem/grid.xyz', content):
-        ds = gdal.Open('/vsimem/grid.xyz')
+        with gdaltest.error_handler():
+            ds = gdal.Open('/vsimem/grid.xyz')
         assert ds.RasterXSize == 2 and ds.RasterYSize == 2
         cs = ds.GetRasterBand(1).Checksum()
 
     assert cs == 22
 
 ###############################################################################
-# Cleanup
-
-def test_xyz_cleanup():
-
-    pass
+# Test case of XYZ file where grid points are organized by columns, ascending Y
 
 
+def test_xyz_organized_by_columns_int16():
+
+    content = """X Y Z
+0 0 50
+0 10 100
+0 20 150
+10 0 200
+10 10 250
+10 20 300
+
+"""
+
+    with gdaltest.tempfile('/vsimem/grid.xyz', content):
+        ds = gdal.Open('/vsimem/grid.xyz')
+        assert ds.RasterXSize == 2 and ds.RasterYSize == 3
+        assert ds.GetGeoTransform() == (-5.0, 10.0, 0.0, 25.0, 0.0, -10.0)
+        assert ds.GetRasterBand(1).DataType == gdal.GDT_Int16
+        assert struct.unpack('h' * 6, ds.ReadRaster()) == (150, 300, 100, 250, 50, 200)
+
+
+###############################################################################
+# Test case of XYZ file where grid points are organized by columns, descending Y
+
+
+def test_xyz_organized_by_columns_float32():
+
+    content = """X Y Z
+0 20 50.5
+0 10 100
+0 0 150
+10 20 200
+10 10 250
+10 0 300
+
+"""
+
+    with gdaltest.tempfile('/vsimem/grid.xyz', content):
+        ds = gdal.Open('/vsimem/grid.xyz')
+        assert ds.RasterXSize == 2 and ds.RasterYSize == 3
+        assert ds.GetGeoTransform() == (-5.0, 10.0, 0.0, 25.0, 0.0, -10.0)
+        assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32
+        assert struct.unpack('f' * 6, ds.ReadRaster()) == (50.5, 200.0, 100.0, 250.0, 150.0, 300.0)

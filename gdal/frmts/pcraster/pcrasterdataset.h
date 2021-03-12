@@ -53,7 +53,7 @@ namespace gdal {
   Additional documentation about this driver can be found in
   frmts/frmts_various.html of the GDAL source code distribution.
 */
-class PCRasterDataset: public GDALPamDataset
+class PCRasterDataset final: public GDALPamDataset
 {
 
   friend class gdal::PCRasterDatasetTest;
@@ -67,7 +67,7 @@ public:
                                         int nr_rows,
                                         int nrBands,
                                         GDALDataType gdalType,
-                                        char** papszParmList);
+                                        char** papszParamList);
 
   static GDALDataset* createCopy       (char const* filename,
                                         GDALDataset* source,
@@ -113,7 +113,7 @@ public:
   // CREATORS
   //----------------------------------------------------------------------------
 
-  explicit          PCRasterDataset     (MAP* map);
+  explicit          PCRasterDataset     (MAP* map, GDALAccess eAccess);
 
   /* virtual */    ~PCRasterDataset    ();
 

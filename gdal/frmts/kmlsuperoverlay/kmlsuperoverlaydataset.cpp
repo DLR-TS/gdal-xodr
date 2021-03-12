@@ -572,7 +572,7 @@ int KmlSuperOverlayReadDataset::DetectTransparency( int rxsize, int rysize,
 /*                           CreateCopy()                               */
 /************************************************************************/
 
-class KmlSuperOverlayDummyDataset: public GDALDataset
+class KmlSuperOverlayDummyDataset final: public GDALDataset
 {
     public:
         KmlSuperOverlayDummyDataset() {}
@@ -1512,6 +1512,7 @@ CPLErr KmlSuperOverlayReadDataset::IRasterIO( GDALRWFlag eRWFlag,
 
             GDALRasterIOExtraArg sExtraArgs;
             INIT_RASTERIO_EXTRA_ARG(sExtraArgs);
+            // cppcheck-suppress redundantAssignment
             sExtraArgs.eResampleAlg = psExtraArg->eResampleAlg;
             CPLErr eErr = poVRTDS->RasterIO( eRWFlag,
                                              nReqXOff,
@@ -1568,6 +1569,7 @@ CPLErr KmlSuperOverlayReadDataset::IRasterIO( GDALRWFlag eRWFlag,
 
         GDALRasterIOExtraArg sExtraArgs;
         INIT_RASTERIO_EXTRA_ARG(sExtraArgs);
+        // cppcheck-suppress redundantAssignment
         sExtraArgs.eResampleAlg = psExtraArg->eResampleAlg;
         sExtraArgs.pfnProgress = GDALScaledProgress;
         sExtraArgs.pProgressData =
@@ -1919,7 +1921,7 @@ class KmlSingleDocRasterDataset final: public GDALDataset
 /*                    KmlSingleDocRasterRasterBand                      */
 /************************************************************************/
 
-class KmlSingleDocRasterRasterBand: public GDALRasterBand
+class KmlSingleDocRasterRasterBand final: public GDALRasterBand
 {
     public:
         KmlSingleDocRasterRasterBand(KmlSingleDocRasterDataset* poDS,
@@ -2424,7 +2426,7 @@ GDALDataset* KmlSingleDocRasterDataset::Open(const char* pszFilename,
 /*                   KmlSingleOverlayRasterDataset                      */
 /************************************************************************/
 
-class KmlSingleOverlayRasterDataset: public VRTDataset
+class KmlSingleOverlayRasterDataset final: public VRTDataset
 {
     public:
                 KmlSingleOverlayRasterDataset(int nXSize, int nYSize) :

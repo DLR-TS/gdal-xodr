@@ -38,7 +38,7 @@
 #include "ogrsf_frmts.h"
 #include "gmlreader.h"
 #include "cpl_http.h"
-#include "swq.h"
+#include "ogr_swq.h"
 
 CPLXMLNode* WFSFindNode(CPLXMLNode* psXML, const char* pszRootName);
 void OGRWFSRecursiveUnlink( const char *pszName );
@@ -59,7 +59,6 @@ const char* FindSubStringInsensitive(const char* pszStr,
 CPLString WFS_EscapeURL(const char* pszURL);
 CPLString WFS_DecodeURL(const CPLString &osSrc);
 
-// cppcheck-suppress copyCtorAndEqOperator
 class OGRWFSSortDesc
 {
     public:
@@ -69,9 +68,6 @@ class OGRWFSSortDesc
         OGRWFSSortDesc( const CPLString& osColumnIn, int bAscIn ) :
             osColumn(osColumnIn),
             bAsc(CPL_TO_BOOL(bAscIn)) {}
-        OGRWFSSortDesc(const OGRWFSSortDesc& other) :
-            osColumn(other.osColumn),
-            bAsc(other.bAsc) {}
 };
 
 /************************************************************************/

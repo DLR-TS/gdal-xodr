@@ -111,7 +111,8 @@ class GDALDatasetPool
                                              int bShared,
                                              bool bForceOpen,
                                              const char* pszOwner);
-        void _CloseDataset(const char* pszFileName, GDALAccess eAccess,
+        void _CloseDatasetIfZeroRefCount(
+                           const char* pszFileName, GDALAccess eAccess,
                            const char* pszOwner);
 
 #ifdef DEBUG_PROXY_POOL
@@ -132,7 +133,8 @@ class GDALDatasetPool
                                                    bool bForceOpen,
                                                    const char* pszOwner);
         static void UnrefDataset(GDALProxyPoolCacheEntry* cacheEntry);
-        static void CloseDataset(const char* pszFileName, GDALAccess eAccess,
+        static void CloseDatasetIfZeroRefCount(
+                                 const char* pszFileName, GDALAccess eAccess,
                                  const char* pszOwner);
 
         static void PreventDestroy();
@@ -209,6 +211,7 @@ void GDALDatasetPool::CheckLinks()
         CPLAssert(cur->next != nullptr || cur == lastEntry);
         cur = cur->next;
     }
+    (void)i;
     CPLAssert(i == currentSize);
 }
 #endif
@@ -357,10 +360,10 @@ GDALProxyPoolCacheEntry* GDALDatasetPool::_RefDataset(const char* pszFileName,
 }
 
 /************************************************************************/
-/*                       _CloseDataset()                                */
+/*                   _CloseDatasetIfZeroRefCount()                      */
 /************************************************************************/
 
-void GDALDatasetPool::_CloseDataset( const char* pszFileName,
+void GDALDatasetPool::_CloseDatasetIfZeroRefCount( const char* pszFileName,
                                      GDALAccess /* eAccess */,
                                      const char* pszOwner )
 {
@@ -372,7 +375,8 @@ void GDALDatasetPool::_CloseDataset( const char* pszFileName,
         GDALProxyPoolCacheEntry* next = cur->next;
 
         CPLAssert(cur->pszFileName);
-        if (strcmp(cur->pszFileName, pszFileName) == 0 && cur->refCount == 0 &&
+        if (cur->refCount == 0 &&
+            strcmp(cur->pszFileName, pszFileName) == 0 &&
             ((pszOwner == nullptr && cur->pszOwner == nullptr) ||
              (pszOwner != nullptr && cur->pszOwner != nullptr &&
               strcmp(cur->pszOwner, pszOwner) == 0)) &&
@@ -505,14 +509,15 @@ void GDALDatasetPool::UnrefDataset(GDALProxyPoolCacheEntry* cacheEntry)
 }
 
 /************************************************************************/
-/*                       CloseDataset()                                 */
+/*                   CloseDatasetIfZeroRefCount()                       */
 /************************************************************************/
 
-void GDALDatasetPool::CloseDataset(const char* pszFileName, GDALAccess eAccess,
+void GDALDatasetPool::CloseDatasetIfZeroRefCount(
+                                   const char* pszFileName, GDALAccess eAccess,
                                    const char* pszOwner)
 {
     CPLMutexHolderD( GDALGetphDLMutex() );
-    singleton->_CloseDataset(pszFileName, eAccess, pszOwner);
+    singleton->_CloseDatasetIfZeroRefCount(pszFileName, eAccess, pszOwner);
 }
 
 struct GetMetadataElt
@@ -661,10 +666,8 @@ GDALProxyPoolDataset::GDALProxyPoolDataset(const char* pszSourceDatasetDescripti
 
 GDALProxyPoolDataset::~GDALProxyPoolDataset()
 {
-    if( !bShared )
-    {
-        GDALDatasetPool::CloseDataset(GetDescription(), eAccess, m_pszOwner);
-    }
+    GDALDatasetPool::CloseDatasetIfZeroRefCount(GetDescription(), eAccess, m_pszOwner);
+
     /* See comment in constructor */
     /* It is not really a genuine shared dataset, so we don't */
     /* want ~GDALDataset() to try to release it from its */
@@ -1133,6 +1136,17 @@ GDALRasterBand* GDALProxyPoolRasterBand::RefUnderlyingRasterBand(bool bForceOpen
     if (poBand == nullptr)
     {
         (cpl::down_cast<GDALProxyPoolDataset*>(poDS))->UnrefUnderlyingDataset(poUnderlyingDataset);
+    }
+    else
+    if(nBlockXSize <= 0 || nBlockYSize <= 0)
+    {
+        // Here we try to load nBlockXSize&nBlockYSize from underlying band
+        // but we must guarantee that we will not access directly to
+        // nBlockXSize/nBlockYSize before RefUnderlyingRasterBand() is called
+        int nSrcBlockXSize, nSrcBlockYSize;
+        poBand->GetBlockSize(&nSrcBlockXSize, &nSrcBlockYSize);
+        nBlockXSize = nSrcBlockXSize;
+        nBlockYSize = nSrcBlockYSize;
     }
 
     return poBand;

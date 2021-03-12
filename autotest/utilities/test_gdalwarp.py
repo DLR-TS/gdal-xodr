@@ -518,7 +518,7 @@ def test_gdalwarp_25():
     gt = ds.GetGeoTransform()
     expected_gt = [-20037508.342789248, 78245.302611923355, 0.0, 10001965.729313632, 0.0, -77939.656898595524]
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 1, 'Bad gt'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=1), 'Bad gt'
 
     ds = None
 
@@ -541,7 +541,7 @@ def test_gdalwarp_26():
     gt = ds.GetGeoTransform()
     expected_gt = [-16921202.922943164, 41752.719393322564, 0.0, 8460601.4614715818, 0.0, -41701.109109770863]
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 1, 'Bad gt'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=1), 'Bad gt'
 
     ds = None
 
@@ -565,7 +565,7 @@ def test_gdalwarp_27():
     gt = ds.GetGeoTransform()
     expected_gt = [-20015109.356056381, 98651.645855415176, 0.0, 20015109.356056374, 0.0, -98651.645855415176]
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 1, 'Bad gt'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=1), 'Bad gt'
 
     ds = None
 
@@ -590,7 +590,7 @@ def test_gdalwarp_28():
     gt = ds.GetGeoTransform()
     expected_gt1 = [-18494092.97555049, 93907.15126464187, 0.0, 20003931.458625447, 0.0, -93907.15126464187]
     for i in range(6):
-        assert abs(gt[i] - expected_gt1[i]) <= 1 , \
+        assert gt[i] == pytest.approx(expected_gt1[i], abs=1) , \
             ('Bad gt', gt)
 
     ds = None
@@ -599,7 +599,11 @@ def test_gdalwarp_28():
 # Test warping a full EPSG:4326 extent to EPSG:3785 (#2305)
 
 
-def test_gdalwarp_29():
+def DISABLED_test_gdalwarp_29():
+
+    # This test has been disabled since PROJ 8 will reproject a coordinates at
+    # lat=90 to a finite value, due to 90deg being < PI/2 due to numerical
+    # accuracy
     if test_cli_utilities.get_gdalwarp_path() is None:
         pytest.skip()
 
@@ -614,7 +618,7 @@ def test_gdalwarp_29():
     gt = ds.GetGeoTransform()
     expected_gt = [-20037508.342789248, 90054.726863985939, 0.0, 16213801.067583967, 0.0, -90056.750611190684]
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 1, 'Bad gt'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=1), 'Bad gt'
 
     ds = None
 
@@ -626,14 +630,16 @@ def test_gdalwarp_30():
     if test_cli_utilities.get_gdalwarp_path() is None:
         pytest.skip()
 
+    te = " -te -20037508.343 -16206629.152 20036845.112 16213801.068"
+
     # First run : no parameter
-    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + " data/w_jpeg.tiff tmp/testgdalwarp30_1.tif  -t_srs EPSG:3785 -co COMPRESS=LZW -wm 500000  --config GDAL_CACHEMAX 1 -ts 1000 500 -co TILED=YES")
+    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + " data/w_jpeg.tiff tmp/testgdalwarp30_1.tif  -t_srs EPSG:3785 -co COMPRESS=LZW -wm 500000  --config GDAL_CACHEMAX 1 -ts 1000 500 -co TILED=YES" + te)
 
     # Second run : with  -wo OPTIMIZE_SIZE=TRUE
-    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + " data/w_jpeg.tiff tmp/testgdalwarp30_2.tif  -t_srs EPSG:3785 -co COMPRESS=LZW -wm 500000 -wo OPTIMIZE_SIZE=TRUE  --config GDAL_CACHEMAX 1 -ts 1000 500 -co TILED=YES")
+    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + " data/w_jpeg.tiff tmp/testgdalwarp30_2.tif  -t_srs EPSG:3785 -co COMPRESS=LZW -wm 500000 -wo OPTIMIZE_SIZE=TRUE  --config GDAL_CACHEMAX 1 -ts 1000 500 -co TILED=YES" + te)
 
     # Third run : with  -wo STREAMABLE_OUTPUT=TRUE
-    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + " data/w_jpeg.tiff tmp/testgdalwarp30_3.tif  -t_srs EPSG:3785 -co COMPRESS=LZW -wm 500000 -wo STREAMABLE_OUTPUT=TRUE  --config GDAL_CACHEMAX 1 -ts 1000 500 -co TILED=YES")
+    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + " data/w_jpeg.tiff tmp/testgdalwarp30_3.tif  -t_srs EPSG:3785 -co COMPRESS=LZW -wm 500000 -wo STREAMABLE_OUTPUT=TRUE  --config GDAL_CACHEMAX 1 -ts 1000 500 -co TILED=YES" + te)
 
     file_size1 = os.stat('tmp/testgdalwarp30_1.tif')[stat.ST_SIZE]
     file_size2 = os.stat('tmp/testgdalwarp30_2.tif')[stat.ST_SIZE]
@@ -795,7 +801,7 @@ def test_gdalwarp_34():
 
     expected_gt = (440720.0, 60.0, 0.0, 3751320.0, 0.0, -60.0)
     for i in range(6):
-        assert abs(gt[i] - expected_gt[i]) <= 1e-5, 'bad gt'
+        assert gt[i] == pytest.approx(expected_gt[i], abs=1e-5), 'bad gt'
 
     
 ###############################################################################
@@ -883,7 +889,7 @@ def test_gdalwarp_39():
     if test_cli_utilities.get_gdalwarp_path() is None:
         pytest.skip()
 
-    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + ' ../gdrivers/data/float64.asc tmp/test_gdalwarp_39.tif -oo DATATYPE=Float64 -overwrite')
+    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + ' ../gdrivers/data/aaigrid/float64.asc tmp/test_gdalwarp_39.tif -oo DATATYPE=Float64 -overwrite')
 
     ds = gdal.Open('tmp/test_gdalwarp_39.tif')
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float64
@@ -959,6 +965,13 @@ def test_gdalwarp_40():
     assert ds.GetRasterBand(1).Checksum() == cs_ov0
     ds = None
 
+    # Should select overview 0 through VRT
+    gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + ' tmp/test_gdalwarp_40_src.tif tmp/test_gdalwarp_40.vrt -overwrite -ts 10 10 -te 440720 3750120 441920 3751320 -of VRT')
+
+    ds = gdal.Open('tmp/test_gdalwarp_40.vrt')
+    assert ds.GetRasterBand(1).Checksum() == cs_ov0
+    ds = None
+
     gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + ' tmp/test_gdalwarp_40_src.tif -oo OVERVIEW_LEVEL=0 tmp/test_gdalwarp_40.tif -overwrite -ts 7 7')
     ds = gdal.Open('tmp/test_gdalwarp_40.tif')
     expected_cs = ds.GetRasterBand(1).Checksum()
@@ -1016,6 +1029,8 @@ def test_gdalwarp_40():
 
 ###############################################################################
 # Test source fill ratio heuristics (#3120)
+# Also check that we guess a reasonable resolution (#2754), from the source
+# dataset and target extent
 
 
 def test_gdalwarp_41():
@@ -1048,14 +1063,16 @@ def test_gdalwarp_41():
     gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + ' tmp/test_gdalwarp_41_src.tif tmp/test_gdalwarp_41.tif -overwrite  -t_srs EPSG:4326 -te -180 -90 180 90  -wo INIT_DEST=127 -wo SKIP_NOSOURCE=YES')
 
     ds = gdal.Open('tmp/test_gdalwarp_41.tif')
-    assert ds.GetRasterBand(1).Checksum() == 25945
+    assert ds.RasterXSize == 2052
+    assert ds.RasterYSize == 1026
+    assert ds.GetRasterBand(1).Checksum() == 57091
     ds = None
 
     # Check when source fill ratio heuristics is OFF
     gdaltest.runexternal(test_cli_utilities.get_gdalwarp_path() + ' tmp/test_gdalwarp_41_src.tif tmp/test_gdalwarp_41.tif -overwrite  -t_srs EPSG:4326 -te -180 -90 180 90  -wo INIT_DEST=127 -wo SKIP_NOSOURCE=YES -wo SRC_FILL_RATIO_HEURISTICS=NO')
 
     ds = gdal.Open('tmp/test_gdalwarp_41.tif')
-    assert ds.GetRasterBand(1).Checksum() == 65068
+    assert ds.GetRasterBand(1).Checksum() == 31890
     ds = None
 
 ###############################################################################
@@ -1243,6 +1260,25 @@ def test_gdalwarp_47_append_subdataset():
 
     ds = None
     gdal.Unlink(tmpfilename)
+
+
+###############################################################################
+# Test -if option
+
+
+def test_gdalwarp_if_option():
+    if test_cli_utilities.get_gdalwarp_path() is None:
+        pytest.skip()
+
+    ret, err = gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdalwarp_path() + ' -if GTiff ../gcore/data/byte.tif /vsimem/out.tif')
+    assert err is None or err == ''
+
+    _, err = gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdalwarp_path() + ' -if invalid_driver_name ../gcore/data/byte.tif /vsimem/out.tif')
+    assert err is not None
+    assert 'invalid_driver_name' in err
+
+    _, err = gdaltest.runexternal_out_and_err(test_cli_utilities.get_gdalwarp_path() + ' -if HFA ../gcore/data/byte.tif /vsimem/out.tif')
+    assert err is not None
 
 ###############################################################################
 # Cleanup

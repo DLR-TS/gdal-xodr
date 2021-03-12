@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 ###############################################################################
 # $Id$
 #
@@ -104,12 +104,7 @@ def gdal_rm(argv, progress=None):
         return Usage()
 
     if filename == '/':
-        try:
-            user_input_local = ''
-            exec("""user_input_local = raw_input('Please confirm with YES your action: ')""")
-            user_input = user_input_local
-        except:
-            user_input = input('Please confirm with YES your action: ')
+        user_input = input('Please confirm with YES your action: ')
         if user_input != 'YES':
             print('Aborted')
             return 1
@@ -127,5 +122,9 @@ def gdal_rm(argv, progress=None):
     return ret
 
 
+def main(argv):
+    return gdal_rm(argv)
+
+
 if __name__ == '__main__':
-    sys.exit(gdal_rm(sys.argv))
+    sys.exit(main(sys.argv))

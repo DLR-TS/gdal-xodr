@@ -42,9 +42,9 @@ CPL_CVSID("$Id$")
 static void Usage(const char* pszErrorMsg = nullptr)
 
 {
-    printf( "Usage: gdalmdiminfo [--help-general] [-oo NAME=VALUE]* [-detailed]\n"
-            "                    [-nopretty] [-array {array_name}] [-limit {number}]\n"
-            "                    datasetname\n" );
+    printf( "Usage: gdalmdiminfo [--help-general] [-oo NAME=VALUE]* [-arrayoption NAME=VALUE]*\n"
+            "                    [-detailed] [-nopretty] [-array {array_name}] [-limit {number}]\n"
+            "                    [-stats] datasetname\n" );
 
     if( pszErrorMsg != nullptr )
         fprintf(stderr, "\nFAILURE: %s\n", pszErrorMsg);

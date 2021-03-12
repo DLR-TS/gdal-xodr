@@ -657,20 +657,22 @@ int OGRDB2DataSource::GetLayerCount()
 /*                       ParseValue()                                   */
 /************************************************************************/
 
-int OGRDB2DataSource::ParseValue(char** pszValue, char* pszSource,
+int OGRDB2DataSource::ParseValue(char** ppszValue, char* pszSource,
                                  const char* pszKey, int nStart, int nNext,
                                  int nTerm, int bRemove)
 {
     int nLen = static_cast<int>(strlen(pszKey));
-    if ((*pszValue) == nullptr && nStart + nLen < nNext &&
+    if ((*ppszValue) == nullptr && nStart + nLen < nNext &&
             EQUALN(pszSource + nStart, pszKey, nLen))
     {
         const int nSize = nNext - nStart - nLen;
-        *pszValue = (char*)CPLMalloc( nSize + 1 );
-        if (*pszValue)
-            strncpy(*pszValue, pszSource + nStart + nLen,
+        *ppszValue = (char*)CPLMalloc( nSize + 1 );
+        if (*ppszValue)
+        {
+            strncpy(*ppszValue, pszSource + nStart + nLen,
                     nSize);
-        (*pszValue)[nSize] = 0;
+            (*ppszValue)[nSize] = 0;
+        }
 
         if (bRemove)
         {
@@ -910,7 +912,6 @@ int OGRDB2DataSource::Create( const char * pszFilename,
 
 int OGRDB2DataSource::Open( GDALOpenInfo* poOpenInfo )
 {
-    int bRet = FALSE;
     SetDescription( poOpenInfo->pszFilename );
 #ifdef DEBUG_DB2
     CPLDebug("OGR_DB2DataSource::OpenNew", "papszOpenOptions");
@@ -983,7 +984,7 @@ int OGRDB2DataSource::Open( GDALOpenInfo* poOpenInfo )
                     pszTMSMaxX != nullptr && pszTMSMaxY != nullptr )
             {
                 eAccess = GA_Update; //LATER - where should this be set?
-                bRet = OpenRaster( pszTableName, pszIdentifier, pszDescription,
+                int bRet = OpenRaster( pszTableName, pszIdentifier, pszDescription,
                                    pszSRSId ? atoi(pszSRSId) : 0,
                                    CPLAtof(pszTMSMinX), CPLAtof(pszTMSMinY),
                                    CPLAtof(pszTMSMaxX), CPLAtof(pszTMSMaxY),
@@ -1640,7 +1641,6 @@ int OGRDB2DataSource::FetchSRSId( OGRSpatialReference * poSRS)
 
 {
     char                *pszWKT = nullptr;
-    int                 nSRSId = 0;
     const char*         pszAuthorityName;
 
     if( poSRS == nullptr )
@@ -1677,13 +1677,12 @@ int OGRDB2DataSource::FetchSRSId( OGRSpatialReference * poSRS)
     /*      Check whether the EPSG authority code is already mapped to a    */
     /*      SRS ID.                                                         */
     /* -------------------------------------------------------------------- */
-    int  nAuthorityCode = 0;
     if( pszAuthorityName != nullptr && EQUAL( pszAuthorityName, "EPSG" ) )
     {
         /* For the root authority name 'EPSG', the authority code
          * should always be integral
          */
-        nAuthorityCode = atoi( oSRS.GetAuthorityCode(nullptr) );
+        int nAuthorityCode = atoi( oSRS.GetAuthorityCode(nullptr) );
 
         OGRDB2Statement oStatement( &m_oSession );
         oStatement.Appendf("SELECT srs_id "
@@ -1696,7 +1695,7 @@ int OGRDB2DataSource::FetchSRSId( OGRSpatialReference * poSRS)
         if( oStatement.DB2Execute("OGR_DB2DataSource::FetchSRSId")
             && oStatement.Fetch() && oStatement.GetColData( 0 ) )
         {
-            nSRSId = atoi(oStatement.GetColData( 0 ));
+            int nSRSId = atoi(oStatement.GetColData( 0 ));
             CPLDebug("OGR_DB2DataSource::FetchSRSId", "nSRSId = %d", nSRSId);
             return nSRSId;
         }
@@ -1727,7 +1726,7 @@ int OGRDB2DataSource::FetchSRSId( OGRSpatialReference * poSRS)
     {
         if ( oStatement.Fetch() && oStatement.GetColData( 0 ) )
         {
-            nSRSId = atoi(oStatement.GetColData( 0 ));
+            int nSRSId = atoi(oStatement.GetColData( 0 ));
             CPLFree(pszWKT);
             return nSRSId;
         }
@@ -1887,7 +1886,7 @@ int OGRDB2DataSource::OpenRaster( const char* pszTableName,
                            "WHERE zoom_level = tm.zoom_level FETCH FIRST ROW ONLY)",
                            pszTableName);
     }
-    else if( pszZoomLevel == nullptr )
+    else // if( pszZoomLevel == nullptr )
     {
         oStatement.Appendf(" AND zoom_level <= (SELECT MAX(zoom_level) FROM %s)",
                            pszTableName);
@@ -2520,6 +2519,7 @@ static const WarpResamplingAlg asResamplingAlg[] =
     { "LANCZOS", GRA_Lanczos },
     { "MODE", GRA_Mode },
     { "AVERAGE", GRA_Average },
+    { "RMS", GRA_RMS },
 };
 
 static void DumpStringList(char **papszStrList)

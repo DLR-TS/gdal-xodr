@@ -46,7 +46,7 @@ CPL_C_END
 /*                        MerisL2FlagBand                         */
 /* ==================================================================== */
 /************************************************************************/
-class MerisL2FlagBand : public GDALPamRasterBand
+class MerisL2FlagBand final: public GDALPamRasterBand
 {
   public:
     MerisL2FlagBand( GDALDataset *, int, VSILFILE*, vsi_l_offset, int );
@@ -155,7 +155,7 @@ CPLErr MerisL2FlagBand::IReadBlock( CPL_UNUSED int nBlockXOff,
 /* ==================================================================== */
 /************************************************************************/
 
-class EnvisatDataset : public RawDataset
+class EnvisatDataset final: public RawDataset
 {
     EnvisatFile *hEnvisatFile;
     VSILFILE    *fpImage;
@@ -506,7 +506,7 @@ void EnvisatDataset::ScanForGCPs_MERIS()
     }
     else
     {
-        CPLDebug( "EnvisatDataset", "Unexpectd size of 'Tie points ADS' !"
+        CPLDebug( "EnvisatDataset", "Unexpected size of 'Tie points ADS' !"
                 " received=%d expected=%d or %d" , nDSRSize ,
                 50*nTPPerLine+13, 8*nTPPerLine+13 ) ;
         return;
@@ -1159,7 +1159,7 @@ void GDALRegister_Envisat()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Envisat Image Format" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#Envisat" );
+                               "drivers/raster/esat.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "n1" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

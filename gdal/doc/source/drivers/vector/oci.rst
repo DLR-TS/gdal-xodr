@@ -5,6 +5,8 @@ Oracle Spatial
 
 .. shortname:: OCI
 
+.. build_dependencies:: OCI library
+
 This driver supports reading and writing data in Oracle Spatial (8.1.7
 or later) Object-Relational format. The Oracle Spatial driver is not
 normally built into OGR, but may be built in on platforms where the
@@ -51,8 +53,8 @@ check to a layer. Internally these pseudo-commands are translated into
 more complex SQL commands for Oracle.
 
 It is also possible to request the driver to handle SQL commands with
-`OGR SQL <ogr_sql.html>`__ engine, by passing **"OGRSQL"** string to the
-ExecuteSQL() method, as name of the SQL dialect.
+:ref:`OGR SQL <ogr_sql_dialect>` engine, by passing **"OGRSQL"**
+string to the ExecuteSQL() method, as name of the SQL dialect.
 
 Caveats
 -------
@@ -133,7 +135,7 @@ Layer Creation Options
    INDEX_PARAMETERS to SDO_RTR_PCTFREE=0 would cause the rtree index to
    be created without any empty space. By default no parameters are
    passed causing a default R-Tree spatial index to be created.
--  **ADD_LAYER_GTYPE**\ =YES/NO: (starting with GDAL 2.0) This may be
+-  **ADD_LAYER_GTYPE**\ =YES/NO: This may be
    set to NO to disable the constraints on the geometry type in the
    spatial index, through the layer_gtype keyword in the PARAMETERS
    clause of the CREATE INDEX. Layers of type MultiPoint,

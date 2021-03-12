@@ -107,6 +107,11 @@ OGRErr OGRDXFWriterLayer::CreateField( OGRFieldDefn *poField,
     if( poFeatureDefn->GetFieldIndex(poField->GetNameRef()) >= 0
         && bApproxOK )
         return OGRERR_NONE;
+    if( EQUAL(poField->GetNameRef(), "OGR_STYLE") )
+    {
+        poFeatureDefn->AddFieldDefn(poField);
+        return OGRERR_NONE;
+    }
 
     CPLError( CE_Failure, CPLE_AppDefined,
               "DXF layer does not support arbitrary field creation, field '%s' not created.",
@@ -186,6 +191,8 @@ OGRErr OGRDXFWriterLayer::WriteCore( OGRFeature *poFeature )
 /* -------------------------------------------------------------------- */
     poFeature->SetFID( poDS->WriteEntityID(fp,(int)poFeature->GetFID()) );
 
+    WriteValue( 100, "AcDbEntity" );
+
 /* -------------------------------------------------------------------- */
 /*      For now we assign everything to the default layer - layer       */
 /*      "0" - if there is no layer property on the source features.     */
@@ -236,7 +243,6 @@ OGRErr OGRDXFWriterLayer::WriteINSERT( OGRFeature *poFeature )
 {
     WriteValue( 0, "INSERT" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     WriteValue( 100, "AcDbBlockReference" );
     WriteValue( 2, poFeature->GetFieldAsString("BlockName") );
 
@@ -341,7 +347,6 @@ OGRErr OGRDXFWriterLayer::WritePOINT( OGRFeature *poFeature )
 {
     WriteValue( 0, "POINT" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     WriteValue( 100, "AcDbPoint" );
 
     // Write style pen color
@@ -479,7 +484,6 @@ OGRErr OGRDXFWriterLayer::WriteTEXT( OGRFeature *poFeature )
 {
     WriteValue( 0, "MTEXT" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     WriteValue( 100, "AcDbMText" );
 
 /* -------------------------------------------------------------------- */
@@ -774,7 +778,6 @@ OGRErr OGRDXFWriterLayer::WritePOLYLINE( OGRFeature *poFeature,
 
     WriteValue( 0, bHasDifferentZ ? "POLYLINE" : "LWPOLYLINE" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     if( bHasDifferentZ )
     {
         WriteValue( 100, "AcDb3dPolyline" );
@@ -946,10 +949,9 @@ OGRErr OGRDXFWriterLayer::WritePOLYLINE( OGRFeature *poFeature,
         if( bHasDifferentZ )
         {
             WriteValue( 0, "VERTEX" );
-            WriteValue( 100, "AcDbEntity" );
+            WriteCore( poFeature );
             WriteValue( 100, "AcDbVertex" );
             WriteValue( 100, "AcDb3dPolylineVertex" );
-            WriteCore( poFeature );
         }
         WriteValue( 10, poLS->getX(iVert) );
         if( !WriteValue( 20, poLS->getY(iVert) ) )
@@ -967,7 +969,6 @@ OGRErr OGRDXFWriterLayer::WritePOLYLINE( OGRFeature *poFeature,
     {
         WriteValue( 0, "SEQEND" );
         WriteCore( poFeature );
-        WriteValue( 100, "AcDbEntity" );
     }
 
     delete poTool;
@@ -980,7 +981,6 @@ OGRErr OGRDXFWriterLayer::WritePOLYLINE( OGRFeature *poFeature,
 /* -------------------------------------------------------------------- */
     WriteValue( 0, "POLYLINE" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     WriteValue( 100, "AcDbPolyline" );
     if( EQUAL( poGeom->getGeometryName(), "LINEARRING" ) )
         WriteValue( 70, 1 );
@@ -1057,7 +1057,6 @@ OGRErr OGRDXFWriterLayer::WriteHATCH( OGRFeature *poFeature,
 /* -------------------------------------------------------------------- */
     WriteValue( 0, "HATCH" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     WriteValue( 100, "AcDbHatch" );
 
     // Figure out "average" elevation
@@ -1208,7 +1207,6 @@ OGRErr OGRDXFWriterLayer::WriteHATCH( OGRFeature *poFeature,
 /* -------------------------------------------------------------------- */
     WriteValue( 0, "POLYLINE" );
     WriteCore( poFeature );
-    WriteValue( 100, "AcDbEntity" );
     WriteValue( 100, "AcDbPolyline" );
     if( EQUAL( poGeom->getGeometryName(), "LINEARRING" ) )
         WriteValue( 70, 1 );

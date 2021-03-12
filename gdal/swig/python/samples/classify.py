@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # ******************************************************************************
 #
 #  Project:  GDAL
@@ -27,37 +27,50 @@
 #  DEALINGS IN THE SOFTWARE.
 # ******************************************************************************
 
-from osgeo import gdal
-import gdalnumeric
-try:
-    import numpy
-except ImportError:
-    import Numeric as numpy
+import sys
+import numpy as np
+
+from osgeo import gdal, gdal_array
 
 
-class_defs = [(1, 10, 20),
-              (2, 20, 30),
-              (3, 128, 255)]
+def doit(src_filename, dst_filename):
+    class_defs = [(1, 10, 20),
+                  (2, 20, 30),
+                  (3, 128, 255)]
 
-src_ds = gdal.Open('utm.tif')
-xsize = src_ds.RasterXSize
-ysize = src_ds.RasterYSize
+    src_ds = gdal.Open(src_filename)
+    xsize = src_ds.RasterXSize
+    ysize = src_ds.RasterYSize
 
-src_image = gdalnumeric.LoadFile('utm.tif')
+    src_image = gdal_array.LoadFile(src_filename)
 
-dst_image = numpy.zeros((ysize, xsize))
+    dst_image = np.zeros((ysize, xsize))
 
-for class_info in class_defs:
-    class_id = class_info[0]
-    class_start = class_info[1]
-    class_end = class_info[2]
+    for class_info in class_defs:
+        class_id = class_info[0]
+        class_start = class_info[1]
+        class_end = class_info[2]
 
-    class_value = numpy.ones((ysize, xsize)) * class_id
+        class_value = np.ones((ysize, xsize)) * class_id
 
-    mask = numpy.bitwise_and(
-        numpy.greater_equal(src_image, class_start),
-        numpy.less_equal(src_image, class_end))
+        mask = np.bitwise_and(
+            np.greater_equal(src_image, class_start),
+            np.less_equal(src_image, class_end))
 
-    dst_image = numpy.choose(mask, (dst_image, class_value))
+        dst_image = np.choose(mask, (dst_image, class_value))
 
-gdalnumeric.SaveArray(dst_image, 'classes.tif')
+    gdal_array.SaveArray(dst_image, dst_filename)
+
+
+def main(argv):
+    src_filename = 'utm.tif'
+    dst_filename = 'classes.tif'
+    if len(argv) > 1:
+        src_filename = argv[1]
+    if len(argv) > 2:
+        dst_filename = argv[2]
+    return doit(src_filename, dst_filename)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

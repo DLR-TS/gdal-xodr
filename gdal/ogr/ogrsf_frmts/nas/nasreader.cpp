@@ -259,6 +259,7 @@ GMLFeature *NASReader::NextFeature()
         }
 
         while( m_poCompleteFeature == nullptr
+               && !m_bStopParsing
                && m_poSAXReader->parseNext( m_oToFill ) ) {}
 
         poReturn = m_poCompleteFeature;
@@ -266,6 +267,7 @@ GMLFeature *NASReader::NextFeature()
     }
     catch (const XMLException &toCatch)
     {
+        m_bStopParsing = true;
         CPLDebug( "NAS",
                   "Error during NextFeature()! Message:\n%s",
                   transcode( toCatch.getMessage() ).c_str() );
@@ -381,10 +383,11 @@ bool NASReader::IsFeatureElement( const char *pszElement )
     const int nLen = static_cast<int>(strlen(pszLast));
 
     // There seem to be two major NAS classes of feature identifiers
-    // -- either a wfs:Insert or a gml:featureMember.
+    // -- either a wfs:Insert or a gml:featureMember/wfs:member
 
     if( (nLen < 6 || !EQUAL(pszLast+nLen-6,"Insert"))
         && (nLen < 13 || !EQUAL(pszLast+nLen-13,"featureMember"))
+        && (nLen < 6 || !EQUAL(pszLast+nLen-6,"member"))
         && (nLen < 7 || !EQUAL(pszLast+nLen-7,"Replace")) )
         return false;
 
@@ -642,8 +645,17 @@ void NASReader::SetFeaturePropertyDirectly( const char *pszElement,
 /* -------------------------------------------------------------------- */
     if( !poClass->IsSchemaLocked() )
     {
-        poClass->GetProperty(iProperty)->AnalysePropertyValue(
-            poFeature->GetProperty(iProperty));
+        auto poClassProperty = poClass->GetProperty(iProperty);
+        if( poClassProperty )
+        {
+            // coverity[dereference]
+            poClassProperty->AnalysePropertyValue(
+                poFeature->GetProperty(iProperty));
+        }
+        else
+        {
+            CPLAssert(false);
+        }
     }
 }
 
@@ -816,7 +828,6 @@ bool NASReader::SaveClasses( const char *pszFile )
 /************************************************************************/
 
 bool NASReader::PrescanForSchema( bool bGetExtents,
-                                  bool /*bAnalyzeSRSPerFeature*/,
                                   bool /*bOnlyDetectSRS*/ )
 {
     if( m_pszFilename == nullptr )
@@ -974,6 +985,30 @@ void NASReader::CheckForFID( const Attributes &attrs,
 
 {
     const XMLCh  Name[] = { 'f', 'i', 'd', '\0' };
+    int nIndex = attrs.getIndex( Name );
+
+    if( nIndex != -1 )
+    {
+        CPLString osCurField = *ppszCurField;
+
+        osCurField += transcode( attrs.getValue( nIndex ) );
+
+        CPLFree( *ppszCurField );
+        *ppszCurField = CPLStrdup(osCurField);
+    }
+}
+
+/************************************************************************/
+/*                            CheckForRID()                             */
+/*                                                                      */
+/*      Merge the rid attribute into the current field text.            */
+/************************************************************************/
+
+void NASReader::CheckForRID( const Attributes &attrs,
+                             char **ppszCurField )
+
+{
+    const XMLCh  Name[] = { 'r', 'i', 'd', '\0' };
     int nIndex = attrs.getIndex( Name );
 
     if( nIndex != -1 )

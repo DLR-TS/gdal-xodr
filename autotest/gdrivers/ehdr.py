@@ -30,13 +30,13 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import array
 import struct
 
 from osgeo import gdal
 
 
 import gdaltest
+import pytest
 
 ###############################################################################
 # 16bit image.
@@ -44,7 +44,7 @@ import gdaltest
 
 def test_ehdr_1():
 
-    tst = gdaltest.GDALTest('EHDR', 'rgba16.png', 2, 2042)
+    tst = gdaltest.GDALTest('EHDR', 'png/rgba16.png', 2, 2042)
 
     return tst.testCreate()
 
@@ -64,7 +64,7 @@ def test_ehdr_2():
 
 def test_ehdr_3():
 
-    tst = gdaltest.GDALTest('EHDR', 'float32.bil', 1, 27)
+    tst = gdaltest.GDALTest('EHDR', 'ehdr/float32.bil', 1, 27)
 
     return tst.testCreateCopy()
 
@@ -77,7 +77,7 @@ def test_ehdr_4():
     drv = gdal.GetDriverByName('EHdr')
     ds = drv.Create('tmp/test_4.bil', 200, 100, 1, gdal.GDT_Byte)
 
-    raw_data = array.array('h', list(range(200))).tostring()
+    raw_data = b''.join(struct.pack('h', v) for v in range(200))
 
     for line in range(100):
         ds.WriteRaster(0, line, 200, 1, raw_data,
@@ -127,7 +127,7 @@ def test_ehdr_5():
 
 def test_ehdr_6():
 
-    tst = gdaltest.GDALTest('EHDR', 'float32.bil', 1, 27)
+    tst = gdaltest.GDALTest('EHDR', 'ehdr/float32.bil', 1, 27)
 
     return tst.testCreateCopy(vsimem=1)
 
@@ -148,7 +148,7 @@ def test_ehdr_7():
 def test_ehdr_8():
 
     drv = gdal.GetDriverByName('EHDR')
-    src_ds = gdal.Open('data/8s.vrt')
+    src_ds = gdal.Open('data/ehdr/8s.vrt')
     ds = drv.CreateCopy('tmp/ehdr_8.bil', src_ds)
     src_ds = None
 
@@ -173,7 +173,7 @@ def test_ehdr_8():
 
 def test_ehdr_9():
 
-    ds = gdal.Open('data/wc_10m_CCCMA_A2a_2020_tmin_9.bil')
+    ds = gdal.Open('data/ehdr/wc_10m_CCCMA_A2a_2020_tmin_9.bil')
 
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Int16, 'wrong datatype'
 
@@ -189,7 +189,7 @@ def test_ehdr_9():
 
 
 def test_ehdr_10():
-    tst = gdaltest.GDALTest('EHDR', 'ehdr10.bil', 1, 8202)
+    tst = gdaltest.GDALTest('EHDR', 'ehdr/ehdr10.bil', 1, 8202)
     return tst.testOpen()
 
 ###############################################################################
@@ -197,7 +197,7 @@ def test_ehdr_10():
 
 
 def test_ehdr_11():
-    tst = gdaltest.GDALTest('EHDR', 'ehdr11.flt', 1, 8202)
+    tst = gdaltest.GDALTest('EHDR', 'ehdr/ehdr11.flt', 1, 8202)
     return tst.testOpen()
 
 ###############################################################################
@@ -238,7 +238,7 @@ def test_ehdr_13():
     stats = ds.GetRasterBand(1).GetStatistics(False, True)
     expected_stats = [74.0, 255.0, 126.765, 22.928470838675704]
     for i in range(4):
-        assert abs(stats[i] - expected_stats[i]) <= 0.0001, 'did not get expected statistics'
+        assert stats[i] == pytest.approx(expected_stats[i], abs=0.0001), 'did not get expected statistics'
     ds = None
 
     f = gdal.VSIFOpenL('/vsimem/byte.stx', 'rb')
@@ -246,14 +246,14 @@ def test_ehdr_13():
     gdal.VSIFCloseL(f)
 
     ds = gdal.Open('/vsimem/byte.bil')
-    assert abs(ds.GetRasterBand(1).GetMinimum() - 74) <= 0.0001, \
+    assert ds.GetRasterBand(1).GetMinimum() == pytest.approx(74, abs=0.0001), \
         'did not get expected minimum'
-    assert abs(ds.GetRasterBand(1).GetMaximum() - 255) <= 0.0001, \
+    assert ds.GetRasterBand(1).GetMaximum() == pytest.approx(255, abs=0.0001), \
         'did not get expected maximum'
     stats = ds.GetRasterBand(1).GetStatistics(False, True)
     expected_stats = [74.0, 255.0, 126.765, 22.928470838675704]
     for i in range(4):
-        assert abs(stats[i] - expected_stats[i]) <= 0.0001, 'did not get expected statistics'
+        assert stats[i] == pytest.approx(expected_stats[i], abs=0.0001), 'did not get expected statistics'
     ds = None
 
     gdal.GetDriverByName('EHDR').Delete('/vsimem/byte.bil')
@@ -310,7 +310,7 @@ def test_ehdr_14():
 def test_ehdr_rat():
 
     tmpfile = '/vsimem/rat.bil'
-    gdal.Translate(tmpfile, 'data/int16_rat.bil', format='EHdr')
+    gdal.Translate(tmpfile, 'data/ehdr/int16_rat.bil', format='EHdr')
     ds = gdal.Open(tmpfile)
     rat = ds.GetRasterBand(1).GetDefaultRAT()
     assert rat is not None

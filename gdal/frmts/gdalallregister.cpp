@@ -105,6 +105,10 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_ELAS();
 #endif
 
+#ifdef FRMT_esric
+    GDALRegister_ESRIC();
+#endif
+
 #ifdef FRMT_aigrid
 //    GDALRegister_AIGrid2();
     GDALRegister_AIGrid();
@@ -113,6 +117,7 @@ void CPL_STDCALL GDALAllRegister()
 #ifdef FRMT_aaigrid
     GDALRegister_AAIGrid();
     GDALRegister_GRASSASCIIGrid();
+    GDALRegister_ISG();
 #endif
 
 #ifdef FRMT_sdts
@@ -310,10 +315,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_WMS();
 #endif
 
-#ifdef FRMT_sde
-    GDALRegister_SDE();
-#endif
-
 #ifdef FRMT_msgn
     GDALRegister_MSGN();
 #endif
@@ -434,7 +435,6 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_LCP();
     GDALRegister_GTX();
     GDALRegister_LOSLAS();
-    GDALRegister_NTv1();
     GDALRegister_NTv2();
     GDALRegister_CTable2();
     GDALRegister_ACE2();
@@ -503,22 +503,12 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_GEOR();
 #endif
 
-#ifdef FRMT_epsilon
-    GDALRegister_EPSILON();
-#endif
-
 #ifdef FRMT_postgisraster
     GDALRegister_PostGISRaster();
 #endif
 
 #ifdef FRMT_saga
     GDALRegister_SAGA();
-#endif
-
-#ifdef FRMT_ignfheightasciigrid
-    // IGNFHeightASCIIGrid must come before XYZ, otherwise XYZ might
-    // try and fail opening such files
-    GDALRegister_IGNFHeightASCIIGrid();
 #endif
 
 #ifdef FRMT_xyz
@@ -539,10 +529,6 @@ void CPL_STDCALL GDALAllRegister()
 
 #ifdef FRMT_ctg
     GDALRegister_CTG();
-#endif
-
-#ifdef FRMT_e00grid
-    GDALRegister_E00GRID();
 #endif
 
 #ifdef FRMT_zmap
@@ -582,6 +568,26 @@ void CPL_STDCALL GDALAllRegister()
     GDALRegister_SIGDEM();
 #endif
 
+#ifdef FRMT_exr
+    GDALRegister_EXR();
+#endif
+
+#ifdef FRMT_heif
+    GDALRegister_HEIF();
+#endif
+
+#ifdef FRMT_tga
+    GDALRegister_TGA();
+#endif
+
+#ifdef FRMT_ogcapi
+    GDALRegister_OGCAPI();
+#endif
+
+#ifdef FRMT_stacta
+    GDALRegister_STACTA();
+#endif
+
     // NOTE: you need to generally your own driver before that line.
 
 /* -------------------------------------------------------------------- */
@@ -612,6 +618,8 @@ void CPL_STDCALL GDALAllRegister()
 #ifdef FRMT_wcs
     GDALRegister_HTTP();
 #endif
+
+    GetGDALDriverManager()->AutoLoadPythonDrivers();
 
 /* -------------------------------------------------------------------- */
 /*      Deregister any drivers explicitly marked as suppressed by the   */

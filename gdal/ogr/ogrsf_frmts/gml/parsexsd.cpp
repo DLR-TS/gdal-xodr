@@ -34,6 +34,7 @@
 #include <cstring>
 #include <set>
 #include <string>
+#include <utility>
 
 #include "cpl_conv.h"
 #include "cpl_error.h"
@@ -116,8 +117,9 @@ bool GetSimpleTypeProperties(CPLXMLNode *psTypeNode,
         return true;
     }
 
-    else if( EQUAL(pszBase, "long") )
+    else if( EQUAL(pszBase, "unsignedLong") )
     {
+        // Optimistically map to signed integer...
         *pGMLType = GMLPT_Integer64;
         const char *pszWidth =
             CPLGetXMLValue(psTypeNode, "restriction.totalDigits.value", "0");
@@ -134,11 +136,21 @@ bool GetSimpleTypeProperties(CPLXMLNode *psTypeNode,
         return true;
     }
 
-    /* TODO: Would be nice to have a proper date type */
-    else if( EQUAL(pszBase, "date") ||
-             EQUAL(pszBase, "dateTime") )
+    else if( EQUAL(pszBase, "date")  )
     {
-        *pGMLType = GMLPT_String;
+        *pGMLType = GMLPT_Date;
+        return true;
+    }
+
+    else if( EQUAL(pszBase, "time")  )
+    {
+        *pGMLType = GMLPT_Time;
+        return true;
+    }
+
+    else if( EQUAL(pszBase, "dateTime") )
+    {
+        *pGMLType = GMLPT_DateTime;
         return true;
     }
 
@@ -432,10 +444,12 @@ GMLFeatureClass *GMLParseFeatureType(CPLXMLNode *psSchemaNode,
             if (EQUAL(pszStrippedNSType, "string") ||
                 EQUAL(pszStrippedNSType, "Character"))
                 gmlType = GMLPT_String;
-            // TODO: Would be nice to have a proper date type.
-            else if (EQUAL(pszStrippedNSType, "date") ||
-                     EQUAL(pszStrippedNSType, "dateTime"))
-                gmlType = GMLPT_String;
+            else if (EQUAL(pszStrippedNSType, "date"))
+                gmlType = GMLPT_Date;
+            else if (EQUAL(pszStrippedNSType, "time"))
+                gmlType = GMLPT_Time;
+            else if (EQUAL(pszStrippedNSType, "dateTime"))
+                gmlType = GMLPT_DateTime;
             else if (EQUAL(pszStrippedNSType, "real") ||
                      EQUAL(pszStrippedNSType, "double") ||
                      EQUAL(pszStrippedNSType, "decimal"))
@@ -447,6 +461,11 @@ GMLFeatureClass *GMLParseFeatureType(CPLXMLNode *psSchemaNode,
                 gmlType = GMLPT_Integer;
             else if (EQUAL(pszStrippedNSType, "long"))
                 gmlType = GMLPT_Integer64;
+            else if (EQUAL(pszStrippedNSType, "unsignedLong"))
+            {
+                // Optimistically map to signed integer
+                gmlType = GMLPT_Integer64;
+            }
             else if (EQUAL(pszStrippedNSType, "short") )
                 gmlType = GMLPT_Short;
             else if (EQUAL(pszStrippedNSType, "boolean") )
@@ -926,6 +945,41 @@ void CPLXMLSchemaResolveInclude( const char *pszMainSchemaLocation,
 }
 
 /************************************************************************/
+/*                       GetUniqueConstraints()                         */
+/************************************************************************/
+
+static std::set<std::pair<std::string, std::string>>
+                                GetUniqueConstraints(const CPLXMLNode* psNode)
+{
+    /* Parse
+        <xs:unique name="uniqueConstraintpolyeas_id">
+            <xs:selector xpath="ogr:featureMember/ogr:poly"/>
+            <xs:field xpath="ogr:eas_id"/>
+        </xs:unique>
+    */
+    std::set<std::pair<std::string, std::string>> oSet;
+    for( const auto* psIter= psNode->psChild; psIter != nullptr; psIter = psIter->psNext )
+    {
+        if( psIter->eType == CXT_Element &&
+            EQUAL(psIter->pszValue, "unique") )
+        {
+            const char* pszSelector = CPLGetXMLValue(psIter, "selector.xpath", nullptr);
+            const char* pszField = CPLGetXMLValue(psIter, "field.xpath", nullptr);
+            if( pszSelector && pszField && pszField[0] != '@' )
+            {
+                const char* pszSlash = strchr(pszSelector, '/');
+                if( pszSlash )
+                {
+                    oSet.insert(std::pair<std::string,std::string>(
+                        StripNS(pszSlash+1), StripNS(pszField)));
+                }
+            }
+        }
+    }
+    return oSet;
+}
+
+/************************************************************************/
 /*                          GMLParseXSD()                               */
 /************************************************************************/
 
@@ -975,6 +1029,9 @@ bool GMLParseXSD( const char *pszFile,
 /*      Process each feature class definition.                          */
 /* ==================================================================== */
     CPLXMLNode *psThis = psSchemaNode->psChild;
+
+    std::set<std::pair<std::string, std::string>> oSetUniqueConstraints;
+
     for( ; psThis != nullptr; psThis = psThis->psNext )
     {
 /* -------------------------------------------------------------------- */
@@ -985,27 +1042,32 @@ bool GMLParseXSD( const char *pszFile,
             continue;
 
 /* -------------------------------------------------------------------- */
-/*      Check the substitution group.                                   */
+/*      Get name                                                        */
 /* -------------------------------------------------------------------- */
-        const char *pszSubGroup =
-            StripNS(CPLGetXMLValue(psThis, "substitutionGroup", ""));
-
-        // Old OGR produced elements for the feature collection.
-        if( EQUAL(pszSubGroup, "_FeatureCollection") )
-            continue;
-
-        // AbstractFeature used by GML 3.2.
-        if( !EQUAL(pszSubGroup, "_Feature") &&
-            !EQUAL(pszSubGroup, "AbstractFeature") )
+        const char *pszName = CPLGetXMLValue(psThis, "name", nullptr);
+        if( pszName == nullptr )
         {
             continue;
         }
 
 /* -------------------------------------------------------------------- */
-/*      Get name                                                        */
+/*      Check the substitution group.                                   */
 /* -------------------------------------------------------------------- */
-        const char *pszName = CPLGetXMLValue(psThis, "name", nullptr);
-        if( pszName == nullptr )
+        const char *pszSubGroup =
+            StripNS(CPLGetXMLValue(psThis, "substitutionGroup", ""));
+
+        if( EQUAL(pszName, "FeatureCollection") &&
+            (EQUAL(pszSubGroup, "_FeatureCollection") ||
+             EQUAL(pszSubGroup, "_GML") ||
+             EQUAL(pszSubGroup, "AbstractFeature")) )
+        {
+            oSetUniqueConstraints = GetUniqueConstraints(psThis);
+            continue;
+        }
+
+        // AbstractFeature used by GML 3.2.
+        if( !EQUAL(pszSubGroup, "_Feature") &&
+            !EQUAL(pszSubGroup, "AbstractFeature") )
         {
             continue;
         }
@@ -1073,6 +1135,23 @@ bool GMLParseXSD( const char *pszFile,
     }
 
     CPLDestroyXMLNode(psXSDTree);
+
+    // Attach unique constraints to fields
+    for( const auto& typeFieldPair: oSetUniqueConstraints )
+    {
+        for( const auto* poClass: aosClasses )
+        {
+            if( poClass->GetName() == typeFieldPair.first )
+            {
+                auto poProperty = poClass->GetProperty(typeFieldPair.second.c_str());
+                if( poProperty )
+                {
+                    poProperty->SetUnique(true);
+                }
+                break;
+            }
+        }
+    }
 
     return !aosClasses.empty();
 }

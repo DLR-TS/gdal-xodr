@@ -93,7 +93,7 @@ static int VSIGIFWriteFunc( GifFileType *psGFile,
 
 class GIFRasterBand;
 
-class GIFDataset : public GIFAbstractDataset
+class GIFDataset final: public GIFAbstractDataset
 {
     friend class GIFRasterBand;
 
@@ -115,7 +115,7 @@ class GIFDataset : public GIFAbstractDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class GIFRasterBand : public GIFAbstractRasterBand
+class GIFRasterBand final: public GIFAbstractRasterBand
 {
   public:
     GIFRasterBand( GIFDataset *, int, SavedImage *, int );
@@ -713,7 +713,7 @@ void GDALRegister_GIF()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Graphics Interchange Format (.gif)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_gif.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/gif.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "gif" );
     poDriver->SetMetadataItem( GDAL_DMD_MIMETYPE, "image/gif" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Byte" );

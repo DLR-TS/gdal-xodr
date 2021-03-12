@@ -50,7 +50,7 @@ CPL_CVSID("$Id$")
 
 class SRTMHGTRasterBand;
 
-class SRTMHGTDataset : public GDALPamDataset
+class SRTMHGTDataset final: public GDALPamDataset
 {
     friend class SRTMHGTRasterBand;
 
@@ -81,7 +81,7 @@ class SRTMHGTDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class SRTMHGTRasterBand : public GDALPamRasterBand
+class SRTMHGTRasterBand final: public GDALPamRasterBand
 {
     friend class SRTMHGTDataset;
 
@@ -671,7 +671,7 @@ void GDALRegister_SRTMHGT()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "SRTMHGT File Format");
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "hgt");
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#SRTMHGT" );
+                               "drivers/raster/srtmhgt.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );

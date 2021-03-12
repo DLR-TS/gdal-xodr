@@ -84,8 +84,8 @@ typedef struct
 typedef struct
 {
     unsigned int nNumClassifiedItems;
-//  NWT_CLASSIFIED_ITEM *stClassifedItem[4096]; //hack - it could be up to 64K
-    NWT_CLASSIFIED_ITEM **stClassifedItem;    //hack - it could be up to 64K
+//  NWT_CLASSIFIED_ITEM *stClassifiedItem[4096]; //hack - it could be up to 64K
+    NWT_CLASSIFIED_ITEM **stClassifiedItem;    //hack - it could be up to 64K
 } NWT_CLASSIFIED_DICT;
 
 typedef struct {
@@ -135,7 +135,7 @@ typedef struct
     RASTER_STYLE style;
 } NWT_GRID;
 
-int nwt_ParseHeader( NWT_GRID * pGrd, char *nwHeader );
+int nwt_ParseHeader( NWT_GRID * pGrd, const unsigned char *nwHeader );
 NWT_GRID *nwtOpenGrid( char *filename );
 void nwtCloseGrid( NWT_GRID * pGrd );
 void nwtPrintGridHeader( NWT_GRID * pGrd );

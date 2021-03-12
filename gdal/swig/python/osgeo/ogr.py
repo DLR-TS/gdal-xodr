@@ -187,6 +187,7 @@ OFSTBoolean = _ogr.OFSTBoolean
 OFSTInt16 = _ogr.OFSTInt16
 OFSTFloat32 = _ogr.OFSTFloat32
 OFSTJSON = _ogr.OFSTJSON
+OFSTUUID = _ogr.OFSTUUID
 OJUndefined = _ogr.OJUndefined
 OJLeft = _ogr.OJLeft
 OJRight = _ogr.OJRight
@@ -197,7 +198,9 @@ ALTER_NAME_FLAG = _ogr.ALTER_NAME_FLAG
 ALTER_TYPE_FLAG = _ogr.ALTER_TYPE_FLAG
 ALTER_WIDTH_PRECISION_FLAG = _ogr.ALTER_WIDTH_PRECISION_FLAG
 ALTER_NULLABLE_FLAG = _ogr.ALTER_NULLABLE_FLAG
+ALTER__FLAG = _ogr.ALTER__FLAG
 ALTER_DEFAULT_FLAG = _ogr.ALTER_DEFAULT_FLAG
+ALTER_UNIQUE_FLAG = _ogr.ALTER_UNIQUE_FLAG
 ALTER_ALL_FLAG = _ogr.ALTER_ALL_FLAG
 F_VAL_NULL = _ogr.F_VAL_NULL
 F_VAL_GEOM_TYPE = _ogr.F_VAL_GEOM_TYPE
@@ -256,7 +259,12 @@ def UseExceptions(*args):
 def DontUseExceptions(*args):
     """DontUseExceptions()"""
     return _ogr.DontUseExceptions(*args)
-from . import osr
+from sys import version_info as _swig_python_version_info
+if _swig_python_version_info >= (2, 7, 0):
+    from . import osr
+else:
+    import osr
+del _swig_python_version_info
 class MajorObject(_object):
     """Proxy of C++ GDALMajorObjectShadow class."""
 
@@ -675,7 +683,7 @@ class DataSource(MajorObject):
         papszOptions:  a StringList of name=value options. Options are driver
         specific.
 
-        an handle to the layer, or NULL if an error occurs. 
+        a handle to the layer, or NULL if an error occurs. 
         """
         return _ogr.DataSource_CopyLayer(self, *args, **kwargs)
 
@@ -706,7 +714,7 @@ class DataSource(MajorObject):
 
         pszLayerName:  Layer the layer name of the layer to fetch.
 
-        an handle to the layer, or NULL if the layer is not found or an error
+        a handle to the layer, or NULL if the layer is not found or an error
         occurs. 
         """
         return _ogr.DataSource_GetLayerByName(self, *args)
@@ -794,10 +802,15 @@ class DataSource(MajorObject):
         the dialect. Starting with OGR 1.10, the SQLITE dialect can also be
         used.
 
-        an handle to a OGRLayer containing the results of the query.
+        a handle to a OGRLayer containing the results of the query.
         Deallocate with OGR_DS_ReleaseResultSet(). 
         """
         return _ogr.DataSource_ExecuteSQL(self, *args, **kwargs)
+
+
+    def AbortSQL(self, *args):
+        """AbortSQL(DataSource self) -> OGRErr"""
+        return _ogr.DataSource_AbortSQL(self, *args)
 
 
     def ReleaseResultSet(self, *args):
@@ -819,7 +832,7 @@ class DataSource(MajorObject):
         Parameters:
         -----------
 
-        hDS:  an handle to the data source on which was executed an SQL query.
+        hDS:  a handle to the data source on which was executed an SQL query.
 
         hLayer:  handle to the result of a previous OGR_DS_ExecuteSQL() call.
 
@@ -896,7 +909,7 @@ class DataSource(MajorObject):
         if isinstance(value, slice):
             output = []
             step = value.step if value.step else 1
-            for i in xrange(value.start, value.stop, step):
+            for i in range(value.start, value.stop, step):
                 lyr = self.GetLayer(i)
                 if lyr is None:
                     return output
@@ -1072,7 +1085,7 @@ class Layer(MajorObject):
 
         hLayer:  handle to the layer to get the spatial filter from.
 
-        an handle to the spatial filter geometry. 
+        a handle to the spatial filter geometry. 
         """
         return _ogr.Layer_GetSpatialFilter(self, *args)
 
@@ -1290,7 +1303,7 @@ class Layer(MajorObject):
 
         nFeatureId:  the feature id of the feature to read.
 
-        an handle to a feature now owned by the caller, or NULL on failure. 
+        a handle to a feature now owned by the caller, or NULL on failure. 
         """
         return _ogr.Layer_GetFeature(self, *args)
 
@@ -1334,7 +1347,7 @@ class Layer(MajorObject):
 
         hLayer:  handle to the layer from which feature are read.
 
-        an handle to a feature, or NULL if no more features are available. 
+        a handle to a feature, or NULL if no more features are available. 
         """
         return _ogr.Layer_GetNextFeature(self, *args)
 
@@ -1523,7 +1536,7 @@ class Layer(MajorObject):
 
         hLayer:  handle to the layer to get the schema information.
 
-        an handle to the feature definition. 
+        a handle to the feature definition. 
         """
         return _ogr.Layer_GetLayerDefn(self, *args)
 
@@ -2741,14 +2754,14 @@ class Layer(MajorObject):
         if isinstance(value, slice):
             import sys
             output = []
-            if value.stop == sys.maxint:
-    #for an unending slice, sys.maxint is used
+            if value.stop == sys.maxsize:
+    #for an unending slice, sys.maxsize is used
     #We need to stop before that or GDAL will write an
     ##error to stdout
                 stop = len(self) - 1
             else:
                 stop = value.stop
-            for i in xrange(value.start, stop, value.step):
+            for i in range(value.start, stop, value.step):
                 feature = self.GetFeature(i)
                 if feature:
                     output.append(feature)
@@ -2768,14 +2781,12 @@ class Layer(MajorObject):
             self.CreateField(i)
 
     def __iter__(self):
-        return self
-
-    def next(self):
-        feature = self.GetNextFeature()
-        if not feature:
-            raise StopIteration
-        else:
-            return feature
+        self.ResetReading()
+        while True:
+            feature = self.GetNextFeature()
+            if not feature:
+                break
+            yield feature
 
     def schema(self):
         output = []
@@ -2824,7 +2835,7 @@ class Feature(_object):
 
         hFeat:  handle to the feature to get the feature definition from.
 
-        an handle to the feature definition object on which feature depends.
+        a handle to the feature definition object on which feature depends.
 
         """
         return _ogr.Feature_GetDefnRef(self, *args)
@@ -2908,7 +2919,7 @@ class Feature(_object):
         OGRGeometryH
         OGR_F_GetGeometryRef(OGRFeatureH hFeat)
 
-        Fetch an handle to feature geometry.
+        Fetch a handle to feature geometry.
 
         This function is essentially the same as the C++ method
         OGRFeature::GetGeometryRef() (the only difference is that this C
@@ -2919,7 +2930,7 @@ class Feature(_object):
 
         hFeat:  handle to the feature to get geometry from.
 
-        an handle to internal feature geometry. This object should not be
+        a handle to internal feature geometry. This object should not be
         modified. 
         """
         return _ogr.Feature_GetGeometryRef(self, *args)
@@ -3001,7 +3012,7 @@ class Feature(_object):
         OGRGeometryH
         OGR_F_GetGeomFieldRef(OGRFeatureH hFeat, int iField)
 
-        Fetch an handle to feature geometry.
+        Fetch a handle to feature geometry.
 
         This function is the same as the C++ method
         OGRFeature::GetGeomFieldRef().
@@ -3013,7 +3024,7 @@ class Feature(_object):
 
         iField:  geometry field to get.
 
-        an handle to internal feature geometry. This object should not be
+        a handle to internal feature geometry. This object should not be
         modified.
 
         GDAL 1.11 
@@ -3040,7 +3051,7 @@ class Feature(_object):
 
         hFeat:  handle to the feature to clone.
 
-        an handle to the new feature, exactly matching this feature. 
+        a handle to the new feature, exactly matching this feature. 
         """
         return _ogr.Feature_Clone(self, *args)
 
@@ -3115,7 +3126,7 @@ class Feature(_object):
 
         i:  the field to fetch, from 0 to GetFieldCount()-1.
 
-        an handle to the field definition (from the OGRFeatureDefn). This is
+        a handle to the field definition (from the OGRFeatureDefn). This is
         an internal reference, and should not be deleted or modified. 
         """
         return _ogr.Feature_GetFieldDefnRef(self, *args)
@@ -3166,7 +3177,7 @@ class Feature(_object):
 
         i:  the field to fetch, from 0 to GetGeomFieldCount()-1.
 
-        an handle to the field definition (from the OGRFeatureDefn). This is
+        a handle to the field definition (from the OGRFeatureDefn). This is
         an internal reference, and should not be deleted or modified.
 
         GDAL 1.11 
@@ -4356,6 +4367,17 @@ class Feature(_object):
     def __copy__(self):
         return self.Clone()
 
+    def _getfieldindex(self, fieldname):
+        case_insensitive_idx = -1
+        fdefn = _ogr.Feature_GetDefnRef(self)
+        for i in range(fdefn.GetFieldCount()):
+            name = fdefn.GetFieldDefn(i).GetName()
+            if name == fieldname:
+                return i
+            elif case_insensitive_idx < 0 and name.lower() == fieldname.lower():
+                case_insensitive_idx = i
+        return case_insensitive_idx
+
     # This makes it possible to fetch fields in the form "feature.area".
     # This has some risk of name collisions.
     def __getattr__(self, key):
@@ -4363,7 +4385,7 @@ class Feature(_object):
         if key == 'this':
             return self.__dict__[key]
 
-        idx = self.GetFieldIndex(key)
+        idx = self._getfieldindex(key)
         if idx < 0:
             idx = self.GetGeomFieldIndex(key)
             if idx < 0:
@@ -4380,7 +4402,7 @@ class Feature(_object):
         if key == 'this' or key == 'thisown':
             self.__dict__[key] = value
         else:
-            idx = self.GetFieldIndex(key)
+            idx = self._getfieldindex(key)
             if idx != -1:
                 self.SetField2(idx, value)
             else:
@@ -4393,14 +4415,14 @@ class Feature(_object):
     # This makes it possible to fetch fields in the form "feature['area']".
     def __getitem__(self, key):
         """Returns the values of fields by the given name / field_index"""
-        if isinstance(key, (str, type(u''))):
-            fld_index = self.GetFieldIndex(key)
+        if isinstance(key, str):
+            fld_index = self._getfieldindex(key)
         else:
             fld_index = key
             if key == self.GetFieldCount():
                 raise IndexError
         if fld_index < 0:
-            if isinstance(key, (str, type(u''))):
+            if isinstance(key, str):
                 fld_index = self.GetGeomFieldIndex(key)
             if fld_index < 0:
                 raise KeyError("Illegal field requested in GetField()")
@@ -4412,14 +4434,14 @@ class Feature(_object):
     # This makes it possible to set fields in the form "feature['area'] = 123".
     def __setitem__(self, key, value):
         """Returns the value of a field by field name / index"""
-        if isinstance(key, (str, type(u''))):
-            fld_index = self.GetFieldIndex(key)
+        if isinstance(key, str):
+            fld_index = self._getfieldindex(key)
         else:
             fld_index = key
             if key == self.GetFieldCount():
                 raise IndexError
         if fld_index < 0:
-            if isinstance(key, (str, type(u''))):
+            if isinstance(key, str):
                 fld_index = self.GetGeomFieldIndex(key)
             if fld_index < 0:
                 raise KeyError("Illegal field requested in SetField()")
@@ -4429,8 +4451,8 @@ class Feature(_object):
             return self.SetField2(fld_index, value)
 
     def GetField(self, fld_index):
-        if isinstance(fld_index, (str, type(u''))):
-            fld_index = self.GetFieldIndex(fld_index)
+        if isinstance(fld_index, str):
+            fld_index = self._getfieldindex(fld_index)
         if (fld_index < 0) or (fld_index > self.GetFieldCount()):
             raise KeyError("Illegal field requested in GetField()")
         if not (self.IsFieldSet(fld_index)) or self.IsFieldNull(fld_index):
@@ -4480,22 +4502,22 @@ class Feature(_object):
 
         if len(args) == 2 and (type(args[1]) == type(1) or type(args[1]) == type(12345678901234)):
             fld_index = args[0]
-            if isinstance(fld_index, str) or isinstance(fld_index, type(u'')):
-                fld_index = self.GetFieldIndex(fld_index)
+            if isinstance(fld_index, str):
+                fld_index = self._getfieldindex(fld_index)
             return _ogr.Feature_SetFieldInteger64(self, fld_index, args[1])
 
 
-        if len(args) == 2 and isinstance(args[1], type(u'')):
+        if len(args) == 2 and isinstance(args[1], str):
             fld_index = args[0]
-            if isinstance(fld_index, str) or isinstance(fld_index, type(u'')):
-                fld_index = self.GetFieldIndex(fld_index)
+            if isinstance(fld_index, str):
+                fld_index = self._getfieldindex(fld_index)
             return _ogr.Feature_SetFieldString(self, fld_index, args[1])
 
         return _ogr.Feature_SetField(self, *args)
 
     def SetField2(self, fld_index, value):
-        if isinstance(fld_index, str) or isinstance(fld_index, type(u'')):
-            fld_index = self.GetFieldIndex(fld_index)
+        if isinstance(fld_index, str):
+            fld_index = self._getfieldindex(fld_index)
         if (fld_index < 0) or (fld_index > self.GetFieldCount()):
             raise KeyError("Illegal field requested in SetField2()")
 
@@ -4672,7 +4694,7 @@ class FeatureDefn(_object):
 
         iField:  the field to fetch, between 0 and GetFieldCount()-1.
 
-        an handle to an internal field definition object or NULL if invalid
+        a handle to an internal field definition object or NULL if invalid
         index. This object should not be modified or freed by the application.
 
         """
@@ -4781,7 +4803,7 @@ class FeatureDefn(_object):
         iGeomField:  the geometry field to fetch, between 0 and
         GetGeomFieldCount() - 1.
 
-        an handle to an internal field definition object or NULL if invalid
+        a handle to an internal field definition object or NULL if invalid
         index. This object should not be modified or freed by the application.
 
         GDAL 1.11 
@@ -5163,6 +5185,77 @@ class FieldDefn(_object):
         return _ogr.FieldDefn_SetName(self, *args)
 
 
+    def GetAlternativeName(self, *args):
+        """GetAlternativeName(FieldDefn self) -> char const *"""
+        return _ogr.FieldDefn_GetAlternativeName(self, *args)
+
+
+    def GetAlternativeNameRef(self, *args):
+        """
+        GetAlternativeNameRef(FieldDefn self) -> char const *
+
+        const char*
+        OGR_Fld_GetAlternativeNameRef(OGRFieldDefnH hDefn)
+
+        Fetch the alternative name (or "alias") for this field.
+
+        The alternative name is an optional attribute for a field which can
+        provide a more user-friendly, descriptive name of a field which is not
+        subject to the usual naming constraints defined by the data provider.
+
+        This is a metadata style attribute only: the alternative name cannot
+        be used in place of the actual field name during SQL queries or other
+        field name dependent API calls.
+
+        This function is the same as the CPP method
+        OGRFieldDefn::GetAlternativeNameRef().
+
+        Parameters:
+        -----------
+
+        hDefn:  handle to the field definition.
+
+        the alternative name of the field definition.
+
+        GDAL 3.2 
+        """
+        return _ogr.FieldDefn_GetAlternativeNameRef(self, *args)
+
+
+    def SetAlternativeName(self, *args):
+        """
+        SetAlternativeName(FieldDefn self, char const * alternativeName)
+
+        void
+        OGR_Fld_SetAlternativeName(OGRFieldDefnH hDefn, const char
+        *pszAlternativeName)
+
+        Reset the alternative name (or "alias") for this field.
+
+        The alternative name is an optional attribute for a field which can
+        provide a more user-friendly, descriptive name of a field which is not
+        subject to the usual naming constraints defined by the data provider.
+
+        This is a metadata style attribute only: the alternative name cannot
+        be used in place of the actual field name during SQL queries or other
+        field name dependent API calls.
+
+        This function is the same as the CPP method
+        OGRFieldDefn::SetAlternativeName().
+
+        Parameters:
+        -----------
+
+        hDefn:  handle to the field definition to apply the new alternative
+        name to.
+
+        pszAlternativeName:  the new alternative name to apply.
+
+        GDAL 3.2 
+        """
+        return _ogr.FieldDefn_SetAlternativeName(self, *args)
+
+
     def GetType(self, *args):
         """
         GetType(FieldDefn self) -> OGRFieldType
@@ -5491,7 +5584,7 @@ class FieldDefn(_object):
         By default, fields are nullable, so this method is generally called
         with FALSE to set a not-null constraint.
 
-        Drivers that support writing not-null constraint will advertize the
+        Drivers that support writing not-null constraint will advertise the
         GDAL_DCAP_NOTNULL_FIELDS driver metadata item.
 
         This method is the same as the C++ method OGRFieldDefn::SetNullable().
@@ -5506,6 +5599,61 @@ class FieldDefn(_object):
         GDAL 2.0 
         """
         return _ogr.FieldDefn_SetNullable(self, *args)
+
+
+    def IsUnique(self, *args):
+        """
+        IsUnique(FieldDefn self) -> int
+
+        int OGR_Fld_IsUnique(OGRFieldDefnH
+        hDefn)
+
+        Return whether this field has a unique constraint.
+
+        By default, fields have no unique constraint.
+
+        This method is the same as the C++ method OGRFieldDefn::IsUnique().
+
+        Parameters:
+        -----------
+
+        hDefn:  handle to the field definition
+
+        TRUE if the field has a unique constraint.
+
+        GDAL 3.2 
+        """
+        return _ogr.FieldDefn_IsUnique(self, *args)
+
+
+    def SetUnique(self, *args):
+        """
+        SetUnique(FieldDefn self, int bUnique)
+
+        void
+        OGR_Fld_SetUnique(OGRFieldDefnH hDefn, int bUniqueIn)
+
+        Set whether this field has a unique constraint.
+
+        By default, fields have no unique constraint, so this method is
+        generally called with TRUE to set a unique constraint.
+
+        Drivers that support writing unique constraint will advertise the
+        GDAL_DCAP_UNIQUE_FIELDS driver metadata item. field can receive null
+        values.
+
+        This method is the same as the C++ method OGRFieldDefn::SetUnique().
+
+        Parameters:
+        -----------
+
+        hDefn:  handle to the field definition
+
+        bUniqueIn:  TRUE if the field must have a unique constraint.
+
+        GDAL 3.2 
+        """
+        return _ogr.FieldDefn_SetUnique(self, *args)
 
 
     def GetDefault(self, *args):
@@ -5556,7 +5704,7 @@ class FieldDefn(_object):
         literal value, format should be 'YYYY/MM/DD HH:MM:SS[.sss]'
         (considered as UTC time).
 
-        Drivers that support writing DEFAULT clauses will advertize the
+        Drivers that support writing DEFAULT clauses will advertise the
         GDAL_DCAP_DEFAULT_FIELDS driver metadata item.
 
         This function is the same as the C++ method
@@ -5715,6 +5863,10 @@ def CreateGeometryFromGML(*args):
 def CreateGeometryFromJson(*args):
     """CreateGeometryFromJson(char const * input_string) -> Geometry"""
     return _ogr.CreateGeometryFromJson(*args)
+
+def CreateGeometryFromEsriJson(*args):
+    """CreateGeometryFromEsriJson(char const * input_string) -> Geometry"""
+    return _ogr.CreateGeometryFromEsriJson(*args)
 
 def BuildPolygonFromEdges(*args, **kwargs):
     """BuildPolygonFromEdges(Geometry hLineCollection, int bBestEffort=0, int bAutoClose=0, double dfTolerance=0) -> Geometry"""
@@ -5976,7 +6128,7 @@ class Geometry(_object):
 
         hGeom:  handle on the geometry to clone from.
 
-        an handle on the copy of the geometry with the spatial reference
+        a handle on the copy of the geometry with the spatial reference
         system as the original. 
         """
         return _ogr.Geometry_Clone(self, *args)
@@ -6378,6 +6530,16 @@ class Geometry(_object):
         GDAL 3.0 
         """
         return _ogr.Geometry_MakeValid(self, *args)
+
+
+    def Normalize(self, *args):
+        """Normalize(Geometry self) -> Geometry"""
+        return _ogr.Geometry_Normalize(self, *args)
+
+
+    def RemoveLowerDimensionSubGeoms(self, *args):
+        """RemoveLowerDimensionSubGeoms(Geometry self) -> Geometry"""
+        return _ogr.Geometry_RemoveLowerDimensionSubGeoms(self, *args)
 
 
     def Buffer(self, *args, **kwargs):
@@ -7118,42 +7280,6 @@ class Geometry(_object):
         return _ogr.Geometry_TransformTo(self, *args)
 
 
-    def Transform(self, *args):
-        """
-        Transform(Geometry self, CoordinateTransformation trans) -> OGRErr
-
-        OGRErr OGR_G_Transform(OGRGeometryH
-        hGeom, OGRCoordinateTransformationH hTransform)
-
-        Apply arbitrary coordinate transformation to geometry.
-
-        This function will transform the coordinates of a geometry from their
-        current spatial reference system to a new target spatial reference
-        system. Normally this means reprojecting the vectors, but it could
-        include datum shifts, and changes of units.
-
-        Note that this function does not require that the geometry already
-        have a spatial reference system. It will be assumed that they can be
-        treated as having the source spatial reference system of the
-        OGRCoordinateTransformation object, and the actual SRS of the geometry
-        will be ignored. On successful completion the output
-        OGRSpatialReference of the OGRCoordinateTransformation will be
-        assigned to the geometry.
-
-        This function is the same as the CPP method OGRGeometry::transform.
-
-        Parameters:
-        -----------
-
-        hGeom:  handle on the geometry to apply the transform to.
-
-        hTransform:  handle on the transformation to apply.
-
-        OGRERR_NONE on success or an error code. 
-        """
-        return _ogr.Geometry_Transform(self, *args)
-
-
     def GetSpatialReference(self, *args):
         """
         GetSpatialReference(Geometry self) -> SpatialReference
@@ -7644,6 +7770,48 @@ class Geometry(_object):
         return _ogr.Geometry_Value(self, *args)
 
 
+    def Transform(self, *args):
+        """
+        Transform(Geometry self, CoordinateTransformation trans) -> OGRErr
+        Transform(Geometry self, GeomTransformer transformer) -> Geometry
+
+        OGRErr OGR_G_Transform(OGRGeometryH
+        hGeom, OGRCoordinateTransformationH hTransform)
+
+        Apply arbitrary coordinate transformation to geometry.
+
+        This function will transform the coordinates of a geometry from their
+        current spatial reference system to a new target spatial reference
+        system. Normally this means reprojecting the vectors, but it could
+        include datum shifts, and changes of units.
+
+        Note that this function does not require that the geometry already
+        have a spatial reference system. It will be assumed that they can be
+        treated as having the source spatial reference system of the
+        OGRCoordinateTransformation object, and the actual SRS of the geometry
+        will be ignored. On successful completion the output
+        OGRSpatialReference of the OGRCoordinateTransformation will be
+        assigned to the geometry.
+
+        This function is the same as the CPP method OGRGeometry::transform.
+
+        Parameters:
+        -----------
+
+        hGeom:  handle on the geometry to apply the transform to.
+
+        hTransform:  handle on the transformation to apply.
+
+        OGRERR_NONE on success or an error code. 
+        """
+        return _ogr.Geometry_Transform(self, *args)
+
+
+    def CreatePreparedGeometry(self, *args):
+        """CreatePreparedGeometry(Geometry self) -> PreparedGeometry"""
+        return _ogr.Geometry_CreatePreparedGeometry(self, *args)
+
+
     def Destroy(self):
       self.__swig_destroy__(self)
       self.__del__()
@@ -7652,6 +7820,15 @@ class Geometry(_object):
     def __str__(self):
       return self.ExportToWkt()
 
+    def __copy__(self):
+      return self.Clone()
+
+    def __deepcopy__(self, memo):
+      g = self.Clone()
+      srs = self.GetSpatialReference()
+      if srs:
+          g.AssignSpatialReference(srs.Clone())
+      return g
 
     def __reduce__(self):
       return (self.__class__, (), self.ExportToWkb())
@@ -7661,19 +7838,64 @@ class Geometry(_object):
         self.this = result.this
 
     def __iter__(self):
-        self.iter_subgeom = 0
-        return self
+        for i in range(self.GetGeometryCount()):
+            yield self.GetGeometryRef(i)
 
-    def next(self):
-        if self.iter_subgeom < self.GetGeometryCount():
-            subgeom = self.GetGeometryRef(self.iter_subgeom)
-            self.iter_subgeom += 1
-            return subgeom
-        else:
-            raise StopIteration
 
 Geometry_swigregister = _ogr.Geometry_swigregister
 Geometry_swigregister(Geometry)
+
+class PreparedGeometry(_object):
+    """Proxy of C++ OGRPreparedGeometryShadow class."""
+
+    __swig_setmethods__ = {}
+    __setattr__ = lambda self, name, value: _swig_setattr(self, PreparedGeometry, name, value)
+    __swig_getmethods__ = {}
+    __getattr__ = lambda self, name: _swig_getattr(self, PreparedGeometry, name)
+
+    def __init__(self, *args, **kwargs):
+        raise AttributeError("No constructor defined")
+    __repr__ = _swig_repr
+    __swig_destroy__ = _ogr.delete_PreparedGeometry
+    __del__ = lambda self: None
+
+    def Intersects(self, *args):
+        """Intersects(PreparedGeometry self, Geometry otherGeom) -> bool"""
+        return _ogr.PreparedGeometry_Intersects(self, *args)
+
+
+    def Contains(self, *args):
+        """Contains(PreparedGeometry self, Geometry otherGeom) -> bool"""
+        return _ogr.PreparedGeometry_Contains(self, *args)
+
+PreparedGeometry_swigregister = _ogr.PreparedGeometry_swigregister
+PreparedGeometry_swigregister(PreparedGeometry)
+
+class GeomTransformer(_object):
+    """Proxy of C++ OGRGeomTransformerShadow class."""
+
+    __swig_setmethods__ = {}
+    __setattr__ = lambda self, name, value: _swig_setattr(self, GeomTransformer, name, value)
+    __swig_getmethods__ = {}
+    __getattr__ = lambda self, name: _swig_getattr(self, GeomTransformer, name)
+    __repr__ = _swig_repr
+
+    def __init__(self, *args):
+        """__init__(OGRGeomTransformerShadow self, CoordinateTransformation ct, char ** options=None) -> GeomTransformer"""
+        this = _ogr.new_GeomTransformer(*args)
+        try:
+            self.this.append(this)
+        except __builtin__.Exception:
+            self.this = this
+    __swig_destroy__ = _ogr.delete_GeomTransformer
+    __del__ = lambda self: None
+
+    def Transform(self, *args):
+        """Transform(GeomTransformer self, Geometry src_geom) -> Geometry"""
+        return _ogr.GeomTransformer_Transform(self, *args)
+
+GeomTransformer_swigregister = _ogr.GeomTransformer_swigregister
+GeomTransformer_swigregister(GeomTransformer)
 
 
 def GetDriverCount(*args):

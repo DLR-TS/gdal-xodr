@@ -91,18 +91,23 @@ public:
 
     virtual VSIVirtualHandle *Open( const char *pszFilename,
                                     const char *pszAccess,
-                                    bool bSetError ) = 0;
+                                    bool bSetError,
+                                    CSLConstList papszOptions ) = 0;
     virtual int Stat( const char *pszFilename, VSIStatBufL *pStatBuf, int nFlags) = 0;
     virtual int Unlink( const char *pszFilename )
                       { (void) pszFilename; errno=ENOENT; return -1; }
+    virtual int* UnlinkBatch( CSLConstList papszFiles );
     virtual int Mkdir( const char *pszDirname, long nMode )
                       {(void)pszDirname; (void)nMode; errno=ENOENT; return -1;}
     virtual int Rmdir( const char *pszDirname )
                       { (void) pszDirname; errno=ENOENT; return -1; }
+    virtual int RmdirRecursive( const char *pszDirname );
     virtual char **ReadDir( const char *pszDirname )
                       { (void) pszDirname; return nullptr; }
     virtual char **ReadDirEx( const char *pszDirname, int /* nMaxFiles */ )
                       { return ReadDir(pszDirname); }
+    virtual char **SiblingFiles( const char * /*pszFilename*/ )
+                      { return nullptr; }
     virtual int Rename( const char *oldpath, const char *newpath )
                       { (void) oldpath; (void)newpath; errno=ENOENT; return -1; }
     virtual int IsCaseSensitive( const char* pszFilename )
@@ -121,6 +126,14 @@ public:
 
     virtual VSIDIR* OpenDir( const char *pszPath, int nRecurseDepth,
                              const char* const *papszOptions);
+
+    virtual char** GetFileMetadata( const char * pszFilename, const char* pszDomain,
+                                    CSLConstList papszOptions );
+
+    virtual bool   SetFileMetadata( const char * pszFilename,
+                                    CSLConstList papszMetadata,
+                                    const char* pszDomain,
+                                    CSLConstList papszOptions );
 };
 #endif /* #ifndef DOXYGEN_SKIP */
 
@@ -263,5 +276,7 @@ const int CPL_DEFLATE_TYPE_GZIP = 0;
 const int CPL_DEFLATE_TYPE_ZLIB = 1;
 const int CPL_DEFLATE_TYPE_RAW_DEFLATE = 2;
 VSIVirtualHandle CPL_DLL *VSICreateGZipWritable( VSIVirtualHandle* poBaseHandle, int nDeflateType, int bAutoCloseBaseHandle );
+
+VSIVirtualHandle *VSICreateUploadOnCloseFile( VSIVirtualHandle* poBaseHandle );
 
 #endif /* ndef CPL_VSI_VIRTUAL_H_INCLUDED */

@@ -572,16 +572,7 @@ void OGRShapeDataSource::AddLayer( OGRShapeLayer* poLayer )
 
 static CPLString LaunderLayerName(const char* pszLayerName)
 {
-    std::string osRet(pszLayerName);
-    for( char& ch: osRet )
-    {
-        // https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file
-        if( ch == '<' || ch == '>' || ch == ':' || ch == '"' ||
-            ch == '/' || ch == '\\' || ch== '?' || ch == '*' )
-        {
-            ch = '_';
-        }
-    }
+    std::string osRet(CPLLaunderForFilename(pszLayerName, nullptr));
     if( osRet != pszLayerName )
     {
         CPLError(CE_Warning, CPLE_AppDefined,
@@ -1427,27 +1418,22 @@ char** OGRShapeDataSource::GetFileList()
 }
 
 /************************************************************************/
-//                          RefeshLockFile()                            */
+//                          RefreshLockFile()                            */
 /************************************************************************/
 
-void OGRShapeDataSource::RefeshLockFile(void* _self)
+void OGRShapeDataSource::RefreshLockFile(void* _self)
 {
     OGRShapeDataSource* self = static_cast<OGRShapeDataSource*>(_self);
     CPLAssert(self->m_psLockFile);
     CPLAcquireMutex(self->m_poRefreshLockFileMutex, 1000);
     CPLCondSignal(self->m_poRefreshLockFileCond);
     unsigned int nInc = 0;
-    while(true)
+    while(!(self->m_bExitRefreshLockFileThread))
     {
         auto ret = CPLCondTimedWait(self->m_poRefreshLockFileCond,
                                     self->m_poRefreshLockFileMutex,
                                     self->m_dfRefreshLockDelay);
-        if( ret == COND_TIMED_WAIT_COND )
-        {
-            if( self->m_bExitRefreshLockFileThread )
-                break;
-        }
-        else if( ret == COND_TIMED_WAIT_TIME_OUT )
+        if( ret == COND_TIMED_WAIT_TIME_OUT )
         {
             CPLAssert(self->m_psLockFile);
             VSIFSeekL(self->m_psLockFile, 0, SEEK_SET);
@@ -1540,11 +1526,12 @@ bool OGRShapeDataSource::UncompressIfNeeded()
         m_psLockFile = f;
         m_bExitRefreshLockFileThread = false;
         // Config option mostly for testing purposes
+        // coverity[tainted_data]
         m_dfRefreshLockDelay = CPLAtof(
             CPLGetConfigOption("OGR_SHAPE_LOCK_DELAY",
                             CPLSPrintf("%d", knREFRESH_LOCK_FILE_DELAY_SEC)));
         m_hRefreshLockFileThread = CPLCreateJoinableThread(
-            OGRShapeDataSource::RefeshLockFile, this);
+            OGRShapeDataSource::RefreshLockFile, this);
         if( !m_hRefreshLockFileThread )
         {
             VSIFCloseL(m_psLockFile);
@@ -1781,41 +1768,5 @@ bool OGRShapeDataSource::RecompressIfNeeded(const std::vector<CPLString>& layerN
 bool OGRShapeDataSource::CopyInPlace( VSILFILE* fpTarget,
                                       const CPLString& osSourceFilename )
 {
-    VSILFILE* fpSource = VSIFOpenL(osSourceFilename, "rb");
-    if( fpSource == nullptr )
-    {
-        CPLError(CE_Failure, CPLE_FileIO,
-                 "Cannot open %s", osSourceFilename.c_str());
-        return false;
-    }
-
-    const size_t nBufferSize = 4096;
-    void* pBuffer = CPLMalloc(nBufferSize);
-    VSIFSeekL( fpTarget, 0, SEEK_SET );
-    bool bRet = true;
-    while( true )
-    {
-        size_t nRead = VSIFReadL( pBuffer, 1, nBufferSize, fpSource );
-        size_t nWritten = VSIFWriteL( pBuffer, 1, nRead, fpTarget );
-        if( nWritten != nRead )
-        {
-            bRet = false;
-            break;
-        }
-        if( nRead < nBufferSize )
-            break;
-    }
-
-    if( bRet )
-    {
-        bRet = VSIFTruncateL( fpTarget, VSIFTellL(fpTarget) ) == 0;
-        if( !bRet )
-        {
-            CPLError(CE_Failure, CPLE_FileIO, "Truncation failed");
-        }
-    }
-
-    CPLFree(pBuffer);
-    VSIFCloseL(fpSource);
-    return bRet;
+    return CPL_TO_BOOL(VSIOverwriteFile(fpTarget, osSourceFilename.c_str()));
 }

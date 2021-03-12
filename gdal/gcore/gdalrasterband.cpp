@@ -52,7 +52,6 @@
 #include "gdal.h"
 #include "gdal_rat.h"
 #include "gdal_priv_templates.hpp"
-#include "memdataset.h"
 
 CPL_CVSID("$Id$")
 
@@ -177,7 +176,7 @@ GDALRasterBand::~GDALRasterBand()
  *
  * @param psExtraArg (new in GDAL 2.0) pointer to a GDALRasterIOExtraArg structure with additional
  * arguments to specify resampling and progress callback, or NULL for default
- * behaviour. The GDAL_RASTERIO_RESAMPLING configuration option can also be defined
+ * behavior. The GDAL_RASTERIO_RESAMPLING configuration option can also be defined
  * to override the default resampling to one of BILINEAR, CUBIC, CUBICSPLINE,
  * LANCZOS, AVERAGE or MODE.
  *
@@ -248,7 +247,7 @@ GDALRasterBand::~GDALRasterBand()
  *
  * @param[in] psExtraArg (new in GDAL 2.0) pointer to a GDALRasterIOExtraArg structure with additional
  * arguments to specify resampling and progress callback, or NULL for default
- * behaviour. The GDAL_RASTERIO_RESAMPLING configuration option can also be defined
+ * behavior. The GDAL_RASTERIO_RESAMPLING configuration option can also be defined
  * to override the default resampling to one of BILINEAR, CUBIC, CUBICSPLINE,
  * LANCZOS, AVERAGE or MODE.
  *
@@ -324,7 +323,7 @@ CPLErr GDALRasterBand::RasterIO( GDALRWFlag eRWFlag,
     }
 
 /* -------------------------------------------------------------------- */
-/*      If pixel and line spaceing are defaulted assign reasonable      */
+/*      If pixel and line spacing are defaulted assign reasonable      */
 /*      value assuming a packed buffer.                                 */
 /* -------------------------------------------------------------------- */
     if( nPixelSpace == 0 )
@@ -456,7 +455,7 @@ GDALRasterIOEx( GDALRasterBandH hBand, GDALRWFlag eRWFlag,
  * The following code would efficiently compute a histogram of eight bit
  * raster data.  Note that the final block may be partial ... data beyond
  * the edge of the underlying raster band in these edge blocks is of an
- * undermined value.
+ * undetermined value.
  *
 \code{.cpp}
  CPLErr GetHistogram( GDALRasterBand *poBand, GUIntBig *panHistogram )
@@ -547,6 +546,7 @@ CPLErr GDALRasterBand::ReadBlock( int nXBlockOff, int nYBlockOff,
 /* -------------------------------------------------------------------- */
 /*      Invoke underlying implementation method.                        */
 /* -------------------------------------------------------------------- */
+
     int bCallLeaveReadWrite = EnterReadWrite(GF_Read);
     CPLErr eErr = IReadBlock( nXBlockOff, nYBlockOff, pImage );
     if( bCallLeaveReadWrite) LeaveReadWrite();
@@ -2369,7 +2369,7 @@ GDALGetRasterSampleOverviewEx( GDALRasterBandH hBand, GUIntBig nDesiredSamples )
  * from a practical point of view.
  *
  * @param pszResampling one of "NEAREST", "GAUSS", "CUBIC", "AVERAGE", "MODE",
- * "AVERAGE_MAGPHASE" or "NONE" controlling the downsampling method applied.
+ * "AVERAGE_MAGPHASE" "RMS" or "NONE" controlling the downsampling method applied.
  * @param nOverviews number of overviews to build.
  * @param panOverviewList the list of overview decimation factors to build.
  * @param pfnProgress a function to call to report progress, or NULL.
@@ -2974,7 +2974,7 @@ CPLErr GDALRasterBand::GetHistogram( double dfMin, double dfMax,
     const double dfNoDataValue = GetNoDataValue( &bGotNoDataValue );
     bGotNoDataValue = bGotNoDataValue && !CPLIsNan(dfNoDataValue);
     // Not advertized. May be removed at any time. Just as a provision if the
-    // old behaviour made sense sometimes.
+    // old behavior made sense sometimes.
     bGotNoDataValue = bGotNoDataValue &&
         !CPLTestBool(CPLGetConfigOption("GDAL_NODATA_IN_HISTOGRAM", "NO"));
     bool bGotFloatNoDataValue = false;
@@ -3766,9 +3766,6 @@ CPLErr GDALRasterBand::GetStatistics( int bApproxOK, int bForce,
                                       double *pdfMean, double *pdfStdDev )
 
 {
-    double dfMin = 0.0;
-    double dfMax = 0.0;
-
 /* -------------------------------------------------------------------- */
 /*      Do we already have metadata items for the requested values?     */
 /* -------------------------------------------------------------------- */
@@ -3800,8 +3797,8 @@ CPLErr GDALRasterBand::GetStatistics( int bApproxOK, int bForce,
         int bSuccessMin = FALSE;
         int bSuccessMax = FALSE;
 
-        dfMin = GetMinimum( &bSuccessMin );
-        dfMax = GetMaximum( &bSuccessMax );
+        const double dfMin = GetMinimum( &bSuccessMin );
+        const double dfMax = GetMaximum( &bSuccessMax );
 
         if( bSuccessMin && bSuccessMax )
         {
@@ -4794,7 +4791,9 @@ inline double GetPixelValue( GDALDataType eDataType,
             }
             break;
         default:
+#ifndef CSA_BUILD
             dfValue = 0.0;
+#endif
             CPLAssert( false );
     }
 
@@ -4866,6 +4865,8 @@ void GDALRasterBand::SetValidPercent(GUIntBig nSampleCount, GUIntBig nValidCount
  *
  * Once computed, the statistics will generally be "set" back on the
  * raster band using SetStatistics().
+ *
+ * Cached statistics can be cleared with GDALDataset::ClearStatistics().
  *
  * This method is the same as the C function GDALComputeRasterStatistics().
  *
@@ -6530,6 +6531,7 @@ void GDALRasterBand::IncDirtyBlocks( int nInc )
 /*                            ReportError()                             */
 /************************************************************************/
 
+#ifndef DOXYGEN_XML
 /**
  * \brief Emits an error related to a raster band.
  *
@@ -6570,6 +6572,7 @@ void GDALRasterBand::ReportError( CPLErr eErrClass, CPLErrorNum err_no,
     }
     va_end(args);
 }
+#endif
 
 /************************************************************************/
 /*                           GetVirtualMemAuto()                        */
@@ -7072,7 +7075,7 @@ void GDALRasterBand::InitRWLock()
 /*                     GDALMDArrayFromRasterBand                        */
 /************************************************************************/
 
-class GDALMDArrayFromRasterBand: public GDALMDArray
+class GDALMDArrayFromRasterBand final: public GDALMDArray
 {
     CPL_DISALLOW_COPY_ASSIGN(GDALMDArrayFromRasterBand)
 
@@ -7082,7 +7085,6 @@ class GDALMDArrayFromRasterBand: public GDALMDArray
     std::vector<std::shared_ptr<GDALDimension>> m_dims{};
     std::string m_osUnit;
     std::vector<GByte> m_pabyNoData{};
-    std::shared_ptr<GDALGroup> m_rg{};
     std::shared_ptr<GDALMDArray> m_varX{};
     std::shared_ptr<GDALMDArray> m_varY{};
 
@@ -7120,11 +7122,6 @@ protected:
                           1);
         }
 
-        {
-            std::unique_ptr<GDALDataset> poTmpDS(
-                    MEMDataset::CreateMultiDimensional("", nullptr, nullptr));
-            m_rg = poTmpDS->GetRootGroup();
-        }
         const int nXSize = poBand->GetXSize();
         const int nYSize = poBand->GetYSize();
 
@@ -7163,44 +7160,27 @@ protected:
         }
 
         m_dims = {
-            m_rg->CreateDimension(
-                "Y", osTypeY, osDirectionY,
-                nYSize, nullptr),
-            m_rg->CreateDimension(
-                "X", osTypeX, osDirectionX,
-                nXSize, nullptr)
+            std::make_shared<GDALDimensionWeakIndexingVar>(
+                "/", "Y", osTypeY, osDirectionY, nYSize),
+            std::make_shared<GDALDimensionWeakIndexingVar>(
+                "/", "X", osTypeX, osDirectionX, nXSize)
         };
 
         double adfGeoTransform[6];
         if( m_poDS->GetGeoTransform(adfGeoTransform) == CE_None &&
-            adfGeoTransform[2] == 0 && adfGeoTransform[4] == 0 &&
-            std::max(nXSize, nYSize) < 10 * 1000 * 1000 )
+            adfGeoTransform[2] == 0 && adfGeoTransform[4] == 0 )
         {
-            m_varX = m_rg->CreateMDArray("X",
-                std::vector<std::shared_ptr<GDALDimension>>{m_dims[1]},
-                GDALExtendedDataType::Create(GDT_Float64), nullptr);
+            m_varX = std::make_shared<GDALMDArrayRegularlySpaced>(
+                "/", "X", m_dims[1],
+                adfGeoTransform[0],
+                adfGeoTransform[1], 0.5);
             m_dims[1]->SetIndexingVariable(m_varX);
 
-            m_varY = m_rg->CreateMDArray("Y",
-                std::vector<std::shared_ptr<GDALDimension>>{m_dims[0]},
-                GDALExtendedDataType::Create(GDT_Float64), nullptr);
+            m_varY = std::make_shared<GDALMDArrayRegularlySpaced>(
+                "/", "Y", m_dims[0],
+                adfGeoTransform[3],
+                adfGeoTransform[5], 0.5);
             m_dims[0]->SetIndexingVariable(m_varY);
-
-            std::vector<double> adfTmp(
-                std::max(nXSize, nYSize));
-            const GUInt64 nStart = 0;
-
-            for(int i = 0; i < nXSize; i++)
-                adfTmp[i] = adfGeoTransform[0] + (i + 0.5) * adfGeoTransform[1];
-            size_t nCount = nXSize;
-            m_varX->Write(&nStart, &nCount, nullptr, nullptr,
-                        m_varX->GetDataType(), &adfTmp[0]);
-
-            for(int i = 0; i < nYSize; i++)
-                adfTmp[i] = adfGeoTransform[3] + (i + 0.5) * adfGeoTransform[5];
-            nCount = nYSize;
-            m_varY->Write(&nStart, &nCount, nullptr, nullptr,
-                        m_varY->GetDataType(), &adfTmp[0]);
         }
     }
 
@@ -7252,21 +7232,25 @@ public:
     const void* GetRawNoDataValue() const override
     { return m_pabyNoData.empty() ? nullptr: m_pabyNoData.data(); }
 
-    double GetOffset(bool* pbHasOffset) const override
+    double GetOffset(bool* pbHasOffset, GDALDataType* peStorageType) const override
     {
         int bHasOffset = false;
         double dfRes = m_poBand->GetOffset(&bHasOffset);
         if( pbHasOffset )
             *pbHasOffset = CPL_TO_BOOL(bHasOffset);
+        if( peStorageType )
+            *peStorageType = GDT_Unknown;
         return dfRes;
     }
 
-    double GetScale(bool* pbHasScale) const override
+    double GetScale(bool* pbHasScale, GDALDataType* peStorageType) const override
     {
         int bHasScale = false;
         double dfRes = m_poBand->GetScale(&bHasScale);
         if( pbHasScale )
             *pbHasScale = CPL_TO_BOOL(bHasScale);
+        if( peStorageType )
+            *peStorageType = GDT_Unknown;
         return dfRes;
     }
 
@@ -7355,10 +7339,10 @@ bool GDALMDArrayFromRasterBand::ReadWrite(GDALRWFlag eRWFlag,
     constexpr int kY = 0;
     const int nX = arrayStep[kX] > 0  ?
         static_cast<int>(arrayStartIdx[kX]) :
-        static_cast<int>(arrayStartIdx[kX] + (count[kX]-1) * arrayStep[kX]);
+        static_cast<int>(arrayStartIdx[kX] - (count[kX]-1) * -arrayStep[kX]);
     const int nY = arrayStep[kY] > 0  ?
         static_cast<int>(arrayStartIdx[kY]) :
-        static_cast<int>(arrayStartIdx[kY] + (count[kY]-1) * arrayStep[kY]);
+        static_cast<int>(arrayStartIdx[kY] - (count[kY]-1) * -arrayStep[kY]);
     const int nSizeX = static_cast<int>(count[kX] * ABS(arrayStep[kX]));
     const int nSizeY = static_cast<int>(count[kY] * ABS(arrayStep[kY]));
     GByte* pabyBuffer = static_cast<GByte*>(pBuffer);

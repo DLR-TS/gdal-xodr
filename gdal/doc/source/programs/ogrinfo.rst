@@ -6,7 +6,8 @@ ogrinfo
 
 .. only:: html
 
-    Lists information about an OGR-supported data source.
+    Lists information about an OGR-supported data source. With SQL statements 
+    it is also possible to edit data.
 
 .. Index:: ogrinfo
 
@@ -20,14 +21,15 @@ Synopsis
             [-sql statement|\@filename] [-dialect dialect] [-al] [-rl] [-so] [-fields={YES/NO}]
             [-geom={YES/NO/SUMMARY/WKT/ISO_WKT}] [--formats] [[-oo NAME=VALUE] ...]
             [-nomd] [-listmdd] [-mdd domain|`all`]*
-            [-nocount] [-noextent] [-wkt_format WKT1|WKT2|...]
+            [-nocount] [-noextent] [-nogeomtype] [-wkt_format WKT1|WKT2|...]
             <datasource_name> [<layer> [<layer> ...]]
 
 Description
 -----------
 
 The :program:`ogrinfo` program lists various information about an OGR-supported data
-source to stdout (the terminal).
+source to stdout (the terminal). By executing SQL statements it is also possible to
+edit data.
 
 .. program:: ogrinfo
 
@@ -69,13 +71,17 @@ source to stdout (the terminal).
 
     Execute the indicated SQL statement and return the result. Starting with
     GDAL 2.1, the ``@filename`` syntax can be used to indicate that the content is
-    in the pointed filename.
+    in the pointed filename. Data can also be edited with SQL INSERT, UPDATE, 
+    DELETE, DROP TABLE, ALTER TABLE etc. Editing capabilities depend on the selected
+    ``dialect``.
+    
 
 .. option:: -dialect <dialect>
 
-    SQL dialect. In some cases can be used to use (unoptimized) OGR SQL instead
-    of the native SQL of an RDBMS by passing OGRSQL. The "SQLITE" dialect can
-    also be used with any datasource.
+    SQL dialect. In some cases can be used to use (unoptimized) :ref:`ogr_sql_dialect` instead
+    of the native SQL of an RDBMS by passing the ``OGRSQL`` dialect value.
+    The :ref:`sql_sqlite_dialect` dialect can be select with the ``SQLITE``
+    and ``INDIRECT_SQLITE`` dialect values, and this can be used with any datasource.
 
 .. option:: -spat <xmin> <ymin> <xmax> <ymax>
 
@@ -133,6 +139,12 @@ source to stdout (the terminal).
 
     Suppress spatial extent printing.
 
+.. option:: -nogeomtype
+
+    Suppress layer geometry type printing.
+
+    .. versionadded:: 3.1
+
 .. option:: --formats
 
     List the format drivers that are enabled.
@@ -168,10 +180,10 @@ source to stdout (the terminal).
 
 Geometries are reported in OGC WKT format.
 
-Example
--------
+Examples
+--------
 
-Example reporting all layers in an NTF file:
+Example of reporting the names of the layers in a NTF file:
 
 .. code-block::
 
@@ -184,7 +196,41 @@ Example reporting all layers in an NTF file:
     # 3: BL2000_COLLECTIONS (None)
     # 4: FEATURE_CLASSES (None)
 
-Example using an attribute query is used to restrict the output of the features
+Example of retrieving a summary (``-so``) of a layer without showing details about every single feature:
+
+.. code-block::
+
+    ogrinfo \
+      -so \
+      natural_earth_vector.gpkg \
+      ne_10m_admin_0_antarctic_claim_limit_lines
+
+      # INFO: Open of `natural_earth_vector.gpkg'
+      #      using driver `GPKG' successful.
+
+      # Layer name: ne_10m_admin_0_antarctic_claim_limit_lines
+      # Geometry: Line String
+      # Feature Count: 23
+      # Extent: (-150.000000, -90.000000) - (160.100000, -60.000000)
+      # Layer SRS WKT:
+      # GEOGCS["WGS 84",
+      #     DATUM["WGS_1984",
+      #         SPHEROID["WGS 84",6378137,298.257223563,
+      #             AUTHORITY["EPSG","7030"]],
+      #         AUTHORITY["EPSG","6326"]],
+      #     PRIMEM["Greenwich",0,
+      #         AUTHORITY["EPSG","8901"]],
+      #     UNIT["degree",0.0174532925199433,
+      #         AUTHORITY["EPSG","9122"]],
+      #     AUTHORITY["EPSG","4326"]]
+      # FID Column = fid
+      # Geometry Column = geom
+      # type: String (15.0)
+      # scalerank: Integer (0.0)
+      # featurecla: String (50.0)
+
+
+Example of using an attribute query to restrict the output of the features
 in a layer:
 
 .. code-block::
@@ -244,3 +290,9 @@ in a layer:
     # 1069126.900,419815.500 1069126.900,419808.200 1069116.500,419798.700
     # 1069117.600,419794.100 1069115.100,419796.300 1069109.100,419801.800
     # 1069106.800,419805.000  1069107.300)
+    
+Example of updating a value of an attribute in a shapefile with SQL by using the SQLite dialect:
+ 
+.. code-block::
+ 
+    ogrinfo test.shp -dialect sqlite -sql "update test set attr='bar' where attr='foo'"

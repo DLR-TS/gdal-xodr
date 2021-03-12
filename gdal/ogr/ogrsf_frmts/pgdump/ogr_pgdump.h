@@ -33,6 +33,8 @@
 #include "ogrsf_frmts.h"
 #include "cpl_string.h"
 
+#include <vector>
+
 CPLString OGRPGDumpEscapeColumnName(const char* pszColumnName);
 CPLString OGRPGDumpEscapeString( const char* pszStrValue, int nMaxLength = -1,
                                  const char* pszFieldName = "");
@@ -58,6 +60,7 @@ OGRPGCommonAppendCopyFieldsExceptGeom(
     OGRFeature* poFeature,
     const char* pszFIDColumn,
     bool bFIDColumnInCopyFields,
+    const std::vector<bool>& abFieldsToInclude,
     OGRPGCommonEscapeStringCbk pfnEscapeString,
     void* userdata );
 
@@ -74,7 +77,7 @@ char CPL_DLL *OGRPGCommonLaunderName( const char *pszSrcName,
 /*                        OGRPGDumpGeomFieldDefn                        */
 /************************************************************************/
 
-class OGRPGDumpGeomFieldDefn : public OGRGeomFieldDefn
+class OGRPGDumpGeomFieldDefn final: public OGRGeomFieldDefn
 {
     public:
         explicit OGRPGDumpGeomFieldDefn( OGRGeomFieldDefn *poGeomField ) :
@@ -93,7 +96,7 @@ class OGRPGDumpGeomFieldDefn : public OGRGeomFieldDefn
 
 class OGRPGDumpDataSource;
 
-class OGRPGDumpLayer : public OGRLayer
+class OGRPGDumpLayer final: public OGRLayer
 {
     char                *pszSchemaName;
     char                *pszSqlTableName;
@@ -192,7 +195,7 @@ class OGRPGDumpLayer : public OGRLayer
 /************************************************************************/
 /*                       OGRPGDumpDataSource                            */
 /************************************************************************/
-class OGRPGDumpDataSource : public OGRDataSource
+class OGRPGDumpDataSource final: public OGRDataSource
 {
     int                 nLayers;
     OGRPGDumpLayer**    papoLayers;

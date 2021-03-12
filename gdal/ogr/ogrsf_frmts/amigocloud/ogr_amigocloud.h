@@ -43,7 +43,6 @@
 
 json_object* OGRAMIGOCLOUDGetSingleRow(json_object* poObj);
 CPLString OGRAMIGOCLOUDEscapeIdentifier(const char* pszStr);
-CPLString OGRAMIGOCLOUDEscapeLiteral(const char* pszStr);
 std::string OGRAMIGOCLOUDJsonEncode(const std::string &value);
 
 /************************************************************************/
@@ -90,7 +89,7 @@ class OGRAmigoCloudFID
 /************************************************************************/
 class OGRAmigoCloudDataSource;
 
-class OGRAmigoCloudLayer : public OGRLayer
+class OGRAmigoCloudLayer CPL_NON_FINAL: public OGRLayer
 {
     protected:
         OGRAmigoCloudDataSource* poDS;

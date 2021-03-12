@@ -54,7 +54,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class ISIS2Dataset : public RawDataset
+class ISIS2Dataset final: public RawDataset
 {
     VSILFILE     *fpImage;      // image data file.
     CPLString    osExternalCube;
@@ -95,7 +95,7 @@ public:
     static GDALDataset *Open( GDALOpenInfo * );
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
-                                GDALDataType eType, char ** papszParmList );
+                                GDALDataType eType, char ** papszParamList );
 
     // Write related.
     static int WriteRaster(CPLString osFilename, bool includeLabel, GUIntBig iRecord, GUIntBig iLabelRecords, GDALDataType eType, const char * pszInterleaving);
@@ -314,12 +314,17 @@ GDALDataset *ISIS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 
     /***********   Grab Qube record bytes  **********/
     const int record_bytes = atoi(poDS->GetKeyword("RECORD_BYTES"));
+    if( record_bytes < 0 )
+    {
+        delete poDS;
+        return nullptr;
+    }
 
     GUIntBig nSkipBytes = 0;
     if (nQube > 0 && bByteLocation )
         nSkipBytes = (nQube - 1);
     else if( nQube > 0 )
-        nSkipBytes = (nQube - 1) * record_bytes;
+        nSkipBytes = static_cast<GUIntBig>(nQube - 1) * record_bytes;
     else
         nSkipBytes = 0;
 
@@ -388,23 +393,19 @@ GDALDataset *ISIS2Dataset::Open( GDALOpenInfo * poOpenInfo )
 
     /***********   Grab LINE_PROJECTION_OFFSET ************/
     double dfULYMap = 0.5;
-    double yulcenter = 0.0;
 
     value = poDS->GetKeyword("QUBE.IMAGE_MAP_PROJECTION.LINE_PROJECTION_OFFSET");
     if (strlen(value) > 0) {
-        yulcenter = static_cast<float>( CPLAtof(value) );
-        yulcenter = ((yulcenter) * dfYDim);
+        const double yulcenter = static_cast<float>( CPLAtof(value) ) * dfYDim;
         dfULYMap = yulcenter - (dfYDim/2);
     }
 
     /***********   Grab SAMPLE_PROJECTION_OFFSET ************/
     double dfULXMap = 0.5;
-    double xulcenter = 0.0;
 
     value = poDS->GetKeyword("QUBE.IMAGE_MAP_PROJECTION.SAMPLE_PROJECTION_OFFSET");
     if( strlen(value) > 0 ) {
-        xulcenter= static_cast<float>( CPLAtof(value) );
-        xulcenter = ((xulcenter) * dfXDim);
+        const double xulcenter = static_cast<float>( CPLAtof(value) ) * dfXDim;
         dfULXMap = xulcenter - (dfXDim/2);
     }
 
@@ -835,7 +836,7 @@ void ISIS2Dataset::CleanString( CPLString &osInput )
 
 GDALDataset *ISIS2Dataset::Create(const char* pszFilename,
                                   int nXSize, int nYSize, int nBands,
-                                  GDALDataType eType, char** papszParmList) {
+                                  GDALDataType eType, char** papszParamList) {
 
     /* Verify settings. In Isis 2 core pixel values can be represented in
      * three different ways : 1, 2 4, or 8 Bytes */
@@ -851,7 +852,7 @@ GDALDataset *ISIS2Dataset::Create(const char* pszFilename,
         (SAMPLE, BAND, LINE) - Band Interleaved by Line (BIL)
         (BAND, SAMPLE, LINE) - Band Interleaved by Pixel (BIP) */
     const char *pszInterleaving = "(SAMPLE,LINE,BAND)";
-    const char *pszInterleavingParam = CSLFetchNameValue( papszParmList, "INTERLEAVE" );
+    const char *pszInterleavingParam = CSLFetchNameValue( papszParamList, "INTERLEAVE" );
     if ( pszInterleavingParam ) {
         if ( STARTS_WITH_CI(pszInterleavingParam, "bip") )
             pszInterleaving = "(BAND,SAMPLE,LINE)";
@@ -864,7 +865,7 @@ GDALDataset *ISIS2Dataset::Create(const char* pszFilename,
     /* default labeling method is attached */
     bool bAttachedLabelingMethod = true;
     /* check if labeling method is set : check the all three first chars */
-    const char *pszLabelingMethod = CSLFetchNameValue( papszParmList, "LABELING_METHOD" );
+    const char *pszLabelingMethod = CSLFetchNameValue( papszParamList, "LABELING_METHOD" );
     if ( pszLabelingMethod ){
         if ( STARTS_WITH_CI( pszLabelingMethod, "det" /* "detached" */ ) ){
             bAttachedLabelingMethod = false;
@@ -884,7 +885,7 @@ GDALDataset *ISIS2Dataset::Create(const char* pszFilename,
     else
     {
         CPLString sExtension = "cub";
-        const char* pszExtension = CSLFetchNameValue( papszParmList, "IMAGE_EXTENSION" );
+        const char* pszExtension = CSLFetchNameValue( papszParamList, "IMAGE_EXTENSION" );
         if( pszExtension ){
             sExtension = pszExtension;
         }
@@ -902,7 +903,7 @@ GDALDataset *ISIS2Dataset::Create(const char* pszFilename,
         osOutFile = osLabelFile;
     }
 
-    const char *pszObject = CSLFetchNameValue( papszParmList, "OBJECT" );
+    const char *pszObject = CSLFetchNameValue( papszParamList, "OBJECT" );
     CPLString sObject = "QUBE"; // default choice
     if (pszObject) {
         if ( EQUAL( pszObject, "IMAGE") ){
@@ -1176,7 +1177,7 @@ void GDALRegister_ISIS2()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "USGS Astrogeology ISIS cube (Version 2)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_isis2.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/isis2.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Float32 Float64");

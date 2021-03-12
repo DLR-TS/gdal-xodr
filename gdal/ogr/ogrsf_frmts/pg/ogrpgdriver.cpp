@@ -110,7 +110,7 @@ void RegisterOGRPG()
     poDriver->SetDescription( "PostgreSQL" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "PostgreSQL/PostGIS" );
     poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drv_pg.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/vector/pg.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CONNECTION_PREFIX, "PG:" );
 
     poDriver->SetMetadataItem( GDAL_DMD_OPENOPTIONLIST,
@@ -120,6 +120,7 @@ void RegisterOGRPG()
 "  <Option name='USER' type='string' description='User name'/>"
 "  <Option name='PASSWORD' type='string' description='Password'/>"
 "  <Option name='HOST' type='string' description='Server hostname'/>"
+"  <Option name='SERVICE' type='string' description='Service name'/>"
 "  <Option name='ACTIVE_SCHEMA' type='string' description='Active schema'/>"
 "  <Option name='SCHEMAS' type='string' description='Restricted sets of schemas to explore (comma separated)'/>"
 "  <Option name='TABLES' type='string' description='Restricted set of tables to list (comma separated)'/>"
@@ -168,6 +169,7 @@ void RegisterOGRPG()
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONFIELDDATASUBTYPES, "Boolean Int16 Float32" );
     poDriver->SetMetadataItem( GDAL_DCAP_NOTNULL_FIELDS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_DEFAULT_FIELDS, "YES" );
+    poDriver->SetMetadataItem( GDAL_DCAP_UNIQUE_FIELDS, "YES" );
     poDriver->SetMetadataItem( GDAL_DCAP_NOTNULL_GEOMFIELDS, "YES" );
 
     poDriver->pfnOpen = OGRPGDriverOpen;

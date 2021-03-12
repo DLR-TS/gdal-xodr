@@ -1824,8 +1824,8 @@ bool GDALPDFWriter::WriteImagery(GDALDataset* poDS,
     /* Does the source image has a color table ? */
     auto nColorTableId = WriteColorTable(poDS);
 
-    int nXBlocks = (nWidth + nBlockXSize - 1) / nBlockXSize;
-    int nYBlocks = (nHeight + nBlockYSize - 1) / nBlockYSize;
+    int nXBlocks = DIV_ROUND_UP(nWidth, nBlockXSize);
+    int nYBlocks = DIV_ROUND_UP(nHeight, nBlockYSize);
     int nBlocks = nXBlocks * nYBlocks;
     int nBlockXOff, nBlockYOff;
     for(nBlockYOff = 0; nBlockYOff < nYBlocks; nBlockYOff ++)
@@ -1935,8 +1935,8 @@ bool GDALPDFWriter::WriteClippedImagery(
     /* Does the source image has a color table ? */
     auto nColorTableId = WriteColorTable(poDS);
 
-    int nXBlocks = (nWidth + nBlockXSize - 1) / nBlockXSize;
-    int nYBlocks = (nHeight + nBlockYSize - 1) / nBlockYSize;
+    int nXBlocks = DIV_ROUND_UP(nWidth, nBlockXSize);
+    int nYBlocks = DIV_ROUND_UP(nHeight, nBlockYSize);
     int nBlocks = nXBlocks * nYBlocks;
     int nBlockXOff, nBlockYOff;
     for(nBlockYOff = 0; nBlockYOff < nYBlocks; nBlockYOff ++)
@@ -2986,29 +2986,26 @@ GDALPDFObjectNum GDALPDFBaseWriter::WriteAttributes(
     oDict.Add("A", poDictA);
     poDictA->Add("O", GDALPDFObjectRW::CreateName("UserProperties"));
 
-    if( !aosIncludedFields.empty() )
+    GDALPDFArrayRW* poArray = new GDALPDFArrayRW();
+    for( const auto& fieldName: aosIncludedFields )
     {
-        GDALPDFArrayRW* poArray = new GDALPDFArrayRW();
-        for( const auto& fieldName: aosIncludedFields )
+        int i = OGR_F_GetFieldIndex(hFeat, fieldName);
+        if (i >= 0 && OGR_F_IsFieldSetAndNotNull(hFeat, i))
         {
-            int i = OGR_F_GetFieldIndex(hFeat, fieldName);
-            if (i >= 0 && OGR_F_IsFieldSetAndNotNull(hFeat, i))
-            {
-                OGRFieldDefnH hFDefn = OGR_F_GetFieldDefnRef( hFeat, i );
-                GDALPDFDictionaryRW* poKV = new GDALPDFDictionaryRW();
-                poKV->Add("N", OGR_Fld_GetNameRef(hFDefn));
-                if (OGR_Fld_GetType(hFDefn) == OFTInteger)
-                    poKV->Add("V", OGR_F_GetFieldAsInteger(hFeat, i));
-                else if (OGR_Fld_GetType(hFDefn) == OFTReal)
-                    poKV->Add("V", OGR_F_GetFieldAsDouble(hFeat, i));
-                else
-                    poKV->Add("V", OGR_F_GetFieldAsString(hFeat, i));
-                poArray->Add(poKV);
-            }
+            OGRFieldDefnH hFDefn = OGR_F_GetFieldDefnRef( hFeat, i );
+            GDALPDFDictionaryRW* poKV = new GDALPDFDictionaryRW();
+            poKV->Add("N", OGR_Fld_GetNameRef(hFDefn));
+            if (OGR_Fld_GetType(hFDefn) == OFTInteger)
+                poKV->Add("V", OGR_F_GetFieldAsInteger(hFeat, i));
+            else if (OGR_Fld_GetType(hFDefn) == OFTReal)
+                poKV->Add("V", OGR_F_GetFieldAsDouble(hFeat, i));
+            else
+                poKV->Add("V", OGR_F_GetFieldAsString(hFeat, i));
+            poArray->Add(poKV);
         }
-
-        poDictA->Add("P", poArray);
     }
+
+    poDictA->Add("P", poArray);
 
     oDict.Add("K", nMCID);
     oDict.Add("P", oParent, 0);
@@ -4500,7 +4497,7 @@ static int GDALPDFGetJPEGQuality(char** papszOptions)
 /*                         GDALPDFClippingDataset                       */
 /************************************************************************/
 
-class GDALPDFClippingDataset: public GDALDataset
+class GDALPDFClippingDataset final: public GDALDataset
 {
         GDALDataset* poSrcDS;
         double adfGeoTransform[6];
@@ -4641,7 +4638,7 @@ GDALDataset *GDALPDFCreateCopy( const char * pszFilename,
     if( pszValue != nullptr )
     {
         nBlockXSize = atoi( pszValue );
-        if (nBlockXSize < 0 || nBlockXSize >= nWidth)
+        if (nBlockXSize <= 0 || nBlockXSize >= nWidth)
             nBlockXSize = nWidth;
     }
 
@@ -4649,7 +4646,7 @@ GDALDataset *GDALPDFCreateCopy( const char * pszFilename,
     if( pszValue != nullptr )
     {
         nBlockYSize = atoi( pszValue );
-        if (nBlockYSize < 0 || nBlockYSize >= nHeight)
+        if (nBlockYSize <= 0 || nBlockYSize >= nHeight)
             nBlockYSize = nHeight;
     }
 

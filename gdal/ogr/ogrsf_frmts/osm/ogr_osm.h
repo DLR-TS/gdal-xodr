@@ -36,6 +36,7 @@
 #include "ogrsf_frmts.h"
 #include "cpl_string.h"
 
+#include <array>
 #include <set>
 #include <unordered_set>
 #include <map>
@@ -78,7 +79,7 @@ class OGROSMComputedAttribute
 
 class OGROSMDataSource;
 
-class OGROSMLayer : public OGRLayer
+class OGROSMLayer final: public OGRLayer
 {
     friend class OGROSMDataSource;
 
@@ -128,8 +129,8 @@ class OGROSMLayer : public OGRLayer
     char                  szLaunderedFieldName[256];
     const char*           GetLaunderedFieldName(const char* pszName);
 
-    std::vector<char*>    apszUnsignificantKeys;
-    std::map<const char*, int, ConstCharComp> aoSetUnsignificantKeys;
+    std::vector<char*>    apszInsignificantKeys;
+    std::map<const char*, int, ConstCharComp> aoSetInsignificantKeys;
 
     std::vector<char*>    apszIgnoreKeys;
     std::map<const char*, int, ConstCharComp> aoSetIgnoreKeys;
@@ -208,9 +209,9 @@ class OGROSMLayer : public OGRLayer
     int                 HasAttributeFilter() const { return m_poAttrQuery != nullptr; }
     int                 EvaluateAttributeFilter(OGRFeature* poFeature);
 
-    void                AddUnsignificantKey(const char* pszK);
+    void                AddInsignificantKey(const char* pszK);
     int                 IsSignificantKey(const char* pszK) const
-        { return aoSetUnsignificantKeys.find(pszK) == aoSetUnsignificantKeys.end(); }
+        { return aoSetInsignificantKeys.find(pszK) == aoSetInsignificantKeys.end(); }
 
     void                AddIgnoreKey(const char* pszK);
     void                AddWarnKey(const char* pszK);
@@ -282,7 +283,7 @@ typedef struct
 } CollisionBucket;
 #endif
 
-class OGROSMDataSource : public OGRDataSource
+class OGROSMDataSource final: public OGRDataSource
 {
     friend class OGROSMLayer;
 
@@ -327,7 +328,9 @@ class OGROSMDataSource : public OGRDataSource
     int                 nMinSizeKeysInSetClosedWaysArePolygons;
     int                 nMaxSizeKeysInSetClosedWaysArePolygons;
 
-    LonLat             *pasLonLatCache;
+    std::vector<LonLat> m_asLonLatCache{};
+
+    std::array<const char*, 7>  m_ignoredKeys;
 
     bool                bReportAllNodes;
     bool                bReportAllWays;
@@ -352,7 +355,7 @@ class OGROSMDataSource : public OGRDataSource
 
     bool                bAttributeNameLaundering;
 
-    GByte              *pabyWayBuffer;
+    std::vector<GByte>  m_abyWayBuffer{};
 
     int                 nWaysProcessed;
     int                 nRelationsProcessed;
@@ -370,7 +373,7 @@ class OGROSMDataSource : public OGRDataSource
     bool                bEnableHashedIndex;
     /* values >= 0 are indexes of panReqIds. */
     /*        == -1 for unoccupied */
-    /*        < -1 are expressed as -nIndexToCollisonBuckets-2 where nIndexToCollisonBuckets point to psCollisionBuckets */
+    /*        < -1 are expressed as -nIndexToCollisionBuckets-2 where nIndexToCollisionBuckets point to psCollisionBuckets */
     int                *panHashedIndexes;
     CollisionBucket    *psCollisionBuckets;
     bool                bHashedIndexValid;
@@ -408,12 +411,13 @@ class OGROSMDataSource : public OGRDataSource
     static const GIntBig FILESIZE_INVALID = -1;
     GIntBig             m_nFileSize;
 
-    int                 CompressWay (bool bIsArea, unsigned int nTags, IndexedKVP* pasTags,
+    void                CompressWay (bool bIsArea, unsigned int nTags, IndexedKVP* pasTags,
                                      int nPoints, LonLat* pasLonLatPairs,
                                      OSMInfo* psInfo,
-                                     GByte* pabyCompressedWay);
-    int                 UncompressWay( int nBytes, GByte* pabyCompressedWay,
-                                       bool *pbIsArea, LonLat* pasCoords,
+                                     std::vector<GByte> &abyCompressedWay);
+    void                UncompressWay( int nBytes, const GByte* pabyCompressedWay,
+                                       bool *pbIsArea,
+                                       std::vector<LonLat>& asCoords,
                                        unsigned int* pnTags, OSMTag* pasTags,
                                        OSMInfo* psInfo );
 

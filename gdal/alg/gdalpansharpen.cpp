@@ -130,12 +130,13 @@ GDALPansharpenOptions* GDALClonePansharpenOptions(
     psNewOptions->nInputSpectralBands = psOptions->nInputSpectralBands;
     if( psOptions->pahInputSpectralBands )
     {
+        const size_t nSize = sizeof(GDALRasterBandH) *
+                                psOptions->nInputSpectralBands;
         psNewOptions->pahInputSpectralBands = static_cast<GDALRasterBandH *>(
-            CPLMalloc(sizeof(GDALRasterBandH) *
-                      psOptions->nInputSpectralBands));
+            CPLMalloc(nSize));
         memcpy(psNewOptions->pahInputSpectralBands,
                psOptions->pahInputSpectralBands,
-               sizeof(GDALRasterBandH) * psOptions->nInputSpectralBands);
+               nSize);
     }
     psNewOptions->nOutPansharpenedBands = psOptions->nOutPansharpenedBands;
     if( psOptions->panOutPansharpenedBands )
@@ -325,17 +326,21 @@ GDALPansharpenOperation::Initialize( const GDALPansharpenOptions* psOptionsIn )
             for( int i = 0; i < psOptions->nInputSpectralBands; i++ )
             {
                 GDALRasterBand* poSrcBand = aMSBands[i];
+                int iVRTBand = 1;
                 if( anInputBands.empty() || i == 0 )
                 {
                     poVDS = new VRTDataset(poSrcBand->GetXSize(), poSrcBand->GetYSize());
                     aVDS.push_back(poVDS);
                 }
                 if( !anInputBands.empty() )
+                {
                     anInputBands[i] = i + 1;
+                    iVRTBand = i + 1;
+                }
                 poVDS->AddBand(poSrcBand->GetRasterDataType(), nullptr);
                 VRTSourcedRasterBand* poVRTBand =
                     dynamic_cast<VRTSourcedRasterBand*>(
-                        poVDS->GetRasterBand(i + 1));
+                        poVDS->GetRasterBand(iVRTBand));
                 if( poVRTBand == nullptr )
                     return CE_Failure;
                 aMSBands[i] = poVRTBand;
@@ -399,6 +404,7 @@ GDALPansharpenOperation::Initialize( const GDALPansharpenOptions* psOptionsIn )
             (eResampleAlg == GRIORA_CubicSpline) ? "CUBICSPLINE" :
             (eResampleAlg == GRIORA_Lanczos) ? "LANCZOS" :
             (eResampleAlg == GRIORA_Average) ? "AVERAGE" :
+            (eResampleAlg == GRIORA_RMS) ? "RMS" :
             (eResampleAlg == GRIORA_Mode) ? "MODE" :
             (eResampleAlg == GRIORA_Gauss) ? "GAUSS" : "UNKNOWN";
 
@@ -1093,6 +1099,7 @@ CPLErr GDALPansharpenOperation::ProcessRegion( int nXOff, int nYOff,
     GDALRasterIOExtraArg sExtraArg;
     INIT_RASTERIO_EXTRA_ARG(sExtraArg);
     const GDALRIOResampleAlg eResampleAlg = psOptions->eResampleAlg;
+    // cppcheck-suppress redundantAssignment
     sExtraArg.eResampleAlg = eResampleAlg;
     sExtraArg.bFloatingPointWindowValidity = TRUE;
     double dfRatioX =
@@ -1261,12 +1268,9 @@ CPLErr GDALPansharpenOperation::ProcessRegion( int nXOff, int nYOff,
 
             // To avoid races in threads, we query now the mask flags,
             // so that implicit mask bands are created now.
-            if( eResampleAlg != GRIORA_NearestNeighbour )
+            for( int i = 0; i < poMEMDS->GetRasterCount(); i++ )
             {
-                for( int i = 0; i < poMEMDS->GetRasterCount(); i++ )
-                {
-                    poMEMDS->GetRasterBand(i+1)->GetMaskFlags();
-                }
+                poMEMDS->GetRasterBand(i+1)->GetMaskFlags();
             }
 
             std::vector<GDALPansharpenResampleJob> asJobs;
@@ -1557,6 +1561,7 @@ void GDALPansharpenOperation::PansharpenResampleJobThreadFunc(void* pUserData)
 #else
     GDALRasterIOExtraArg sExtraArg;
     INIT_RASTERIO_EXTRA_ARG(sExtraArg);
+    // cppcheck-suppress redundantAssignment
     sExtraArg.eResampleAlg = psJob->eResampleAlg;
     sExtraArg.bFloatingPointWindowValidity = TRUE;
     sExtraArg.dfXOff = psJob->dfXOff;

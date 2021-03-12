@@ -69,12 +69,11 @@ static double GetOGRangle(double angle)
             : -(angle + 180.0);
 }
 
-// TODO: Spelling Tesselate -> Tessellate
 /************************************************************************/
-/*                DXFSmoothPolyline::Tesselate()                        */
+/*                DXFSmoothPolyline::Tessellate()                        */
 /************************************************************************/
 
-OGRGeometry* DXFSmoothPolyline::Tesselate() const
+OGRGeometry* DXFSmoothPolyline::Tessellate() const
 {
     assert(!m_vertices.empty());
 
@@ -169,7 +168,7 @@ void DXFSmoothPolyline::EmitArc(
     const DXFSmoothPolylineVertex& end,
     double radius, double len, double bulge,
     OGRLineString* poLS,
-    double dfZ )
+    double dfZ ) const
 {
     assert(poLS);
 
@@ -267,7 +266,7 @@ void DXFSmoothPolyline::EmitArc(
                 ogrArcCenter.x, ogrArcCenter.y, dfZ,
                 ogrArcRadius, ogrArcRadius, ogrArcRotation,
                 ogrArcStartAngle, ogrArcEndAngle,
-                0.0)->toLineString();
+                0.0, m_bUseMaxGapWhenTessellatingArcs)->toLineString();
 
         poLS->addSubLineString(poArcpoLS);
 

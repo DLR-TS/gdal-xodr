@@ -485,6 +485,7 @@ CPLErr OGRSQLiteTableLayer::EstablishFeatureDefn(const char* pszGeomCol)
         poGeomFieldDefn->SetType( eGeomType );
         poGeomFieldDefn->SetSpatialRef(poDS->FetchSRS(poGeomFieldDefn->nSRSId));
 
+        // cppcheck-suppress knownConditionTrueFalse
         if( eGeomFormat == OSGF_SpatiaLite )
             bHasSpatialiteCol = TRUE;
     }
@@ -508,7 +509,7 @@ CPLErr OGRSQLiteTableLayer::EstablishFeatureDefn(const char* pszGeomCol)
         // obsolete library version not supporting new triggers
         // enforcing ReadOnly mode
             CPLDebug("SQLITE", "Enforcing ReadOnly mode : obsolete library version not supporting new triggers");
-            poDS->SetUpdate(FALSE);
+            poDS->DisableUpdate();
         }
 
         sqlite3_free_table( papszTriggerResult );
@@ -534,14 +535,17 @@ CPLErr OGRSQLiteTableLayer::EstablishFeatureDefn(const char* pszGeomCol)
     {
         if( nColCount == 6 )
         {
+            const std::set<std::string> uniqueFieldsUC(
+                SQLGetUniqueFieldUCConstraints(hDB, pszTableName));
             for(int i=0;i<nRowCount;i++)
             {
                 const char* pszName = papszResult[(i+1)*6+1];
                 const char* pszNotNull = papszResult[(i+1)*6+3];
                 const char* pszDefault = papszResult[(i+1)*6+4];
+                const int idx = pszName != nullptr ?
+                                    poFeatureDefn->GetFieldIndex(pszName) : -1;
                 if( pszDefault != nullptr )
                 {
-                    int idx = poFeatureDefn->GetFieldIndex(pszName);
                     if( idx >= 0 )
                     {
                         OGRFieldDefn* poFieldDefn =  poFeatureDefn->GetFieldDefn(idx);
@@ -579,16 +583,21 @@ CPLErr OGRSQLiteTableLayer::EstablishFeatureDefn(const char* pszGeomCol)
                 if( pszName != nullptr && pszNotNull != nullptr &&
                     EQUAL(pszNotNull, "1") )
                 {
-                    int idx = poFeatureDefn->GetFieldIndex(pszName);
                     if( idx >= 0 )
                         poFeatureDefn->GetFieldDefn(idx)->SetNullable(0);
                     else
                     {
-                        idx = poFeatureDefn->GetGeomFieldIndex(pszName);
-                        if( idx >= 0 )
-                            poFeatureDefn->GetGeomFieldDefn(idx)->SetNullable(0);
+                        const int geomFieldIdx = poFeatureDefn->GetGeomFieldIndex(pszName);
+                        if( geomFieldIdx >= 0 )
+                            poFeatureDefn->GetGeomFieldDefn(geomFieldIdx)->SetNullable(0);
                     }
                 }
+                if( idx >= 0 &&
+                     uniqueFieldsUC.find( CPLString( pszName ).toupper() ) != uniqueFieldsUC.end() )
+                {
+                    poFeatureDefn->GetFieldDefn(idx)->SetUnique(TRUE);
+                }
+
             }
         }
         sqlite3_free_table(papszResult);
@@ -672,7 +681,9 @@ OGRErr OGRSQLiteTableLayer::RecomputeOrdinals()
             }
         }
     }
+    (void)nCountFieldOrdinals;
     CPLAssert(nCountFieldOrdinals == poFeatureDefn->GetFieldCount() );
+    (void)nCountGeomFieldOrdinals;
     CPLAssert(nCountGeomFieldOrdinals == poFeatureDefn->GetGeomFieldCount() );
     CPLAssert(pszFIDColumn == nullptr || iFIDCol >= 0 );
 
@@ -1365,6 +1376,10 @@ OGRErr OGRSQLiteTableLayer::CreateField( OGRFieldDefn *poFieldIn,
         {
             osCommand += " NOT NULL";
         }
+        if( oField.IsUnique() )
+        {
+            osCommand += " UNIQUE";
+        }
         if( oField.GetDefault() != nullptr && !oField.IsDefaultDriverSpecific() )
         {
             osCommand += " DEFAULT ";
@@ -1635,6 +1650,7 @@ void OGRSQLiteTableLayer::InitFieldListForRecrerate(char* & pszNewFieldList,
         OGRFieldDefn* poFieldDefn = poFeatureDefn->GetFieldDefn(iField);
         nFieldListLen +=
             2 * strlen(poFieldDefn->GetNameRef()) + 70;
+        nFieldListLen += strlen(" UNIQUE");
         if( poFieldDefn->GetDefault() != nullptr )
             nFieldListLen += 10 + strlen( poFieldDefn->GetDefault() );
     }
@@ -1691,6 +1707,9 @@ void OGRSQLiteTableLayer::AddColumnDef(char* pszNewFieldList, size_t nBufLen,
     if( !poFldDefn->IsNullable() )
         snprintf( pszNewFieldList+strlen(pszNewFieldList),
                  nBufLen-strlen(pszNewFieldList), " NOT NULL" );
+    if( poFldDefn->IsUnique() )
+        snprintf( pszNewFieldList+strlen(pszNewFieldList),
+                 nBufLen-strlen(pszNewFieldList), " UNIQUE" );
     if( poFldDefn->GetDefault() != nullptr && !poFldDefn->IsDefaultDriverSpecific() )
     {
         snprintf( pszNewFieldList+strlen(pszNewFieldList),
@@ -1958,6 +1977,10 @@ OGRErr OGRSQLiteTableLayer::AlterFieldDefn( int iFieldToAlter, OGRFieldDefn* poN
             {
                 oTmpFieldDefn.SetNullable(poNewFieldDefn->IsNullable());
             }
+            if( (nFlagsIn & ALTER_UNIQUE_FLAG) )
+            {
+                oTmpFieldDefn.SetUnique(poNewFieldDefn->IsUnique());
+            }
             if( (nFlagsIn & ALTER_DEFAULT_FLAG) )
             {
                 oTmpFieldDefn.SetDefault(poNewFieldDefn->GetDefault());
@@ -1978,6 +2001,9 @@ OGRErr OGRSQLiteTableLayer::AlterFieldDefn( int iFieldToAlter, OGRFieldDefn* poN
             if( !oTmpFieldDefn.IsNullable() )
                 snprintf( pszNewFieldList+strlen(pszNewFieldList),
                           nBufLen-strlen(pszNewFieldList)," NOT NULL" );
+            if( oTmpFieldDefn.IsUnique() )
+                snprintf( pszNewFieldList+strlen(pszNewFieldList),
+                          nBufLen-strlen(pszNewFieldList)," UNIQUE" );
             if( oTmpFieldDefn.GetDefault() )
             {
                 snprintf( pszNewFieldList+strlen(pszNewFieldList),
@@ -3099,6 +3125,10 @@ OGRErr OGRSQLiteTableLayer::RunDeferredCreationIfNecessary()
         {
             osCommand += " NOT NULL";
         }
+        if( poFieldDefn->IsUnique() )
+        {
+            osCommand += " UNIQUE";
+        }
         const char* pszDefault = poFieldDefn->GetDefault();
         if( pszDefault != nullptr &&
             (!poFieldDefn->IsDefaultDriverSpecific() ||
@@ -3410,6 +3440,7 @@ void OGRSQLiteTableLayer::LoadStatistics()
     /* If it is equal to the modified timestamp of the DB (as a file) */
     /* then we can safely use the data from the layer_statistics, since */
     /* it will be up-to-date */
+    // cppcheck-suppress knownConditionTrueFalse
     if( nFileTimestamp == nTS || nFileTimestamp == nTS + 1 )
     {
         osSQL.Printf("SELECT row_count, extent_min_x, extent_min_y, extent_max_x, extent_max_y "

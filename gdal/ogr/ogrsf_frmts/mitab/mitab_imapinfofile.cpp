@@ -257,13 +257,29 @@ TABFeature* IMapInfoFile::CreateTABFeature(OGRFeature *poFeature)
        * POINT
        *------------------------------------------------------------*/
       case wkbPoint:
-        poTABFeature = new TABPoint(poFeature->GetDefnRef());
         if(poFeature->GetStyleString())
         {
+            TABFeatureClass featureClass = ITABFeatureSymbol::GetSymbolFeatureClass(poFeature->GetStyleString());
+            if (featureClass == TABFCFontPoint) 
+            {
+                poTABFeature = new TABFontPoint(poFeature->GetDefnRef());
+            }
+            else if (featureClass == TABFCCustomPoint) 
+            {
+                poTABFeature = new TABCustomPoint(poFeature->GetDefnRef());
+            }
+            else 
+            {
+                poTABFeature = new TABPoint(poFeature->GetDefnRef());
+            }
             poTABPointFeature = cpl::down_cast<TABPoint*>(poTABFeature);
             poTABPointFeature->SetSymbolFromStyleString(
                 poFeature->GetStyleString());
         }
+        else 
+        {
+            poTABFeature = new TABPoint(poFeature->GetDefnRef());
+        }        
         break;
       /*-------------------------------------------------------------
        * REGION
@@ -544,7 +560,7 @@ static const char* const apszCharsets[][2] = {
     { "ISO8859_9", "ISO-8859-9" }, //ISO 8859-9 (UNIX)
     { "PackedEUCJapaese", "EUC-JP" }, //UNIX, standard Japanese implementation.
     { "WindowsLatin1", "CP1252" },
-    { "WindowsLatin2", "" },
+    { "WindowsLatin2", "CP1250" },
     { "WindowsArabic", "CP1256" },
     { "WindowsCyrillic", "CP1251" },
     { "WindowsGreek", "CP1253" },

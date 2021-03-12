@@ -344,9 +344,6 @@ def test_eedai_3():
     if gdaltest.eedai_drv is None:
         pytest.skip()
 
-    if gdaltest.is_travis_branch('gcc52_stdcpp14_sanitize'):
-        pytest.skip()
-
     gdal.SetConfigOption('EEDA_URL', '/vsimem/ee/')
     # Generated with 'openssl genrsa -out rsa-openssl.pem 1024' and
     # 'openssl pkcs8 -nocrypt -in rsa-openssl.pem -inform PEM -topk8 -outform PEM -out rsa-openssl.pkcs8.pem'
@@ -394,9 +391,6 @@ def test_eedai_GOOGLE_APPLICATION_CREDENTIALS():
     if gdaltest.eedai_drv is None:
         pytest.skip()
 
-    if gdaltest.is_travis_branch('gcc52_stdcpp14_sanitize'):
-        pytest.skip()
-
     gdal.FileFromMemBuffer('/vsimem/my.json', """{
 "private_key":"-----BEGIN PRIVATE KEY-----
 MIICeAIBADANBgkqhkiG9w0BAQEFAASCAmIwggJeAgEAAoGBAOlwJQLLDG1HeLrk\n
@@ -438,18 +432,20 @@ gwE6fxOLyJDxuWRf\n
     if gdal.GetLastErrorMsg().find('CPLRSASHA256Sign() not implemented') >= 0:
         pytest.skip()
 
+    if ds is None and gdaltest.is_github_workflow_mac():
+        print(gdal.GetLastErrorMsg())
+        pytest.xfail('Failure. See https://github.com/rouault/gdal/runs/1329425333?check_suite_focus=true')
+
     assert ds is not None
 
 ###############################################################################
 # Read credentials from simulated GCE instance
 
 
+@pytest.mark.skipif(sys.platform not in ('linux', 'win32'), reason='Incorrect platform')
 def test_eedai_gce_credentials():
 
     if gdaltest.eedai_drv is None:
-        pytest.skip()
-
-    if sys.platform not in ('linux', 'linux2', 'win32'):
         pytest.skip()
 
     gdaltest.webserver_process = None

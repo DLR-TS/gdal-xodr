@@ -285,7 +285,7 @@ static double DConvert( VSILFILE *fp, int nCharCount )
 
 class USGSDEMRasterBand;
 
-class USGSDEMDataset : public GDALPamDataset
+class USGSDEMDataset final: public GDALPamDataset
 {
     friend class USGSDEMRasterBand;
 
@@ -322,7 +322,7 @@ class USGSDEMDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class USGSDEMRasterBand : public GDALPamRasterBand
+class USGSDEMRasterBand final: public GDALPamRasterBand
 {
     friend class USGSDEMDataset;
 
@@ -604,9 +604,17 @@ int USGSDEMDataset::LoadFromFile(VSILFILE *InDem)
             j = ReadInt(InDem);
             if ( i != 1 || j != 1 )  // File OK?
             {
-                CPLError( CE_Failure, CPLE_AppDefined,
-                          "Does not appear to be a USGS DEM file." );
-                return FALSE;
+                CPL_IGNORE_RET_VAL(VSIFSeekL(InDem, 918, 0));  // Latest iteration of the A record, such as in fema06-140cm_2995441b.dem
+                i = ReadInt(InDem);
+                j = ReadInt(InDem);
+                if ( i != 1 || j != 1 )  // File OK?
+                {
+                    CPLError( CE_Failure, CPLE_AppDefined,
+                            "Does not appear to be a USGS DEM file." );
+                    return FALSE;
+                }
+                else
+                    nDataStartOffset = 918;
             }
             else
                 nDataStartOffset = 893;
@@ -940,7 +948,7 @@ void GDALRegister_USGSDEM()
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "dem" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "USGS Optional ASCII DEM (and CDED)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_usgsdem.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/usgsdem.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Int16" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONOPTIONLIST,
 "<CreationOptionList>"

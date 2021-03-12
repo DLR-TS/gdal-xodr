@@ -460,7 +460,7 @@ static int ParseSect2_Wx (float *rdat, sInt4 nrdat, sInt4 *idat,
    }
 
    loc = 0;
-   if (nidat <= loc) {
+   if (nidat == 0) {
       errSprintf ("ERROR: Ran out of idat data\n");
       return -1;
    }
@@ -585,7 +585,7 @@ static int ParseSect2_Hazard (float *rdat, sInt4 nrdat, sInt4 *idat,
    }
 
    loc = 0;
-   if (nidat <= loc) {
+   if (nidat == 0) {
       errSprintf ("ERROR: Ran out of idat data\n");
       return -1;
    }
@@ -1014,7 +1014,8 @@ static int ParseSect3 (sInt4 *is3, sInt4 ns3, grib_MetaData *meta)
    }
    meta->gds.Nx = is3[30];
    meta->gds.Ny = is3[34];
-   if (meta->gds.Nx * meta->gds.Ny != meta->gds.numPts) {
+   if ((meta->gds.Nx != 0 && meta->gds.Ny > UINT_MAX / meta->gds.Nx) ||
+       meta->gds.Nx * meta->gds.Ny != meta->gds.numPts) {
       errSprintf ("Nx * Ny != number of points?\n");
       return -2;
    }
@@ -1027,9 +1028,7 @@ static int ParseSect3 (sInt4 *is3, sInt4 ns3, grib_MetaData *meta)
    meta->gds.lat2 = meta->gds.lon2 = 0;
    switch (is3[12]) {
       case GS3_LATLON: /* 0: Regular lat/lon grid. */
-#ifdef notdef
-      case 1: // 1: Rotated lat/lon grid
-#endif
+      case GS3_ROTATED_LATLON: // 1: Rotated lat/lon grid
       case GS3_GAUSSIAN_LATLON:  /* 40: Gaussian lat/lon grid. */
          if (ns3 < 72) {
             return -1;
@@ -1069,22 +1068,15 @@ static int ParseSect3 (sInt4 *is3, sInt4 ns3, grib_MetaData *meta)
          meta->gds.scan = (uChar) is3[71];
          meta->gds.meshLat = 0;
          meta->gds.orientLon = 0;
-#ifdef notdef
-         if( is3[12] == 1 ) {
+         if( is3[12] == GS3_ROTATED_LATLON ) {
              if( ns3 < 84 ) {
                  return -1;
              }
-             CPLDebug("GRIB", "Latitude1: %f", meta->gds.lat1);
-             CPLDebug("GRIB", "Longitude1: %f", meta->gds.lon1);
-             CPLDebug("GRIB", "Latitude2: %f", meta->gds.lat2);
-             CPLDebug("GRIB", "Longitude2: %f", meta->gds.lon2);
-             CPLDebug("GRIB", "Di : %f", meta->gds.Dx);
-             CPLDebug("GRIB", "Dj : %f", meta->gds.Dy);
-             CPLDebug("GRIB", "Latitude of the southern pole of projection: %f", is3[73-1] * unit);
-             CPLDebug("GRIB", "Longitude of the southern pole of projection: %f", is3[77-1] * unit);
-             CPLDebug("GRIB", "Angle of rotation of projection: %f", is3[81-1] * unit);
+             meta->gds.f_typeLatLon = 3;
+             meta->gds.southLat = is3[73-1] * unit;
+             meta->gds.southLon = is3[77-1] * unit;
+             meta->gds.angleRotate = is3[81-1] * unit;
          }
-#endif
          /* Resolve resolution flag(bit 3,4).  Copy Dx,Dy as appropriate. */
          if ((meta->gds.resFlag & GRIB2BIT_3) &&
              (!(meta->gds.resFlag & GRIB2BIT_4))) {
@@ -1561,15 +1553,7 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
       errSprintf ("ERROR IS4 not labeled correctly. %d\n", is4[4]);
       return -2;
    }
-   if (is4[5] != 0) {
-#ifdef DEBUG
-      printf ("Un-supported template.\n  All Supported template "
-              "have 0 coordinate vertical values after template.");
-#endif
-      errSprintf ("Un-supported template.\n  All Supported template "
-                  "have 0 coordinate vertical values after template.");
-      return -4;
-   }
+
    if ((is4[7] != GS4_ANALYSIS) && (is4[7] != GS4_ENSEMBLE) &&
        (is4[7] != GS4_DERIVED) && (is4[7] != GS4_PROBABIL_PNT) &&
        (is4[7] != GS4_PERCENT_PNT) && (is4[7] != GS4_ERROR) &&
@@ -1577,7 +1561,7 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
        (is4[7] != GS4_PERCENT_TIME) && (is4[7] != GS4_ENSEMBLE_STAT) &&
        (is4[7] != GS4_SATELLITE) && (is4[7] != GS4_SATELLITE_SYNTHETIC) &&
        (is4[7] != GS4_DERIVED_INTERVAL) && (is4[7] != GS4_STATISTIC_SPATIAL_AREA) &&
-       (is4[7] != GS4_ANALYSIS_CHEMICAL)) {
+       (is4[7] != GS4_ANALYSIS_CHEMICAL) && (is4[7] != GS4_OPTICAL_PROPERTIES_AEROSOL)) {
 #ifdef DEBUG
       //printf ("Un-supported Template. %d\n", is4[7]);
 #endif
@@ -1594,14 +1578,23 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
    }
    meta->pds2.sect4.cat = (uChar) is4[9];
    meta->pds2.sect4.subcat = (uChar) is4[10];
-   int nOffset = (is4[7] != GS4_ANALYSIS_CHEMICAL) ? 0 : 2;
+   int nOffset = 0;
+   if( is4[7] == GS4_ANALYSIS_CHEMICAL ) {
+        nOffset = 16 - 14;
+   }
+   else if( is4[7] == GS4_OPTICAL_PROPERTIES_AEROSOL ) {
+        nOffset = 38 - 14;
+   }
+   if (ns4 < 34 + nOffset) {
+      return -1;
+   }
    meta->pds2.sect4.genProcess = (uChar) is4[11 + nOffset];
 
    /* Initialize variables prior to parsing the specific templates. */
    meta->pds2.sect4.typeEnsemble = 0;
    meta->pds2.sect4.perturbNum = 0;
    meta->pds2.sect4.numberFcsts = 0;
-   meta->pds2.sect4.derivedFcst = 0;
+   meta->pds2.sect4.derivedFcst = (uChar)-1;
    meta->pds2.sect4.validTime = meta->pds2.refTime;
 
    if (meta->pds2.sect4.templat == GS4_SATELLITE) {
@@ -1794,6 +1787,20 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
          meta->pds2.sect4.derivedFcst = (uChar) is4[34];
          meta->pds2.sect4.numberFcsts = (uChar) is4[35];
          break;
+      case GS4_DERIVED_CLUSTER_RECTANGULAR_AREA: /* 4.3 */
+         if (ns4 < 68) {
+            return -1;
+         }
+         meta->pds2.sect4.derivedFcst = (uChar) is4[34];
+         meta->pds2.sect4.numberFcsts = (uChar) is4[35];
+         break;
+      case GS4_DERIVED_CLUSTER_CIRCULAR_AREA: /* 4.4 */
+         if (ns4 < 64) {
+            return -1;
+         }
+         meta->pds2.sect4.derivedFcst = (uChar) is4[34];
+         meta->pds2.sect4.numberFcsts = (uChar) is4[35];
+         break;
       case GS4_DERIVED_INTERVAL: /* 4.12 */
          if (ns4 < 45) {
             return -1;
@@ -1858,6 +1865,14 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
 #endif
             meta->pds2.sect4.numMissing = is4[44];
          }
+         break;
+      case GS4_DERIVED_INTERVAL_CLUSTER_RECTANGULAR_AREA: /* 4.13 */
+      case GS4_DERIVED_INTERVAL_CLUSTER_CIRCULAR_AREA: /* 4.14 */
+         if (ns4 < 36) {
+            return -1;
+         }
+         meta->pds2.sect4.derivedFcst = (uChar) is4[34];
+         meta->pds2.sect4.numberFcsts = (uChar) is4[35];
          break;
       case GS4_STATISTIC: /* 4.8 */
          if (ns4 < 43) {
@@ -2070,10 +2085,27 @@ static int ParseSect4 (sInt4 *is4, sInt4 ns4, grib_MetaData *meta)
       case GS4_ANALYSIS_CHEMICAL: /* 4.40 */
             // TODO
             break;
+      case GS4_OPTICAL_PROPERTIES_AEROSOL: /* 4.48 */
+            // TODO
+            break;
       default:
          errSprintf ("Un-supported Template. %ld\n", is4[7]);
          return -4;
    }
+
+   /* Do only that check at the end so that other meta fields are properly set */
+   /* otherwise we might do erroneous unit conversion as in */
+   /* https://github.com/OSGeo/gdal/issues/3158 */
+   if (is4[5] != 0) {
+#ifdef DEBUG
+      printf ("Un-supported template.\n  All Supported template "
+              "have 0 coordinate vertical values after template.");
+#endif
+      errSprintf ("Un-supported template.\n  All Supported template "
+                  "have 0 coordinate vertical values after template.");
+      return -4;
+   }
+
    return 0;
 }
 
@@ -2430,6 +2462,7 @@ int MetaParse (grib_MetaData *meta, sInt4 *is0, sInt4 ns0,
                   meta->pds2.sect4.templat, meta->pds2.sect4.cat,
                   meta->pds2.sect4.subcat, lenTime, timeRangeUnit, statProcessID,
                   incrType, meta->pds2.sect4.genID, probType, lowerProb, upperProb,
+                  meta->pds2.sect4.derivedFcst,
                   &(meta->element), &(meta->comment), &(meta->unitName),
                   &(meta->convert), meta->pds2.sect4.percentile,
                   meta->pds2.sect4.genProcess,
@@ -2942,7 +2975,7 @@ void ParseGrid (VSILFILE *fp, gridAttribType *attrib, double **Grib_Data,
                          * missing values. */
    uInt4 scanIndex;     /* Where we are in the original grid. */
    sInt4 x, y;          /* Where we are in a grid of scan value 0100 */
-   sInt4 newIndex;      /* x,y in a 1 dimensional array. */
+   uInt4 newIndex;      /* x,y in a 1 dimensional array. */
    double value;        /* The data in the new units. */
    /* A pointer to Grib_Data for ease of manipulation. */
    double *grib_Data = nullptr;
@@ -2985,9 +3018,12 @@ void ParseGrid (VSILFILE *fp, gridAttribType *attrib, double **Grib_Data,
           }
       }
 
-      *grib_DataLen = subNxNy;
-      double* newData = (double *) realloc ((void *) (*Grib_Data),
-                                       (*grib_DataLen) * sizeof (double));
+      double* newData = nullptr;
+      const size_t nBufferSize = subNxNy * sizeof (double);
+      if( nBufferSize / sizeof(double) == subNxNy )
+      {
+        newData = (double *) realloc ((void *) (*Grib_Data), nBufferSize);
+      }
       if( newData == nullptr )
       {
           errSprintf ("Memory allocation failed");
@@ -2996,6 +3032,7 @@ void ParseGrid (VSILFILE *fp, gridAttribType *attrib, double **Grib_Data,
           *grib_DataLen = 0;
           return;
       }
+      *grib_DataLen = subNxNy;
       *Grib_Data = newData;
    }
    grib_Data = *Grib_Data;
@@ -3082,7 +3119,7 @@ void ParseGrid (VSILFILE *fp, gridAttribType *attrib, double **Grib_Data,
          }
          ScanIndex2XY (scanIndex, &x, &y, scan, Nx, Ny);
          /* ScanIndex returns value as if scan was 0100 */
-         newIndex = (x - 1) + (y - 1) * Nx;
+         newIndex = (uInt4)(x - 1) + (uInt4)(y - 1) * Nx;
          grib_Data[newIndex] = value;
       }
    }
@@ -3115,7 +3152,7 @@ void ParseGrid (VSILFILE *fp, gridAttribType *attrib, double **Grib_Data,
       for (scanIndex = 0; scanIndex < (uInt4)nd2x3 && scanIndex < Nx * Ny; scanIndex++) {
          ScanIndex2XY (scanIndex, &x, &y, scan, Nx, Ny);
          /* ScanIndex returns value as if scan was 0100 */
-         newIndex = (x - 1) + (y - 1) * Nx;
+         newIndex = (uInt4)(x - 1) + (uInt4)(y - 1) * Nx;
          if (attrib->fieldType) {
             value = iain[scanIndex];
          } else {
@@ -3151,7 +3188,7 @@ void ParseGrid (VSILFILE *fp, gridAttribType *attrib, double **Grib_Data,
          for (scanIndex = 0; scanIndex < (uInt4)nd2x3 && scanIndex < Nx * Ny; scanIndex++) {
             ScanIndex2XY (scanIndex, &x, &y, scan, Nx, Ny);
             /* ScanIndex returns value as if scan was 0100 */
-            newIndex = (x - 1) + (y - 1) * Nx;
+            newIndex = (uInt4)(x - 1) + (uInt4)(y - 1) * Nx;
             /* Corrected this on 5/10/2004 */
             if (ib[scanIndex] != 1) {
                grib_Data[newIndex] = xmissp;

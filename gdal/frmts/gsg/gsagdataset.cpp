@@ -49,7 +49,7 @@ CPL_CVSID("$Id$")
 
 class GSAGRasterBand;
 
-class GSAGDataset : public GDALPamDataset
+class GSAGDataset final: public GDALPamDataset
 {
     friend class GSAGRasterBand;
 
@@ -93,7 +93,7 @@ const size_t GSAGDataset::nMAX_HEADER_SIZE = 200;
 /* ==================================================================== */
 /************************************************************************/
 
-class GSAGRasterBand : public GDALPamRasterBand
+class GSAGRasterBand final: public GDALPamRasterBand
 {
     friend class GSAGDataset;
 
@@ -1728,7 +1728,7 @@ void GDALRegister_GSAG()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Golden Software ASCII Grid (.grd)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#GSAG" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/gsag.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "grd" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Int32 UInt32 "

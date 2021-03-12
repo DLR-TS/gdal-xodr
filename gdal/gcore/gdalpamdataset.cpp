@@ -195,7 +195,17 @@ CPLXMLNode *GDALPamDataset::SerializeToXML( const char *pszUnused )
     if( psPam->poSRS && !psPam->poSRS->IsEmpty() )
     {
         char* pszWKT = nullptr;
-        psPam->poSRS->exportToWkt(&pszWKT);
+        {
+            CPLErrorStateBackuper oErrorStateBackuper;
+            CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
+            if( psPam->poSRS->exportToWkt(&pszWKT) != OGRERR_NONE )
+            {
+                CPLFree(pszWKT);
+                pszWKT = nullptr;
+                const char* const apszOptions[] = { "FORMAT=WKT2", nullptr };
+                psPam->poSRS->exportToWkt(&pszWKT, apszOptions);
+            }
+        }
         CPLXMLNode* psSRSNode = CPLCreateXMLElementAndValue( psDSTree, "SRS", pszWKT );
         CPLFree(pszWKT);
         const auto& mapping = psPam->poSRS->GetDataAxisToSRSAxisMapping();
@@ -285,6 +295,11 @@ CPLXMLNode *GDALPamDataset::SerializeToXML( const char *pszUnused )
     }
 
 /* -------------------------------------------------------------------- */
+/*      Save MDArray statistics                                         */
+/* -------------------------------------------------------------------- */
+    SerializeMDArrayStatistics(psDSTree);
+
+/* -------------------------------------------------------------------- */
 /*      We don't want to return anything if we had no metadata to       */
 /*      attach.                                                         */
 /* -------------------------------------------------------------------- */
@@ -295,6 +310,44 @@ CPLXMLNode *GDALPamDataset::SerializeToXML( const char *pszUnused )
     }
 
     return psDSTree;
+}
+
+/************************************************************************/
+/*                       SerializeMDArrayStatistics()                   */
+/************************************************************************/
+
+void GDALPamDataset::SerializeMDArrayStatistics(CPLXMLNode* psDSTree)
+
+{
+    if( !psPam->oMapMDArrayStatistics.empty() )
+    {
+        CPLXMLNode* psMDArrayStats = CPLCreateXMLNode(
+            psDSTree, CXT_Element, "MDArrayStatistics" );
+        for( const auto& kv: psPam->oMapMDArrayStatistics )
+        {
+            CPLXMLNode* psMDArray = CPLCreateXMLNode(
+                psMDArrayStats, CXT_Element, "MDArray" );
+            CPLAddXMLAttributeAndValue(psMDArray, "id", kv.first.c_str());
+            CPLCreateXMLElementAndValue(psMDArray,
+                                        "ApproxStats",
+                                        kv.second.bApproxStats ? "1" : "0");
+            CPLCreateXMLElementAndValue(psMDArray,
+                                        "Minimum",
+                                        CPLSPrintf("%.18g", kv.second.dfMin));
+            CPLCreateXMLElementAndValue(psMDArray,
+                                        "Maximum",
+                                        CPLSPrintf("%.18g", kv.second.dfMax));
+            CPLCreateXMLElementAndValue(psMDArray,
+                                        "Mean",
+                                        CPLSPrintf("%.18g", kv.second.dfMean));
+            CPLCreateXMLElementAndValue(psMDArray,
+                                        "StdDev",
+                                        CPLSPrintf("%.18g", kv.second.dfStdDev));
+            CPLCreateXMLElementAndValue(psMDArray,
+                                        "ValidSampleCount",
+                                        CPLSPrintf(CPL_FRMT_GUIB, kv.second.nValidCount));
+        }
+    }
 }
 
 /************************************************************************/
@@ -498,6 +551,56 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
                     psPam->poSRS = nullptr;
                 }
             }
+
+            // Parse GCPs
+            const CPLXMLNode* psSourceGCPS = CPLGetXMLNode(psGeodataXform, "SourceGCPs");
+            const CPLXMLNode* psTargetGCPs = CPLGetXMLNode(psGeodataXform, "TargetGCPs");
+            if( psSourceGCPS && psTargetGCPs && !psPam->bHaveGeoTransform )
+            {
+                std::vector<double> adfSource;
+                std::vector<double> adfTarget;
+                bool ySourceAllNegative = true;
+                for( auto psIter = psSourceGCPS->psChild; psIter; psIter = psIter->psNext )
+                {
+                    if( psIter->eType == CXT_Element && strcmp(psIter->pszValue, "Double") == 0 )
+                    {
+                        adfSource.push_back(CPLAtof(CPLGetXMLValue(psIter, nullptr, "0")));
+                        if( (adfSource.size() % 2) == 0 && adfSource.back() > 0 )
+                            ySourceAllNegative = false;
+                    }
+                }
+                for( auto psIter = psTargetGCPs->psChild; psIter; psIter = psIter->psNext )
+                {
+                    if( psIter->eType == CXT_Element && strcmp(psIter->pszValue, "Double") == 0 )
+                    {
+                        adfTarget.push_back(CPLAtof(CPLGetXMLValue(psIter, nullptr, "0")));
+                    }
+                }
+                if( !adfSource.empty() &&
+                    adfSource.size() == adfTarget.size() &&
+                    (adfSource.size() % 2) == 0 )
+                {
+                    std::vector<GDAL_GCP> asGCPs;
+                    asGCPs.resize(adfSource.size() / 2);
+                    char szEmptyString[] = { 0 };
+                    for( size_t i = 0; i+1 < adfSource.size(); i+= 2 )
+                    {
+                        asGCPs[i/2].pszId = szEmptyString;
+                        asGCPs[i/2].pszInfo = szEmptyString;
+                        asGCPs[i/2].dfGCPPixel = adfSource[i];
+                        asGCPs[i/2].dfGCPLine =
+                            ySourceAllNegative ? -adfSource[i+1] : adfSource[i+1];
+                        asGCPs[i/2].dfGCPX = adfTarget[i];
+                        asGCPs[i/2].dfGCPY = adfTarget[i+1];
+                        asGCPs[i/2].dfGCPZ = 0;
+                    }
+                    GDALPamDataset::SetGCPs( static_cast<int>(asGCPs.size()),
+                                             &asGCPs[0],
+                                             psPam->poSRS );
+                    delete psPam->poSRS;
+                    psPam->poSRS = nullptr;
+                }
+            }
         }
         if( psValueAsXML )
             CPLDestroyXMLNode(psValueAsXML);
@@ -528,6 +631,41 @@ CPLErr GDALPamDataset::XMLInit( CPLXMLNode *psTree, const char *pszUnused )
             GetRasterBand(nBand) );
 
         poPamBand->XMLInit( psBandTree, pszUnused );
+    }
+
+/* -------------------------------------------------------------------- */
+/*      Load MDArray statistics                                         */
+/* -------------------------------------------------------------------- */
+    CPLXMLNode* psMDArrayStats = CPLGetXMLNode(psTree, "MDArrayStatistics" );
+    if( psMDArrayStats )
+    {
+        for( CPLXMLNode *psIter = psMDArrayStats->psChild;
+            psIter != nullptr;
+            psIter = psIter->psNext )
+        {
+            if( psIter->eType != CXT_Element
+                || !EQUAL(psIter->pszValue,"MDArray") )
+                continue;
+
+            const char* pszId = CPLGetXMLValue(psIter, "id", nullptr);
+            if( pszId == nullptr )
+                continue;
+
+            GDALDatasetPamInfo::Statistics sStats;
+            sStats.bApproxStats = CPLTestBool(
+                CPLGetXMLValue(psIter, "ApproxStats", "false"));
+            sStats.dfMin = CPLAtofM(
+                CPLGetXMLValue(psIter, "Minimum", "0"));
+            sStats.dfMax = CPLAtofM(
+                CPLGetXMLValue(psIter, "Maximum", "0"));
+            sStats.dfMean = CPLAtofM(
+                CPLGetXMLValue(psIter, "Mean", "0"));
+            sStats.dfStdDev = CPLAtofM(
+                CPLGetXMLValue(psIter, "StdDev", "0"));
+            sStats.nValidCount = static_cast<GUInt64>(CPLAtoGIntBig(
+                CPLGetXMLValue(psIter, "ValidSampleCount", "0")));
+            psPam->oMapMDArrayStatistics[pszId] = sStats;
+        }
     }
 
 /* -------------------------------------------------------------------- */
@@ -701,7 +839,8 @@ CPLErr GDALPamDataset::TryLoadXML(char **papszSiblingFiles)
     int nLastErrNo = CPLGetLastErrorNo();
     CPLString osLastErrorMsg = CPLGetLastErrorMsg();
 
-    if (papszSiblingFiles != nullptr && IsPamFilenameAPotentialSiblingFile())
+    if( papszSiblingFiles != nullptr && IsPamFilenameAPotentialSiblingFile() &&
+        GDALCanReliablyUseSiblingFileList(psPam->pszPamFilename) )
     {
         const int iSibling =
             CSLFindString( papszSiblingFiles,
@@ -986,21 +1125,16 @@ CPLErr GDALPamDataset::CloneInfo( GDALDataset *poSrcDS, int nCloneFlags )
 /* -------------------------------------------------------------------- */
     if( nCloneFlags & GCIF_METADATA )
     {
-        if( poSrcDS->GetMetadata() != nullptr )
+        for( const char* pszMDD: { "", "RPC", "json:ISIS3", "json:VICAR" } )
         {
-            if( !bOnlyIfMissing
-                || CSLCount(GetMetadata()) != CSLCount(poSrcDS->GetMetadata()) )
+            auto papszSrcMD = poSrcDS->GetMetadata(pszMDD);
+            if(papszSrcMD  != nullptr )
             {
-                SetMetadata( poSrcDS->GetMetadata() );
-            }
-        }
-        if( poSrcDS->GetMetadata("RPC") != nullptr )
-        {
-            if( !bOnlyIfMissing
-                || CSLCount(GetMetadata("RPC"))
-                   != CSLCount(poSrcDS->GetMetadata("RPC")) )
-            {
-                SetMetadata( poSrcDS->GetMetadata("RPC"), "RPC" );
+                if( !bOnlyIfMissing
+                    || CSLCount(GetMetadata(pszMDD)) != CSLCount(papszSrcMD) )
+                {
+                    SetMetadata( papszSrcMD, pszMDD );
+                }
             }
         }
     }
@@ -1062,6 +1196,7 @@ char **GDALPamDataset::GetFileList()
     char **papszFileList = GDALDataset::GetFileList();
 
     if( psPam && !psPam->osPhysicalFilename.empty()
+        && GDALCanReliablyUseSiblingFileList(psPam->osPhysicalFilename.c_str())
         && CSLFindString( papszFileList, psPam->osPhysicalFilename ) == -1 )
     {
         papszFileList = CSLInsertString( papszFileList, 0,
@@ -1074,7 +1209,9 @@ char **GDALPamDataset::GetFileList()
         if (!bAddPamFile)
         {
             VSIStatBufL sStatBuf;
-            if (oOvManager.GetSiblingFiles() != nullptr && IsPamFilenameAPotentialSiblingFile())
+            if (oOvManager.GetSiblingFiles() != nullptr &&
+                IsPamFilenameAPotentialSiblingFile() &&
+                GDALCanReliablyUseSiblingFileList(psPam->pszPamFilename) )
             {
                 bAddPamFile = CSLFindString(oOvManager.GetSiblingFiles(),
                                   CPLGetFilename(psPam->pszPamFilename)) >= 0;
@@ -1092,6 +1229,7 @@ char **GDALPamDataset::GetFileList()
     }
 
     if( psPam && !psPam->osAuxFilename.empty() &&
+        GDALCanReliablyUseSiblingFileList(psPam->osAuxFilename.c_str()) &&
         CSLFindString( papszFileList, psPam->osAuxFilename ) == -1 )
     {
         papszFileList = CSLAddString( papszFileList, psPam->osAuxFilename );
@@ -1423,7 +1561,7 @@ CPLErr GDALPamDataset::TryLoadAux(char **papszSiblingFiles)
     if( strlen(pszPhysicalFile) == 0 )
         return CE_None;
 
-    if( papszSiblingFiles )
+    if( papszSiblingFiles && GDALCanReliablyUseSiblingFileList(pszPhysicalFile) )
     {
         CPLString osAuxFilename = CPLResetExtension( pszPhysicalFile, "aux");
         int iSibling = CSLFindString( papszSiblingFiles,
@@ -1626,5 +1764,108 @@ CPLErr GDALPamDataset::_SetGCPs( int nGCPCount,
         return GDALPamDataset::SetGCPs(nGCPCount, pasGCPList,
                        static_cast<const OGRSpatialReference*>(nullptr));
     }
+}
+//! @endcond
+
+/************************************************************************/
+/*                          ClearStatistics()                           */
+/************************************************************************/
+
+void GDALPamDataset::ClearStatistics()
+{
+    PamInitialize();
+    if( !psPam )
+        return;
+    for( int i = 1; i <= nBands; ++i )
+    {
+        bool bChanged = false;
+        GDALRasterBand* poBand = GetRasterBand(i);
+        char** papszOldMD = poBand->GetMetadata();
+        char** papszNewMD = nullptr;
+        for( char** papszIter = papszOldMD; papszIter && papszIter[0]; ++papszIter )
+        {
+            if( STARTS_WITH_CI(*papszIter, "STATISTICS_") )
+            {
+                MarkPamDirty();
+                bChanged = true;
+            }
+            else
+            {
+                papszNewMD = CSLAddString(papszNewMD, *papszIter);
+            }
+        }
+        if( bChanged )
+        {
+            poBand->SetMetadata(papszNewMD);
+        }
+        CSLDestroy(papszNewMD);
+    }
+
+    if( !psPam->oMapMDArrayStatistics.empty() )
+    {
+        MarkPamDirty();
+        psPam->oMapMDArrayStatistics.clear();
+    }
+}
+
+/************************************************************************/
+/*                       GetMDArrayStatistics()                         */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+bool GDALPamDataset::GetMDArrayStatistics( const char* pszMDArrayId,
+                                           bool *pbApprox,
+                                           double *pdfMin, double *pdfMax,
+                                           double *pdfMean, double *pdfStdDev,
+                                           GUInt64 *pnValidCount )
+{
+    PamInitialize();
+    if( !psPam )
+    {
+        return false;
+    }
+    auto oIter = psPam->oMapMDArrayStatistics.find(pszMDArrayId);
+    if( oIter == psPam->oMapMDArrayStatistics.end() )
+    {
+        return false;
+    }
+    if( pbApprox )
+        *pbApprox = oIter->second.bApproxStats;
+    if( pdfMin )
+        *pdfMin = oIter->second.dfMin;
+    if( pdfMax )
+        *pdfMax = oIter->second.dfMax;
+    if( pdfMean )
+        *pdfMean = oIter->second.dfMean;
+    if( pdfStdDev )
+        *pdfStdDev = oIter->second.dfStdDev;
+    if( pnValidCount )
+        *pnValidCount = oIter->second.nValidCount;
+    return true;
+}
+
+/************************************************************************/
+/*                      StoreMDArrayStatistics()                        */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+void GDALPamDataset::StoreMDArrayStatistics( const char* pszMDArrayId,
+                                 bool bApproxStats,
+                                 double dfMin, double dfMax,
+                                 double dfMean, double dfStdDev,
+                                 GUInt64 nValidCount )
+{
+    PamInitialize();
+    if( !psPam )
+        return;
+    MarkPamDirty();
+    GDALDatasetPamInfo::Statistics sStats;
+    sStats.bApproxStats = bApproxStats;
+    sStats.dfMin = dfMin;
+    sStats.dfMax = dfMax;
+    sStats.dfMean = dfMean;
+    sStats.dfStdDev = dfStdDev;
+    sStats.nValidCount = nValidCount;
+    psPam->oMapMDArrayStatistics[pszMDArrayId] = sStats;
 }
 //! @endcond

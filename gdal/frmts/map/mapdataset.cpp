@@ -41,7 +41,7 @@ CPL_CVSID("$Id$")
 /* ==================================================================== */
 /************************************************************************/
 
-class MAPDataset : public GDALDataset
+class MAPDataset final: public GDALDataset
 {
     GDALDataset *poImageDS;
 
@@ -81,7 +81,7 @@ class MAPDataset : public GDALDataset
 /*                         MAPWrapperRasterBand                         */
 /* ==================================================================== */
 /************************************************************************/
-class MAPWrapperRasterBand : public GDALProxyRasterBand
+class MAPWrapperRasterBand final: public GDALProxyRasterBand
 {
   GDALRasterBand* poBaseBand;
 
@@ -365,13 +365,16 @@ GDALDataset *MAPDataset::Open( GDALOpenInfo * poOpenInfo )
             if ( pszWKT != nullptr )
             {
                 OGRSpatialReference oSRS;
-                OGRSpatialReference *poLatLong = nullptr;
+                OGRSpatialReference *poLongLat = nullptr;
                 if ( OGRERR_NONE == oSRS.importFromWkt ( pszWKT ))
-                    poLatLong = oSRS.CloneGeogCS();
-                if ( poLatLong )
-                    poTransform = OGRCreateCoordinateTransformation( poLatLong, &oSRS );
-                if ( poLatLong )
-                    delete poLatLong;
+                    poLongLat = oSRS.CloneGeogCS();
+                if ( poLongLat )
+                {
+                    oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                    poLongLat->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                    poTransform = OGRCreateCoordinateTransformation( poLongLat, &oSRS );
+                    delete poLongLat;
+                }
             }
 
             for ( int iLine = 10; iLine < nLines; iLine++ )
@@ -495,7 +498,7 @@ void GDALRegister_MAP()
     poDriver->SetDescription( "MAP" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "OziExplorer .MAP" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_map.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/map.html" );
 
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

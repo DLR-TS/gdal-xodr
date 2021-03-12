@@ -78,6 +78,7 @@
 #include "cpl_multiproc.h"
 #include "cpl_string.h"
 #include "cpl_vsi.h"
+#include "cpl_vsil_curl_priv.h"
 
 #ifdef DEBUG
 #define OGRAPISPY_ENABLED
@@ -1052,6 +1053,8 @@ GIntBig CPLAtoGIntBigEx( const char* pszString, int bWarn, int *pbOverflow )
     errno = 0;
 #if defined(__MSVCRT__) || (defined(WIN32) && defined(_MSC_VER))
     GIntBig nVal = _atoi64(pszString);
+#elif HAVE_STRTOLL
+    GIntBig nVal = strtoll(pszString, nullptr, 10);
 #elif HAVE_ATOLL
     GIntBig nVal = atoll(pszString);
 #else
@@ -1799,6 +1802,18 @@ CPLGetThreadLocalConfigOption( const char *pszKey, const char *pszDefault )
 }
 
 /************************************************************************/
+/*                  NotifyOtherComponentsConfigOptionChanged()          */
+/************************************************************************/
+
+static void NotifyOtherComponentsConfigOptionChanged( const char *pszKey,
+                                                      const char * /*pszValue*/ )
+{
+    // Hack
+    if( STARTS_WITH_CI(pszKey, "AWS_") )
+        VSICurlAuthParametersChanged();
+}
+
+/************************************************************************/
 /*                         CPLSetConfigOption()                         */
 /************************************************************************/
 
@@ -1832,6 +1847,8 @@ void CPL_STDCALL
 CPLSetConfigOption( const char *pszKey, const char *pszValue )
 
 {
+    NotifyOtherComponentsConfigOptionChanged(pszKey, pszValue);
+
 #ifdef DEBUG_CONFIG_OPTIONS
     CPLAccessConfigOption(pszKey, FALSE);
 #endif
@@ -1885,6 +1902,8 @@ void CPL_STDCALL
 CPLSetThreadLocalConfigOption( const char *pszKey, const char *pszValue )
 
 {
+    NotifyOtherComponentsConfigOptionChanged(pszKey, pszValue);
+
 #ifdef DEBUG_CONFIG_OPTIONS
     CPLAccessConfigOption(pszKey, FALSE);
 #endif
@@ -1989,6 +2008,134 @@ void CPL_STDCALL CPLFreeConfig()
 }
 
 /************************************************************************/
+/*                    CPLLoadConfigOptionsFromFile()                    */
+/************************************************************************/
+
+/** Load configuration from a given configuration file.
+ *
+ * A configuration file is a text file in a .ini style format, that lists
+ * configuration options and their values.
+ * Lines starting with # are comment lines.
+ *
+ * Example:
+ * <pre>
+ * [configoptions]
+ * # set BAR as the value of configuration option FOO
+ * FOO=BAR
+ * </pre>
+ *
+ * This function is typically called by CPLLoadConfigOptionsFromPredefinedFiles()
+ *
+ * @param pszFilename File where to load configuration from.
+ * @param bOverrideEnvVars Whether configuration options from the configuration
+ *                         file should override environment variables.
+ * @since GDAL 3.3
+ */
+void CPLLoadConfigOptionsFromFile(const char* pszFilename, int bOverrideEnvVars)
+{
+    VSILFILE* fp = VSIFOpenL(pszFilename, "rb");
+    if( fp == nullptr )
+        return;
+    CPLDebug("CPL", "Loading configuration from %s", pszFilename);
+    const char* pszLine;
+    bool bInConfigOptions = false;
+    while( (pszLine = CPLReadLine2L(fp, -1, nullptr)) != nullptr )
+    {
+        if( pszLine[0] == '#' )
+        {
+            // Comment line
+        }
+        else if( strcmp(pszLine, "[configoptions]") == 0 )
+        {
+            bInConfigOptions = true;
+        }
+        else if( pszLine[0] == '[' )
+        {
+            bInConfigOptions = false;
+        }
+        else if( bInConfigOptions )
+        {
+            char* pszKey = nullptr;
+            const char* pszValue = CPLParseNameValue(pszLine, &pszKey);
+            if( pszKey && pszValue )
+            {
+                if( bOverrideEnvVars || getenv(pszKey) == nullptr )
+                {
+                    CPLDebugOnly("CPL",
+                                 "Setting configuration option %s=%s",
+                                 pszKey, pszValue);
+                    CPLSetConfigOption(pszKey, pszValue);
+                }
+                else
+                {
+                    CPLDebugOnly("CPL",
+                                 "Ignoring configuration option %s from "
+                                 "configuration file as it is already set "
+                                 "as an environment variable", pszKey);
+                }
+            }
+            CPLFree(pszKey);
+        }
+    }
+    VSIFCloseL(fp);
+}
+
+/************************************************************************/
+/*                CPLLoadConfigOptionsFromPredefinedFiles()             */
+/************************************************************************/
+
+/** Load configuration from a set of predefined files.
+ *
+ * If the environment variable (or configuration option) GDAL_CONFIG_FILE is
+ * set, then CPLLoadConfigOptionsFromFile() will be called with the value of
+ * this configuration option as the file location.
+ *
+ * Otherwise, for Unix builds, CPLLoadConfigOptionsFromFile() will be called
+ * with ${sysconfdir}/gdal/gdalrc first where ${sysconfdir} evaluates
+ * to ${prefix}/etc, unless the --sysconfdir switch of configure has been invoked.
+ *
+ * Then CPLLoadConfigOptionsFromFile() will be called with $(HOME)/.gdal/gdalrc
+ * on Unix builds (potentially overriding what was loaded with the sysconfdir)
+ * or $(USERPROFILE)/.gdal/gdalrc on Windows builds.
+ *
+ * CPLLoadConfigOptionsFromFile() will be called with bOverrideEnvVars = false,
+ * that is the value of environment variables previously set will be used instead
+ * of the value set in the configuration files.
+ *
+ * This function is automatically called by GDALDriverManager() constructor
+ *
+ * @since GDAL 3.3
+ */
+void CPLLoadConfigOptionsFromPredefinedFiles()
+{
+    const char* pszFile = CPLGetConfigOption("GDAL_CONFIG_FILE", nullptr);
+    if( pszFile != nullptr )
+    {
+        CPLLoadConfigOptionsFromFile(pszFile, false);
+    }
+    else
+    {
+#ifdef SYSCONFDIR
+        pszFile = CPLFormFilename(CPLFormFilename(SYSCONFDIR, "gdal", nullptr),
+                                  "gdalrc", nullptr);
+        CPLLoadConfigOptionsFromFile(pszFile, false);
+#endif
+
+#ifdef WIN32
+        const char* pszHome = CPLGetConfigOption("USERPROFILE", nullptr);
+#else
+        const char* pszHome = CPLGetConfigOption("HOME", nullptr);
+#endif
+        if( pszHome != nullptr )
+        {
+            pszFile = CPLFormFilename(CPLFormFilename( pszHome, ".gdal", nullptr),
+                                      "gdalrc", nullptr);
+            CPLLoadConfigOptionsFromFile(pszFile, false);
+        }
+    }
+}
+
+/************************************************************************/
 /*                              CPLStat()                               */
 /************************************************************************/
 
@@ -2046,10 +2193,8 @@ constexpr double vm[] = { 1.0, 0.0166666666667, 0.00027777778 };
 double CPLDMSToDec( const char *is )
 
 {
-    int sign = 0;
-
     // Copy string into work space.
-    while( isspace(static_cast<unsigned char>(sign = *is)) )
+    while( isspace(static_cast<unsigned char>(*is)) )
         ++is;
 
     const char *p = is;
@@ -2061,7 +2206,8 @@ double CPLDMSToDec( const char *is )
     *s = '\0';
     // It is possible that a really odd input (like lots of leading
     // zeros) could be truncated in copying into work.  But...
-    sign = *(s = work);
+    s = work;
+    int sign = *s;
 
     if( sign == '+' || sign == '-' )
         s++;

@@ -205,13 +205,13 @@ static bool WFS_ExprDumpAsOGCFilter( CPLString& osFilter,
         }
 
         const char* pszFieldname = nullptr;
-        int nIndex = 0;
         const bool bSameTable =
             psOptions->poFDefn != nullptr &&
             ( poExpr->table_name == nullptr ||
               EQUAL(poExpr->table_name, psOptions->poFDefn->GetName()) );
         if( bSameTable )
         {
+            int nIndex;
             if( (nIndex = psOptions->poFDefn->GetFieldIndex(poExpr->string_value)) >= 0 )
             {
                 pszFieldname = psOptions->poFDefn->GetFieldDefn(nIndex)->GetNameRef();
@@ -227,6 +227,7 @@ static bool WFS_ExprDumpAsOGCFilter( CPLString& osFilter,
             if( poLayer )
             {
                 OGRFeatureDefn* poFDefn = poLayer->GetLayerDefn();
+                int nIndex;
                 if( (nIndex = poFDefn->GetFieldIndex(poExpr->string_value)) >= 0 )
                 {
                     pszFieldname = CPLSPrintf("%s/%s",
@@ -296,14 +297,20 @@ static bool WFS_ExprDumpAsOGCFilter( CPLString& osFilter,
         return true;
     }
 
-    if( poExpr->nOperation == SWQ_LIKE )
+    if( poExpr->nOperation == SWQ_LIKE ||
+        poExpr->nOperation == SWQ_ILIKE )
     {
         CPLString osVal;
         char firstCh = 0;
+        const char* pszMatchCase =
+            poExpr->nOperation == SWQ_LIKE &&
+                !CPLTestBool(CPLGetConfigOption("OGR_SQL_LIKE_AS_ILIKE", "FALSE")) ? "true" : "false";
         if (psOptions->nVersion == 100)
-            osFilter += CPLSPrintf("<%sPropertyIsLike wildCard='*' singleChar='_' escape='!'>", psOptions->pszNSPrefix);
+            osFilter += CPLSPrintf("<%sPropertyIsLike wildCard='*' singleChar='_' escape='!' matchCase='%s'>",
+                                   psOptions->pszNSPrefix, pszMatchCase);
         else
-            osFilter += CPLSPrintf("<%sPropertyIsLike wildCard='*' singleChar='_' escapeChar='!'>", psOptions->pszNSPrefix);
+            osFilter += CPLSPrintf("<%sPropertyIsLike wildCard='*' singleChar='_' escapeChar='!' matchCase='%s'>",
+                                   psOptions->pszNSPrefix, pszMatchCase);
         if (!WFS_ExprDumpAsOGCFilter(osFilter, poExpr->papoSubExpr[0], FALSE, psOptions))
             return false;
         if (poExpr->papoSubExpr[1]->eNodeType != SNT_CONSTANT &&

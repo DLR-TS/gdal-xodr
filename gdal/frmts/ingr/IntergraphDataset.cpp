@@ -159,11 +159,14 @@ GDALDataset *IntergraphDataset::Open( GDALOpenInfo *poOpenInfo )
         return nullptr;
     }
 
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("INGR") )
+        return nullptr;
+
     // --------------------------------------------------------------------
     // Get Data Type Code (DTC) => Format Type
     // --------------------------------------------------------------------
 
-    INGR_Format eFormat = (INGR_Format) hHeaderOne.DataTypeCode;
+    int eFormatUntyped = hHeaderOne.DataTypeCode;
 
     // --------------------------------------------------------------------
     // We need to scan around the file, so we open it now.
@@ -176,7 +179,7 @@ GDALDataset *IntergraphDataset::Open( GDALOpenInfo *poOpenInfo )
     // Get Format Type from the tile directory
     // --------------------------------------------------------------------
 
-    if( hHeaderOne.DataTypeCode == TiledRasterData )
+    if( eFormatUntyped == TiledRasterData )
     {
         INGR_TileHeader hTileDir;
 
@@ -208,7 +211,7 @@ GDALDataset *IntergraphDataset::Open( GDALOpenInfo *poOpenInfo )
             return nullptr;
         }
 
-        eFormat = (INGR_Format) hTileDir.DataTypeCode;
+        eFormatUntyped = hTileDir.DataTypeCode;
     }
 
     // --------------------------------------------------------------------
@@ -227,25 +230,25 @@ GDALDataset *IntergraphDataset::Open( GDALOpenInfo *poOpenInfo )
     // Check supported Format Type
     // --------------------------------------------------------------------
 
-    if( eFormat != ByteInteger &&
-        eFormat != WordIntegers &&
-        eFormat != Integers32Bit &&
-        eFormat != FloatingPoint32Bit &&
-        eFormat != FloatingPoint64Bit &&
-        eFormat != RunLengthEncoded &&
-        eFormat != RunLengthEncodedC &&
-        eFormat != CCITTGroup4 &&
-        eFormat != AdaptiveRGB &&
-        eFormat != Uncompressed24bit &&
-        eFormat != AdaptiveGrayScale &&
-        eFormat != ContinuousTone &&
-        eFormat != JPEGGRAY &&
-        eFormat != JPEGRGB &&
-        eFormat != JPEGCMYK )
+    if( eFormatUntyped != ByteInteger &&
+        eFormatUntyped != WordIntegers &&
+        eFormatUntyped != Integers32Bit &&
+        eFormatUntyped != FloatingPoint32Bit &&
+        eFormatUntyped != FloatingPoint64Bit &&
+        eFormatUntyped != RunLengthEncoded &&
+        eFormatUntyped != RunLengthEncodedC &&
+        eFormatUntyped != CCITTGroup4 &&
+        eFormatUntyped != AdaptiveRGB &&
+        eFormatUntyped != Uncompressed24bit &&
+        eFormatUntyped != AdaptiveGrayScale &&
+        eFormatUntyped != ContinuousTone &&
+        eFormatUntyped != JPEGGRAY &&
+        eFormatUntyped != JPEGRGB &&
+        eFormatUntyped != JPEGCMYK )
     {
         CPLError( CE_Failure, CPLE_AppDefined,
-            "Intergraph Raster Format %d ( \"%s\" ) not supported",
-            hHeaderOne.DataTypeCode, INGR_GetFormatName( (uint16) eFormat ) );
+            "Intergraph Raster Format %d not supported",
+            eFormatUntyped );
         VSIFCloseL( fp );
         return nullptr;
     }
@@ -326,7 +329,7 @@ GDALDataset *IntergraphDataset::Open( GDALOpenInfo *poOpenInfo )
 
         INGR_HeaderTwoADiskToMem( &poDS->hHeaderTwo, abyBuf );
 
-        switch( eFormat )
+        switch( static_cast<INGR_Format>(eFormatUntyped) )
         {
         case JPEGRGB:
         case JPEGCMYK:
@@ -497,6 +500,9 @@ GDALDataset *IntergraphDataset::Create( const char *pszFilename,
                                         GDALDataType eType,
                                         char **papszOptions )
 {
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("INGR") )
+        return nullptr;
+
     int nDeviceResolution = 1;
 
     const char *pszValue = CSLFetchNameValue(papszOptions, "RESOLUTION");
@@ -537,7 +543,7 @@ GDALDataset *IntergraphDataset::Create( const char *pszFilename,
     hHdr1.HeaderType.Version    = INGR_HEADER_VERSION;
     hHdr1.HeaderType.Type       = INGR_HEADER_TYPE;
     hHdr1.HeaderType.Is2Dor3D   = INGR_HEADER_2D;
-    hHdr1.DataTypeCode          = (uint16) INGR_GetFormat( eType, (pszCompression!=nullptr)?pszCompression:"None" );
+    hHdr1.DataTypeCode          = (uint16_t) INGR_GetFormat( eType, (pszCompression!=nullptr)?pszCompression:"None" );
     hHdr1.WordsToFollow         = ( ( SIZEOF_HDR1 * 3 ) / 2 ) - 2;
     hHdr1.ApplicationType       = GenericRasterImageFile;
     hHdr1.XViewOrigin           = 0.0;
@@ -551,7 +557,7 @@ GDALDataset *IntergraphDataset::Create( const char *pszFilename,
     hHdr1.TransformationMatrix[15]      = 1.0;
     hHdr1.PixelsPerLine         = nXSize;
     hHdr1.NumberOfLines         = nYSize;
-    hHdr1.DeviceResolution      = static_cast<int16>(nDeviceResolution);
+    hHdr1.DeviceResolution      = static_cast<int16_t>(nDeviceResolution);
     hHdr1.ScanlineOrientation   = UpperLeftHorizontal;
     hHdr1.ScannableFlag         = NoLineHeader;
     hHdr1.RotationAngle         = 0.0;
@@ -648,6 +654,9 @@ GDALDataset *IntergraphDataset::CreateCopy( const char *pszFilename,
                                            GDALProgressFunc pfnProgress,
                                            void *pProgressData )
 {
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("INGR") )
+        return nullptr;
+
     int nBands = poSrcDS->GetRasterCount();
     if (nBands == 0)
     {
@@ -883,7 +892,7 @@ void GDALRegister_INGR()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Intergraph Raster" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_IntergraphRaster.html" );
+                               "drivers/raster/intergraphraster.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 Int32 Float32 Float64" );

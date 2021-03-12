@@ -162,7 +162,7 @@ class HDF4ImageDataset final: public HDF4Dataset
     static GDALDataset  *Open( GDALOpenInfo * );
     static GDALDataset  *Create( const char * pszFilename,
                                  int nXSize, int nYSize, int nBands,
-                                 GDALDataType eType, char ** papszParmList );
+                                 GDALDataType eType, char ** papszParamList );
     virtual void        FlushCache( void ) override;
     CPLErr              GetGeoTransform( double * padfTransform ) override;
     virtual CPLErr      SetGeoTransform( double * ) override;
@@ -412,7 +412,7 @@ CPLErr HDF4ImageRasterBand::IReadBlock( int nBlockXOff, int nBlockYOff,
           const int nDataTypeSize =
               GDALGetDataTypeSizeBytes(poGDS->GetDataType(poGDS->iNumType));
           GByte *pbBuffer = reinterpret_cast<GByte *>(
-              CPLMalloc(nBlockXSize*nBlockYSize*poGDS->iRank*nBlockYSize) );
+              CPLMalloc(nBlockXSize*nBlockYSize*poGDS->iRank*nDataTypeSize) );
 
           aiStart[poGDS->iYDim] = nYOff;
           aiEdges[poGDS->iYDim] = nYSize;
@@ -1465,7 +1465,7 @@ void HDF4ImageDataset::CaptureNRLGeoTransform()
             == OGRERR_NONE )
         {
             CPLDebug( "HDF4Image",
-                      "GCTP Parms = %g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,"
+                      "GCTP Params = %g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,"
                       "%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g,%g",
                       adfGCTP[0],
                       adfGCTP[1],
@@ -1614,16 +1614,16 @@ void HDF4ImageDataset::CaptureCoastwatchGCTPInfo()
         return;
     }
 
-    double adfParms[15];
-    for( int iParm = 0; iParm < 15; iParm++ )
-        adfParms[iParm] = CPLAtof( papszTokens[iParm] );
+    double adfParams[15];
+    for( int iParam = 0; iParam < 15; iParam++ )
+        adfParams[iParam] = CPLAtof( papszTokens[iParam] );
     CSLDestroy( papszTokens );
 
 /* -------------------------------------------------------------------- */
 /*      Convert into an SRS.                                            */
 /* -------------------------------------------------------------------- */
 
-    if( oSRS.importFromUSGS( nSys, nZone, adfParms, nDatum ) != OGRERR_NONE )
+    if( oSRS.importFromUSGS( nSys, nZone, adfParams, nDatum ) != OGRERR_NONE )
         return;
 
     CPLFree( pszProjection );
@@ -1776,14 +1776,12 @@ void HDF4ImageDataset::GetSwatAttrs( int32 hSW )
             if( SWattrinfo( hSW, papszAttributes[i],
                             &l_iNumType, &nValues ) < 0 )
                 continue;
+            const int nDataTypeSize = GetDataTypeSize(l_iNumType);
+            if( nDataTypeSize == 0 )
+                continue;
+            CPLAssert( (nValues % nDataTypeSize) == 0);
 
-            void *pData = nullptr;
-            if( l_iNumType == DFNT_CHAR8 || l_iNumType == DFNT_UCHAR8 )
-                pData =
-                    CPLMalloc( (nValues + 1) * GetDataTypeSize(l_iNumType) );
-            else
-                pData = CPLMalloc( nValues * GetDataTypeSize(l_iNumType) );
-
+            void *pData = CPLMalloc( nValues + 1);
             SWreadattr( hSW, papszAttributes[i], pData );
 
             if( l_iNumType == DFNT_CHAR8 || l_iNumType == DFNT_UCHAR8 )
@@ -1798,7 +1796,7 @@ void HDF4ImageDataset::GetSwatAttrs( int32 hSW )
             else
             {
                 char *pszTemp = SPrintArray( GetDataType(l_iNumType), pData,
-                                             nValues, ", " );
+                                             nValues / nDataTypeSize, ", " );
                 papszLocalMetadata = CSLAddNameValue( papszLocalMetadata,
                                                       papszAttributes[i],
                                                       pszTemp );
@@ -1888,14 +1886,12 @@ void HDF4ImageDataset::GetGridAttrs( int32 hGD )
             int32 nValues = 0;
 
             GDattrinfo( hGD, papszAttributes[i], &l_iNumType, &nValues );
+            const int nDataTypeSize = GetDataTypeSize(l_iNumType);
+            if( nDataTypeSize == 0 )
+                continue;
+            CPLAssert( (nValues % nDataTypeSize) == 0);
 
-            void *pData = nullptr;
-            if( l_iNumType == DFNT_CHAR8 || l_iNumType == DFNT_UCHAR8 )
-                pData =
-                    CPLMalloc( (nValues + 1) * GetDataTypeSize(l_iNumType) );
-            else
-                pData = CPLMalloc( nValues * GetDataTypeSize(l_iNumType) );
-
+            void *pData = CPLMalloc( nValues + 1);
             GDreadattr( hGD, papszAttributes[i], pData );
 
             if( l_iNumType == DFNT_CHAR8 || l_iNumType == DFNT_UCHAR8 )
@@ -1908,7 +1904,7 @@ void HDF4ImageDataset::GetGridAttrs( int32 hGD )
             else
             {
                 char *pszTemp = SPrintArray( GetDataType(l_iNumType), pData,
-                                             nValues, ", " );
+                                             nValues / nDataTypeSize, ", " );
                 papszLocalMetadata = CSLAddNameValue( papszLocalMetadata,
                                                       papszAttributes[i],
                                                       pszTemp );
@@ -2506,7 +2502,7 @@ int HDF4ImageDataset::ProcessSwathGeolocation( int32 hSW, char **papszDimList )
 
             char *pszProjLine =
                 CPLStrdup(CPLSPrintf("MPMETHOD%s", pszBand));
-            char *pszParmsLine =
+            char *pszParamsLine =
                 CPLStrdup(CPLSPrintf("PROJECTIONPARAMETERS%s",
                                      pszBand));
             char *pszZoneLine =
@@ -2521,9 +2517,9 @@ int HDF4ImageDataset::ProcessSwathGeolocation( int32 hSW, char **papszDimList )
             const char *pszProj =
                 CSLFetchNameValue( papszLocalMetadata,
                                    pszProjLine );
-            const char *pszParms =
+            const char *pszParams =
                 CSLFetchNameValue( papszLocalMetadata,
-                                   pszParmsLine );
+                                   pszParamsLine );
             const char *pszZone =
                 CSLFetchNameValue( papszLocalMetadata,
                                    pszZoneLine );
@@ -2536,8 +2532,8 @@ int HDF4ImageDataset::ProcessSwathGeolocation( int32 hSW, char **papszDimList )
             CPLDebug( "HDF4Image",
                       "Projection %s=%s, parameters %s=%s, "
                       "zone %s=%s",
-                      pszProjLine, pszProj, pszParmsLine,
-                      pszParms, pszZoneLine, pszZone );
+                      pszProjLine, pszProj, pszParamsLine,
+                      pszParams, pszZoneLine, pszZone );
             CPLDebug( "HDF4Image", "Ellipsoid %s=%s",
                       pszEllipsoidLine, pszEllipsoid );
 #endif
@@ -2560,27 +2556,27 @@ int HDF4ImageDataset::ProcessSwathGeolocation( int32 hSW, char **papszDimList )
                     iEllipsoid = 8L;
             }
 #endif
-            char **papszParms = pszParms ?
-                CSLTokenizeString2( pszParms, ",", CSLT_HONOURSTRINGS ) : nullptr;
-            int nParms = CSLCount(papszParms);
-            if( nParms >= 15 )
-                nParms = 15;
-            double adfProjParms[15] = {};
-            for( int i = 0; i < nParms; i++)
-                adfProjParms[i] = CPLAtof( papszParms[i] );
-            for ( int i = nParms; i < 15; i++)
-                adfProjParms[i] = 0.0;
+            char **papszParams = pszParams ?
+                CSLTokenizeString2( pszParams, ",", CSLT_HONOURSTRINGS ) : nullptr;
+            int nParams = CSLCount(papszParams);
+            if( nParams >= 15 )
+                nParams = 15;
+            double adfProjParams[15] = {};
+            for( int i = 0; i < nParams; i++)
+                adfProjParams[i] = CPLAtof( papszParams[i] );
+            for ( int i = nParams; i < 15; i++)
+                adfProjParams[i] = 0.0;
 
             // Create projection definition
             oSRS.importFromUSGS( iProjSys, iZone,
-                                 adfProjParms, iEllipsoid );
+                                 adfProjParams, iEllipsoid );
             oSRS.SetLinearUnits( SRS_UL_METER, 1.0 );
             oSRS.exportToWkt( &pszGCPProjection );
 
-            CSLDestroy( papszParms );
+            CSLDestroy( papszParams );
             CPLFree( pszEllipsoidLine );
             CPLFree( pszZoneLine );
-            CPLFree( pszParmsLine );
+            CPLFree( pszParamsLine );
             CPLFree( pszProjLine );
         }
 
@@ -2934,6 +2930,7 @@ GDALDataset *HDF4ImageDataset::Open( GDALOpenInfo * poOpenInfo )
     }
     else
     {
+        CPLAssert( papszSubdatasetName[3] );
         poDS->iDataset = atoi( papszSubdatasetName[3] );
     }
     CSLDestroy( papszSubdatasetName );
@@ -3192,10 +3189,10 @@ GDALDataset *HDF4ImageDataset::Open( GDALOpenInfo * poOpenInfo )
                 int32 iProjCode = 0;
                 int32 iZoneCode = 0;
                 int32 iSphereCode = 0;
-                double adfProjParms[15];
+                double adfProjParams[15];
 
                 if( GDprojinfo( hGD, &iProjCode, &iZoneCode,
-                                &iSphereCode, adfProjParms) >= 0 )
+                                &iSphereCode, adfProjParams) >= 0 )
                 {
 #ifdef DEBUG
                     CPLDebug( "HDF4Image",
@@ -3207,7 +3204,7 @@ GDALDataset *HDF4ImageDataset::Open( GDALOpenInfo * poOpenInfo )
                               static_cast<long>( iSphereCode ) );
 #endif
                     poDS->oSRS.importFromUSGS( iProjCode, iZoneCode,
-                                               adfProjParms, iSphereCode,
+                                               adfProjParams, iSphereCode,
                                                USGS_ANGLE_RADIANS );
 
                     CPLFree( poDS->pszProjection );
@@ -3585,38 +3582,30 @@ GDALDataset *HDF4ImageDataset::Open( GDALOpenInfo * poOpenInfo )
         // We will duplicate global metadata for every subdataset.
         poDS->papszLocalMetadata = CSLDuplicate( poDS->papszGlobalMetadata );
 
-        for( int32 iAttribute = 0; iAttribute < poDS->nAttrs; iAttribute++ )
-        {
-            char szAttrName[H4_MAX_NC_NAME] = {};
-            int32 nValues = 0;
-            int32 iAttrNumType = 0;
-            GRattrinfo( poDS->iGR, iAttribute, szAttrName,
-                        &iAttrNumType, &nValues );
-            poDS->papszLocalMetadata =
-                poDS->TranslateHDF4Attributes( poDS->iGR, iAttribute,
-                                               szAttrName, iAttrNumType,
-                                               nValues,
-                                               poDS->papszLocalMetadata );
-        }
         poDS->SetMetadata( poDS->papszLocalMetadata, "" );
         // Read colour table
 
-        poDS->iPal = GRgetlutid ( poDS->iGR, poDS->iDataset );
+        poDS->iPal = GRgetlutid ( poDS->iGR, 0 );
         if( poDS->iPal != -1 )
         {
             GRgetlutinfo( poDS->iPal, &poDS->nComps, &poDS->iPalDataType,
                           &poDS->iPalInterlaceMode, &poDS->nPalEntries );
-            GRreadlut( poDS->iPal, poDS->aiPaletteData );
-            poDS->poColorTable = new GDALColorTable();
-            GDALColorEntry oEntry;
-            for( int i = 0; i < N_COLOR_ENTRIES; i++ )
+            if( poDS->nPalEntries && poDS->nComps == 3 &&
+                GDALGetDataTypeSizeBytes(GetDataType(poDS->iPalDataType)) == 1 &&
+                poDS->nPalEntries <= 256 )
             {
-                oEntry.c1 = poDS->aiPaletteData[i][0];
-                oEntry.c2 = poDS->aiPaletteData[i][1];
-                oEntry.c3 = poDS->aiPaletteData[i][2];
-                oEntry.c4 = 255;
+                GRreadlut( poDS->iPal, poDS->aiPaletteData );
+                poDS->poColorTable = new GDALColorTable();
+                GDALColorEntry oEntry;
+                for( int i = 0; i < std::min(static_cast<int>(poDS->nPalEntries), N_COLOR_ENTRIES); i++ )
+                {
+                    oEntry.c1 = poDS->aiPaletteData[i][0];
+                    oEntry.c2 = poDS->aiPaletteData[i][1];
+                    oEntry.c3 = poDS->aiPaletteData[i][2];
+                    oEntry.c4 = 255;
 
-                poDS->poColorTable->SetColorEntry( i, &oEntry );
+                    poDS->poColorTable->SetColorEntry( i, &oEntry );
+                }
             }
         }
 
@@ -4099,7 +4088,7 @@ void GDALRegister_HDF4Image()
     poDriver->SetDescription( "HDF4Image" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "HDF4 Dataset" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_hdf4.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/hdf4.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Int32 UInt32 "
                                "Float32 Float64" );

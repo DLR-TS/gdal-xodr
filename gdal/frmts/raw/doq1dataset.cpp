@@ -63,7 +63,7 @@ static double DOQGetField( unsigned char *pabyData, int nBytes )
 {
     char szWork[128] = { '\0' };
 
-    strncpy( szWork, reinterpret_cast<const char *>( pabyData ), nBytes );
+    memcpy( szWork, reinterpret_cast<const char *>( pabyData ), nBytes );
     szWork[nBytes] = '\0';
 
     for( int i = 0; i < nBytes; i++ )
@@ -110,7 +110,7 @@ static void DOQGetDescription( GDALDataset *poDS, unsigned char *pabyData )
 /* ==================================================================== */
 /************************************************************************/
 
-class DOQ1Dataset : public RawDataset
+class DOQ1Dataset final: public RawDataset
 {
     VSILFILE    *fpImage;       // image data file.
 
@@ -410,7 +410,7 @@ void GDALRegister_DOQ1()
     poDriver->SetDescription( "DOQ1" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "USGS DOQ (Old Style)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#DOQ1" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/doq1.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 
     poDriver->pfnOpen = DOQ1Dataset::Open;

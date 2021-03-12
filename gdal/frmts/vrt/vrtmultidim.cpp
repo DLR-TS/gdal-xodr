@@ -42,6 +42,9 @@
 
 struct VRTArrayDatasetWrapper
 {
+    VRTArrayDatasetWrapper(const VRTArrayDatasetWrapper&) = delete;
+    VRTArrayDatasetWrapper& operator= (const VRTArrayDatasetWrapper&) = delete;
+
     GDALDataset* m_poDS;
 
     explicit VRTArrayDatasetWrapper(GDALDataset* poDS): m_poDS(poDS)
@@ -168,7 +171,7 @@ bool VRTGroup::XMLInit(const std::shared_ptr<VRTGroup>& poRoot,
         else if ( psIter->eType == CXT_Element &&
                   strcmp(psIter->pszValue, "Dimension") == 0 )
         {
-            auto poDim = VRTDimension::Create(poThisGroup, GetFullName(), psIter);
+            auto poDim = VRTDimension::Create(poThisGroup, poThisGroup->GetFullName(), psIter);
             if( !poDim )
             {
                 m_bDirty = false;
@@ -179,7 +182,7 @@ bool VRTGroup::XMLInit(const std::shared_ptr<VRTGroup>& poRoot,
         else if ( psIter->eType == CXT_Element &&
                   strcmp(psIter->pszValue, "Attribute") == 0 )
         {
-            auto poAttr = VRTAttribute::Create(GetFullName(), psIter);
+            auto poAttr = VRTAttribute::Create(poThisGroup->GetFullName(), psIter);
             if( !poAttr )
             {
                 m_bDirty = false;
@@ -191,7 +194,7 @@ bool VRTGroup::XMLInit(const std::shared_ptr<VRTGroup>& poRoot,
                   strcmp(psIter->pszValue, "Array") == 0 )
         {
             auto poArray = VRTMDArray::Create(
-                poThisGroup, GetFullName(), psIter);
+                poThisGroup, poThisGroup->GetFullName(), psIter);
             if( !poArray )
             {
                 m_bDirty = false;
@@ -451,7 +454,7 @@ std::shared_ptr<GDALGroup> VRTGroup::CreateGroup(const std::string& osName,
     if( m_oMapGroups.find(osName) != m_oMapGroups.end() )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "A group with same name already exists");
+                 "A group with same name (%s) already exists", osName.c_str());
         return nullptr;
     }
     SetDirty();
@@ -471,11 +474,6 @@ std::shared_ptr<GDALDimension> VRTGroup::CreateDimension(const std::string& osNa
                                                          GUInt64 nSize,
                                                          CSLConstList)
 {
-    if( nSize == 0 )
-    {
-        CPLError(CE_Failure, CPLE_AppDefined, "Invalid size");
-        return nullptr;
-    }
     if( osName.empty() )
     {
         CPLError(CE_Failure, CPLE_NotSupported,
@@ -485,7 +483,7 @@ std::shared_ptr<GDALDimension> VRTGroup::CreateDimension(const std::string& osNa
     if( m_oMapDimensions.find(osName) != m_oMapDimensions.end() )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "A dimension with same name already exists");
+                 "A dimension with same name (%s) already exists", osName.c_str());
         return nullptr;
     }
     SetDirty();
@@ -537,7 +535,7 @@ std::shared_ptr<GDALMDArray> VRTGroup::CreateMDArray(const std::string& osName,
     if( m_oMapMDArrays.find(osName) != m_oMapMDArrays.end() )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "An array with same name already exists");
+                 "An array with same name (%s) already exists", osName.c_str());
         return nullptr;
     }
     for( auto& poDim: aoDimensions )
@@ -755,7 +753,7 @@ bool VRTAttribute::CreationCommonChecks(const std::string& osName,
     if( oMapAttributes.find(osName) != oMapAttributes.end() )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "An attribute with same name already exists");
+                 "An attribute with same name (%s) already exists", osName.c_str());
         return false;
     }
     if( anDimensions.size() >= 2 )
@@ -1129,7 +1127,7 @@ std::unique_ptr<VRTMDArraySourceInlinedValues> VRTMDArraySourceInlinedValues::Cr
                                                 const CPLXMLNode* psNode)
 {
     const bool bIsConstantValue = strcmp(psNode->pszValue, "ConstantValue") == 0;
-    const auto dt = array->GetDataType();
+    const auto& dt(array->GetDataType());
     const size_t nDTSize = dt.GetSize();
     if( strcmp(psNode->pszValue, "InlineValuesWithValueElement") == 0 )
     {
@@ -1307,6 +1305,17 @@ VRTMDArraySourceInlinedValues::~VRTMDArraySourceInlinedValues()
 /************************************************************************/
 /*                                   Read()                             */
 /************************************************************************/
+CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW
+static inline void IncrPointer(const GByte*& ptr, GInt64 nInc, size_t nIncSize)
+{
+    ptr += nInc * nIncSize;
+}
+
+CPL_NOSANITIZE_UNSIGNED_INT_OVERFLOW
+static inline void IncrPointer(GByte*& ptr, GPtrDiff_t nInc, size_t nIncSize)
+{
+    ptr += nInc * nIncSize;
+}
 
 bool VRTMDArraySourceInlinedValues::Read(const GUInt64* arrayStartIdx,
                       const size_t* count,
@@ -1328,7 +1337,10 @@ bool VRTMDArraySourceInlinedValues::Read(const GUInt64* arrayStartIdx,
         {
             // For negative step request, temporarily simulate a positive step
             // and fix up the start at the end of the loop.
-            start_i = start_i + (count[i]-1) * step_i;
+            // Use double negation so that operations occur only on
+            // positive quantities to avoid an artificial negative signed
+            // integer to unsigned conversion.
+            start_i = start_i - ((count[i]-1) * (-step_i));
             step_i = -step_i;
         }
 
@@ -1396,8 +1408,8 @@ lbl_return_to_caller:
             --anStackCount[iDim];
             if( anStackCount[iDim] == 0 )
                 break;
-            abyStackSrcPtr[iDim] += m_anInlinedArrayStrideInBytes[iDim] * arrayStep[iDim];
-            abyStackDstPtr[iDim] += bufferStride[iDim] * nBufferDataTypeSize;
+            IncrPointer(abyStackSrcPtr[iDim], arrayStep[iDim], m_anInlinedArrayStrideInBytes[iDim]);
+            IncrPointer(abyStackDstPtr[iDim], bufferStride[iDim], nBufferDataTypeSize);
         }
     }
     if (iDim > 0 )
@@ -1833,7 +1845,7 @@ bool VRTMDArraySourceFromArray::Read(const GUInt64* arrayStartIdx,
         if( arrayStep[i] < 0 )
         {
             // For negative step request, temporarily simulate a positive step
-            start_i = start_i + (m_anCount[i]-1) * step_i;
+            start_i = start_i - (m_anCount[i]-1) * (-step_i);
             step_i = -step_i;
         }
         if( start_i + (count[i]-1) * step_i < m_anDstOffset[i] )
@@ -1852,8 +1864,8 @@ bool VRTMDArraySourceFromArray::Read(const GUInt64* arrayStartIdx,
         if( arrayStep[i] < 0 )
         {
             // For negative step request, temporarily simulate a positive step
-            start_i = start_i + (m_anCount[i]-1) * step_i;
-            step_i = -step_i;
+            start_i = start_i - (m_anCount[i]-1) * (-step_i);
+            //step_i = -step_i;
         }
         if( start_i >= m_anDstOffset[i] + m_anCount[i] )
         {
@@ -1970,7 +1982,7 @@ bool VRTMDArraySourceFromArray::Read(const GUInt64* arrayStartIdx,
                 m_anCount[i] = (m_anSrcOffset[i]+1) / -step_i;
             // For negative step request, temporarily simulate a positive step
             // and fix up the start at the end of the loop.
-            start_i = start_i + (m_anCount[i]-1) * step_i;
+            start_i = start_i - (m_anCount[i]-1) * (-step_i);
             step_i = -step_i;
         }
         else
@@ -2014,7 +2026,10 @@ bool VRTMDArraySourceFromArray::Read(const GUInt64* arrayStartIdx,
         nDstOffset += nRelStartDst * bufferStride[i] * nBufferDataTypeSize;
         anSrcArrayOffset[i] = m_anSrcOffset[i] +
                             (anReqDstStart[i] - m_anDstOffset[i]) * m_anStep[i];
-        anSrcArrayStep[i] = m_anStep[i] * arrayStep[i];
+        if( arrayStep[i] < 0 )
+            anSrcArrayStep[i] = -static_cast<GInt64>(m_anStep[i] * static_cast<GUInt64>(-arrayStep[i]));
+        else
+            anSrcArrayStep[i] = m_anStep[i] * arrayStep[i];
     }
     return poArray->Read(anSrcArrayOffset.data(),
                              anReqCount.data(),
@@ -2123,9 +2138,10 @@ bool VRTMDArray::IRead(const GUInt64* arrayStartIdx,
     {
         const bool bNeedsDynamicMemory = bufferDataType.NeedsFreeDynamicMemory();
         std::vector<size_t> anStackCount(nDims);
-        std::vector<GByte*> abyStackDstPtr(nDims+1);
+        std::vector<GByte*> abyStackDstPtr;
         size_t iDim = 0;
-        abyStackDstPtr[0] = static_cast<GByte*>(pDstBuffer);
+        abyStackDstPtr.push_back(static_cast<GByte*>(pDstBuffer));
+        abyStackDstPtr.resize(nDims+1);
 lbl_next_depth:
         if( iDim == nDims )
         {
@@ -2258,9 +2274,10 @@ bool VRTMDArray::CopyFrom(GDALDataset* poSrcDS,
             m_dims[0]->GetSize() < 10 * 1000 * 1000 )
         {
             std::vector<double> adfTmp(static_cast<size_t>(m_dims[0]->GetSize()));
-            const GUInt64 nStart = 0;
+            const GUInt64 anStart[] = { 0 };
             const size_t nCount = adfTmp.size();
-            if( poSrcArray->Read(&nStart, &nCount, nullptr, nullptr,
+            const size_t anCount[] = { nCount };
+            if( poSrcArray->Read(anStart, anCount, nullptr, nullptr,
                          GDALExtendedDataType::Create(GDT_Float64),
                          &adfTmp[0]) )
             {

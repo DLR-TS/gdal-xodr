@@ -5,6 +5,8 @@ SQLite / Spatialite RDBMS
 
 .. shortname:: SQLite
 
+.. build_dependencies:: libsqlite3 or libspatialite
+
 OGR optionally supports spatial and non-spatial tables stored in SQLite
 3.x database files. SQLite is a "light weight" single file based RDBMS
 engine with fairly complete SQL semantics and respectable performance.
@@ -13,15 +15,15 @@ The driver can handle "regular" SQLite databases, as well as Spatialite
 databases (spatial enabled SQLite databases). The type of an existing
 database can be checked from the SQLITE debug info value "OGR style
 SQLite DB found/ SpatiaLite DB found/SpatiaLite v4 DB found" obtained by
-running **"ogrinfo db.sqlite --debug on"**
+running ``ogrinfo db.sqlite --debug on``
 
 Starting with GDAL 2.2, the SQLite driver can also read databases with
 :ref:`RasterLite2 raster coverages <raster.rasterlite2>`.
 
 The SQLite database is essentially typeless, but the SQLite driver will
 attempt to classify attributes field as text, integer or floating point
-based on the contents of the first record in a table. Starting with OGR
-1.10, datetime field types are also handled.
+based on the contents of the first record in a table. Datetime field types
+are also handled.
 
 Starting with GDAL 2.2, the "JSonStringList", "JSonIntegerList",
 "JSonInteger64List" and "JSonRealList" SQLite declaration types are used
@@ -39,7 +41,7 @@ default.
 
 By default, SQL statements are passed directly to the SQLite database
 engine. It's also possible to request the driver to handle SQL commands
-with `OGR SQL <ogr_sql.html>`__ engine, by passing **"OGRSQL"** string
+with :ref:`OGR SQL <ogr_sql_dialect>` engine, by passing **"OGRSQL"** string
 to the ExecuteSQL() method, as name of the SQL dialect.
 
 The OGR_SQLITE_SYNCHRONOUS configuration option
@@ -140,14 +142,13 @@ This gives the capability to use the spatial operations of Spatialite
 The SQLite SQL dialect
 ----------------------
 
-Starting with OGR 1.10, the SQLite SQL engine can be used to run SQL
-queries on any OGR datasource if using the `SQLite
-SQL <ogr_sql_sqlite.html>`__ dialect.
+The SQLite SQL engine can be used to run SQL
+queries on any OGR datasource if using the :ref:`sql_sqlite_dialect`.
 
 The VirtualOGR SQLite extension
 -------------------------------
 
-Starting with OGR 1.10, the GDAL/OGR library can be loaded as a `SQLite
+The GDAL/OGR library can be loaded as a `SQLite
 extension <http://www.sqlite.org/lang_corefunc.html#load_extension>`__.
 The extension is loaded with the load_extension(gdal_library_name) SQL
 function, where gdal_library_name is typically libgdal.so on Unix/Linux,
@@ -165,7 +166,7 @@ layer, can be created with one of the following SQL statement :
 
 where :
 
--  *datasource_name* is the connetion string to any OGR datasource.
+-  *datasource_name* is the connection string to any OGR datasource.
 -  *update_mode* = 0 for read-only mode (default value) or 1 for update
    mode.
 -  *layer_name* = the name of a layer of the opened datasource.
@@ -212,7 +213,7 @@ function to automatically load all the layers of a datasource.
    sqlite> SELECT * FROM sqlite_master;
    table|poly|poly|0|CREATE VIRTUAL TABLE "poly" USING VirtualOGR('poly.shp', 0, 'poly')
 
-Refer to the `SQLite SQL <ogr_sql_sqlite.html>`__ dialect for an
+Refer to the :ref:`sql_sqlite_dialect` for an
 overview of the capabilities of VirtualOGR tables.
 
 Creation Issues
@@ -221,21 +222,29 @@ Creation Issues
 The SQLite driver supports creating new SQLite database files, or adding
 tables to existing ones.
 
-Transaction support (GDAL >= 2.0)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Transaction support
+~~~~~~~~~~~~~~~~~~~
 
 The driver implements transactions at the database level, per :ref:`rfc-54`
 
 Dataset open options
 ~~~~~~~~~~~~~~~~~~~~
 
-(GDAL >= 2.0)
-
 -  **LIST_ALL_TABLES**\ =YES/NO: This may be "YES" to force all tables,
    including non-spatial ones, to be listed.
 -  **LIST_VIRTUAL_OGR**\ =YES/NO: This may be "YES" to force VirtualOGR
    virtual tables to be listed. This should only be enabled on trusted
    datasources to avoid potential safety issues.
+-  **PRELUDE_STATEMENTS**\ =string (GDAL >= 3.2). SQL statement(s) to
+   send on the SQLite3 connection before any other ones. In
+   case of several statements, they must be separated with the
+   semi-column (;) sign. This option may be useful
+   to `attach another database <https://www.sqlite.org/lang_attach.html>`__
+   to the current one and issue cross-database requests.
+
+   .. note::
+        The other database must be of a type recognized by this driver, so
+        its geometry blobs are properly recognized (so typically not a GeoPackage one)
 
 Database Creation Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -245,11 +254,11 @@ Database Creation Options
    default these metadata tables are created when a new database is
    created.
 
--  | **SPATIALITE=YES/NO**: (Starting with GDAL 1.7.0) Create the
+-  | **SPATIALITE=YES/NO**: Create the
      SpatiaLite flavor of the metadata tables, which are a bit differ
      from the metadata used by this OGR driver and from OGC
      specifications. Implies **METADATA=YES**.
-   | Please note: (Starting with GDAL 1.9.0) OGR must be linked against
+   | Please note: OGR must be linked against
      *libspatialite* in order to support insert/write on SpatiaLite; if
      not, *read-only* mode is enforced.
    | Attempting to perform any insert/write on SpatiaLite skipping the
@@ -261,7 +270,7 @@ Database Creation Options
      2D [XY] dimensions. Version 2.4.0 (or any subsequent) is required
      in order to support 2.5D [XYZ].
 
--  | **INIT_WITH_EPSG=YES/NO**: (Starting with GDAL 1.8.0) Insert the
+-  | **INIT_WITH_EPSG=YES/NO**: Insert the
      content of the EPSG CSV files into the spatial_ref_sys table.
      Defaults to NO for regular SQLite databases.
    | Please note: if **SPATIALITE=YES** and the underlying
@@ -281,9 +290,9 @@ Layer Creation Options
    extension uses its own binary format to store geometries and you can
    choose it as well. It will be selected automatically when SpatiaLite
    database is opened or created with **SPATIALITE=YES** option.
-   SPATIALITE value is available starting with GDAL 1.7.0.
+   SPATIALITE value is available.
 
--  **GEOMETRY_NAME**: (Starting with GDAL 2.0) By default OGR creates
+-  **GEOMETRY_NAME**: By default OGR creates
    new tables with the geometry column named GEOMETRY (or WKT_GEOMETRY
    if FORMAT=WKT). If you wish to use a different name, it can be
    supplied with the GEOMETRY_NAME layer creation option.
@@ -293,12 +302,12 @@ Layer Creation Options
    to lower case and some special characters(' - #) will be changed to
    underscores. Default to YES.
 
--  **SPATIAL_INDEX=YES/NO**: (Starting with GDAL 1.7.0) If the database
+-  **SPATIAL_INDEX=YES/NO**: If the database
    is of the SpatiaLite flavor, and if OGR is linked against
    libspatialite, this option can be used to control if a spatial index
    must be created. Default to YES.
 
--  **COMPRESS_GEOM=YES/NO**: (Starting with GDAL 1.9.0) If the format of
+-  **COMPRESS_GEOM=YES/NO**: If the format of
    the geometry BLOB is of the SpatiaLite flavor, this option can be
    used to control if the compressed format for geometries (LINESTRINGs,
    POLYGONs) must be used. This format is understood by Spatialite v2.4
@@ -306,7 +315,7 @@ Layer Creation Options
    existing Spatialite DB, the COMPRESS_GEOM configuration option can be
    set to produce similar results for appended/overwritten features.
 
--  **SRID=srid**: (Starting with GDAL 1.10) Used to force the SRID
+-  **SRID=srid**: Used to force the SRID
    number of the SRS associated with the layer. When this option isn't
    specified and that a SRS is associated with the layer, a search is
    made in the spatial_ref_sys to find a match for the SRS, and, if
@@ -315,8 +324,8 @@ Layer Creation Options
    (and the eventual insertion of a new entry) will not be done : the
    specified SRID is used as such.
 
--  **COMPRESS_COLUMNS=column_name1[,column_name2, ...]**: (Starting with
-   GDAL 1.10.0) A list of (String) columns that must be compressed with
+-  **COMPRESS_COLUMNS=column_name1[,column_name2, ...]**:
+   A list of (String) columns that must be compressed with
    ZLib DEFLATE algorithm. This might be beneficial for databases that
    have big string blobs. However, use with care, since the value of
    such columns will be seen as compressed binary content with other
@@ -327,7 +336,7 @@ Layer Creation Options
    clause. Note: in table definition, such columns have the
    "VARCHAR_deflate" declaration type.
 
--  **FID=fid_name**: (From GDAL 2.0) Name of the FID column to create.
+-  **FID=fid_name**: Name of the FID column to create.
    Defaults to OGC_FID.
 
 Other Configuration Options
@@ -345,7 +354,7 @@ statements have to be invoked appropriately (with the
 OGR_L_StartTransaction() / OGR_L_CommitTransaction()) in order to get
 optimal performance. By default, if no transaction is explicitly
 started, SQLite will autocommit on every statement, which will be slow.
-If using ogr2ogr, its default behaviour is to COMMIT a transaction every
+If using ogr2ogr, its default behavior is to COMMIT a transaction every
 20000 inserted rows. The **-gt** argument allows explicitly setting the
 number of rows for each transaction. Increasing to **-gt 65536** or more
 ensures optimal performance while populating some table containing many
@@ -357,7 +366,7 @@ This value too may well be inappropriate under many circumstances, most
 notably when accessing some really huge DB-file containing many tables
 related to a corresponding Spatial Index. Explicitly setting a much more
 generously dimensioned internal Page Cache may often help to get a
-noticeably better performance. Starting since GDAL 1.9.0 you can
+noticeably better performance. You can
 explicitly set the internal Page Cache size using the configuration
 option **OGR_SQLITE_CACHE** *value* [*value* being measured in MB]; if
 your HW has enough available RAM, defining a Cache size as big as 512MB
@@ -389,6 +398,34 @@ and optimize it.
 ::
 
    ogrinfo db.sqlite -sql "VACUUM"
+
+
+Example
+-------
+
+- Convert a non-spatial SQLite table into a GeoPackage:
+
+.. code-block::
+
+  ogr2ogr \
+    -f "GPKG" output.gpkg \
+    input.sqlite \
+    -sql \
+    "SELECT
+       *,
+       MakePoint(longitude, latitude, 4326) AS geometry
+     FROM
+       my_table" \
+    -nln "location" \
+    -s_srs "EPSG:4326"
+
+- Perform a join between 2 SQLite/Spatialite databases:
+
+.. code-block::
+
+    ogrinfo my_spatial.db \
+        -sql "SELECT poly.id, other.foo FROM poly JOIN other_schema.other USING (id)" \
+        -oo PRELUDE_STATEMENTS="ATTACH DATABASE 'other.db' AS other_schema"
 
 Credits
 -------

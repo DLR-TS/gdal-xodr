@@ -50,7 +50,7 @@ static CPLString OSR_GDS( char **papszNV, const char * pszField,
 
 class AIGRasterBand;
 
-class AIGDataset : public GDALPamDataset
+class AIGDataset final: public GDALPamDataset
 {
     friend class AIGRasterBand;
 
@@ -87,7 +87,7 @@ class AIGDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class AIGRasterBand : public GDALPamRasterBand
+class AIGRasterBand final: public GDALPamRasterBand
 
 {
     friend class AIGDataset;
@@ -1067,7 +1067,7 @@ void GDALRegister_AIGrid()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Arc/Info Binary Grid" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#AIG" );
+                               "drivers/raster/aig.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 
     poDriver->pfnOpen = AIGDataset::Open;

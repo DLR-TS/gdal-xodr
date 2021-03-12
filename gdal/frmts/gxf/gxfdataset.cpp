@@ -41,7 +41,7 @@ CPL_CVSID("$Id$")
 
 class GXFRasterBand;
 
-class GXFDataset : public GDALPamDataset
+class GXFDataset final: public GDALPamDataset
 {
     friend class GXFRasterBand;
 
@@ -70,7 +70,7 @@ class GXFDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class GXFRasterBand : public GDALPamRasterBand
+class GXFRasterBand final: public GDALPamRasterBand
 {
     friend class GXFDataset;
 
@@ -273,7 +273,7 @@ GDALDataset *GXFDataset::Open( GDALOpenInfo * poOpenInfo )
 /*      we also now verify that there is a #GRID keyword before         */
 /*      passing it off to GXFOpen().  We check in the first 50K.        */
 /* -------------------------------------------------------------------- */
-    poOpenInfo->TryToIngest(50000);
+    CPL_IGNORE_RET_VAL(poOpenInfo->TryToIngest(50000));
     bool bGotGrid = false;
 
     const char* pszBigBuf = (const char*)poOpenInfo->pabyHeader;
@@ -384,7 +384,7 @@ void GDALRegister_GXF()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "GeoSoft Grid Exchange Format" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#GXF" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/gxf.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "gxf" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

@@ -40,7 +40,9 @@
 int main()
 {
     {
+        // cppcheck-suppress unusedVariable
         MVTTile oEmptyTile;
+        // cppcheck-suppress unassignedVariable
         CPLAssert( oEmptyTile.getSize() == 0 );
     }
 
@@ -189,6 +191,7 @@ int main()
 
         MVTTile oTileDeserialized;
         bool bRet = oTileDeserialized.read(pabyBuffer, pabyBuffer + nSize);
+        CPL_IGNORE_RET_VAL(bRet);
         CPLAssert(bRet);
         size_t nSize2 = oTileDeserialized.getSize();
         CPLAssert(nSize == nSize2);

@@ -35,6 +35,7 @@
 #include "ogrpgeogeometry.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -515,12 +516,7 @@ OGRGeometry* OGRCreateFromMultiPatch       ( int nParts,
                 if( oSetDuplicated.find(iPart) != oSetDuplicated.end() )
                     continue;
 
-                int nPartStart = 0;
-                if( panPartStart != nullptr )
-                {
-                    nPartStart = panPartStart[iPart];
-                }
-
+                const int nPartStart = panPartStart[iPart];
                 OGRPoint oPoint1  (padfX[nPartStart],
                                    padfY[nPartStart],
                                    padfZ[nPartStart]);
@@ -1067,6 +1063,7 @@ id,WKT
             if( i == 0 )
             {
                 poRing.reset(poPoly->getExteriorRing()->clone()->toLinearRing());
+                assert( poRing );
                 // Outer ring must be clockwise.
                 if( !poRing->isClockwise() )
                     poRing->reverseWindingOrder();
@@ -1074,6 +1071,7 @@ id,WKT
             else
             {
                 poRing.reset(poPoly->getInteriorRing(i-1)->clone()->toLinearRing());
+                assert( poRing );
                 // Inner rings should be anti-clockwise.
                 if( poRing->isClockwise() )
                     poRing->reverseWindingOrder();
@@ -1310,6 +1308,7 @@ id,WKT
                 if( j == 0 )
                 {
                     poRing.reset(poPoly->getExteriorRing()->clone()->toLinearRing());
+                    assert( poRing != nullptr );
                     // Outer ring must be clockwise.
                     if( !poRing->isClockwise() )
                         poRing->reverseWindingOrder();
@@ -1317,6 +1316,7 @@ id,WKT
                 else
                 {
                     poRing.reset(poPoly->getInteriorRing(j-1)->clone()->toLinearRing());
+                    assert( poRing != nullptr );
                     // Inner rings should be anti-clockwise.
                     if( poRing->isClockwise() )
                         poRing->reverseWindingOrder();
@@ -1768,7 +1768,7 @@ static OGRCurve* OGRShapeCreateCompoundCurve( int nPartStartIdx,
                                               /* const */ double* padfM,
                                               int* pnLastCurveIdx )
 {
-    OGRCompoundCurve* poCC = new OGRCompoundCurve();
+    auto poCC = std::unique_ptr<OGRCompoundCurve>(new OGRCompoundCurve());
     int nLastPointIdx = nPartStartIdx;
     bool bHasCircularArcs = false;
     int i = nFirstCurveIdx;  // Used after for.
@@ -1854,7 +1854,11 @@ static OGRCurve* OGRShapeCreateCompoundCurve( int nPartStartIdx,
                 poCS->addPoint( &p3 );
                 poCS->set3D( padfZ != nullptr );
                 poCS->setMeasured( padfM != nullptr );
-                poCC->addCurveDirectly(poCS);
+                if( poCC->addCurveDirectly(poCS) != OGRERR_NONE )
+                {
+                    delete poCS;
+                    return nullptr;
+                }
             }
         }
 
@@ -1921,6 +1925,7 @@ static OGRCurve* OGRShapeCreateCompoundCurve( int nPartStartIdx,
                 dfStartAngle += 2 * M_PI;
             else if( dfEndAngle + M_PI < dfStartAngle )
                 dfEndAngle += 2 * M_PI;
+            // coverity[tainted_data]
             const double dfStepSizeRad =
                 CPLAtofM(CPLGetConfigOption("OGR_ARC_STEPSIZE", "4")) / 180.0 * M_PI;
             const double dfLengthTangentStart = (dfX1 - dfX0) * (dfX1 - dfX0) +
@@ -1958,7 +1963,10 @@ static OGRCurve* OGRShapeCreateCompoundCurve( int nPartStartIdx,
             poLine->set3D( padfZ != nullptr );
             poLine->setMeasured( padfM != nullptr );
             if( poCC->addCurveDirectly(poLine) != OGRERR_NONE )
+            {
                 delete poLine;
+                return nullptr;
+            }
         }
 
         else if( pasCurves[i].eType == CURVE_ELLIPSE_BY_CENTER &&
@@ -2079,14 +2087,15 @@ static OGRCurve* OGRShapeCreateCompoundCurve( int nPartStartIdx,
         if( poCC->addCurveDirectly(poLine) != OGRERR_NONE )
         {
             delete poLine;
+            return nullptr;
         }
     }
 
     if( !bHasCircularArcs )
         return reinterpret_cast<OGRCurve*>(OGR_G_ForceTo(
-            reinterpret_cast<OGRGeometryH>(poCC), wkbLineString, nullptr));
+            reinterpret_cast<OGRGeometryH>(poCC.release()), wkbLineString, nullptr));
     else
-        return poCC;
+        return poCC.release();
 }
 
 /************************************************************************/
@@ -2707,10 +2716,14 @@ OGRErr OGRCreateFromShapeBin( GByte *pabyShape,
                                 pasCurves, nCurves, iCurveIdx,
                                 padfX, padfY, bHasZ ? padfZ : nullptr, padfM,
                                 &iCurveIdx);
-                        if( poMulti->addGeometryDirectly(poCurve) !=
+                        if( poCurve == nullptr ||
+                            poMulti->addGeometryDirectly(poCurve) !=
                                                                 OGRERR_NONE )
                         {
                             delete poCurve;
+                            delete poMulti;
+                            *ppoGeom = nullptr;
+                            break;
                         }
                     }
                 }
@@ -2760,7 +2773,8 @@ OGRErr OGRCreateFromShapeBin( GByte *pabyShape,
                         panPartStart[0], nVerticesInThisPart,
                         pasCurves, nCurves, 0,
                         padfX, padfY, bHasZ ? padfZ : nullptr, padfM, nullptr);
-                    if( poOGRPoly->addRingDirectly( poRing ) != OGRERR_NONE )
+                    if( poRing == nullptr ||
+                        poOGRPoly->addRingDirectly( poRing ) != OGRERR_NONE )
                     {
                         delete poRing;
                         delete poOGRPoly;
@@ -2787,7 +2801,8 @@ OGRErr OGRCreateFromShapeBin( GByte *pabyShape,
                             pasCurves, nCurves, iCurveIdx,
                             padfX, padfY, bHasZ ? padfZ : nullptr, padfM,
                             &iCurveIdx );
-                        if( tabPolygons[i]->addRingDirectly( poRing ) !=
+                        if( poRing ==nullptr ||
+                            tabPolygons[i]->addRingDirectly( poRing ) !=
                             OGRERR_NONE )
                         {
                             delete poRing;

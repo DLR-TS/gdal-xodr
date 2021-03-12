@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ###############################################################################
 # $Id$
@@ -33,9 +33,6 @@
 import sys
 from osgeo import ogr
 from osgeo import osr
-
-###############################################################
-# Usage()
 
 
 def Usage():
@@ -387,10 +384,12 @@ def ogr_dispatch(argv, progress=None, progress_arg=None):
 
     return 0
 
-###############################################################
-# Entry point
+
+def main(argv):
+    argv = ogr.GeneralCmdLineProcessor(argv)
+    return ogr_dispatch(argv[1:])
 
 
 if __name__ == '__main__':
-    argv = ogr.GeneralCmdLineProcessor(sys.argv)
-    sys.exit(ogr_dispatch(argv[1:]))
+    sys.exit(main(sys.argv))
+

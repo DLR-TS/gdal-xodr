@@ -48,7 +48,7 @@ CPL_CVSID("$Id$")
 
 class SDTSRasterBand;
 
-class SDTSDataset : public GDALPamDataset
+class SDTSDataset final: public GDALPamDataset
 {
     friend class SDTSRasterBand;
 
@@ -70,7 +70,7 @@ class SDTSDataset : public GDALPamDataset
     virtual CPLErr GetGeoTransform( double * ) override;
 };
 
-class SDTSRasterBand : public GDALPamRasterBand
+class SDTSRasterBand final: public GDALPamRasterBand
 {
     friend class SDTSDataset;
 
@@ -406,7 +406,7 @@ void GDALRegister_SDTS()
     poDriver->SetDescription( "SDTS" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "SDTS Raster" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#SDTS" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/sdts.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "ddf" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 ###############################################################################
 # $Id$
 #
@@ -123,5 +123,9 @@ def gdal_zip(argv, progress=None):
     return ret
 
 
+def main(argv):
+    return gdal_zip(argv)
+
+
 if __name__ == '__main__':
-    sys.exit(gdal_zip(sys.argv))
+    sys.exit(main(sys.argv))

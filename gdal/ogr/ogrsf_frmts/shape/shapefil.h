@@ -36,6 +36,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  ******************************************************************************
+ *
  */
 
 #include <stdio.h>
@@ -492,6 +493,8 @@ typedef struct
     int         nUpdateDay; /* 1-31 */
 
     int         bWriteEndOfFileChar; /* defaults to TRUE */
+
+    int         bRequireNextWriteSeek;
 } DBFInfo;
 
 typedef DBFInfo * DBFHandle;

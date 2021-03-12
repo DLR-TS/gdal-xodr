@@ -83,3 +83,6 @@ RFC list
     rfc73_proj6_wkt2_srsbarn
     rfc74_sphinx
     rfc75_multidimensional_arrays
+    rfc76_ogrpythondrivers
+    rfc77_drop_python2_support
+    rfc79_listing_service_providers

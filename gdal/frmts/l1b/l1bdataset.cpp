@@ -243,7 +243,7 @@ class L1BNOAA15AnglesRasterBand;
 class L1BCloudsDataset;
 class L1BCloudsRasterBand;
 
-class L1BDataset : public GDALPamDataset
+class L1BDataset final: public GDALPamDataset
 {
     friend class L1BRasterBand;
     friend class L1BMaskBand;
@@ -340,7 +340,7 @@ class L1BDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class L1BRasterBand : public GDALPamRasterBand
+class L1BRasterBand final: public GDALPamRasterBand
 {
     friend class L1BDataset;
 
@@ -360,7 +360,7 @@ class L1BRasterBand : public GDALPamRasterBand
 /* ==================================================================== */
 /************************************************************************/
 
-class L1BMaskBand: public GDALPamRasterBand
+class L1BMaskBand final: public GDALPamRasterBand
 {
     friend class L1BDataset;
 
@@ -569,7 +569,7 @@ L1BDataset::L1BDataset( L1BFileFormat eL1BFormatIn ) :
     iGCPCodeOffset(0),
     iCLAVRStart(0),
     nGCPsPerLine(0),
-    eLocationIndicator(DESCEND), // XXX: should be initialised
+    eLocationIndicator(DESCEND), // XXX: should be initialized
     iGCPStart(0),
     iGCPStep(0),
     eL1BFormat(eL1BFormatIn),
@@ -2283,7 +2283,7 @@ int L1BDataset::ComputeFileOffsets()
 /*                       L1BGeolocDataset                               */
 /************************************************************************/
 
-class L1BGeolocDataset : public GDALDataset
+class L1BGeolocDataset final: public GDALDataset
 {
     friend class L1BGeolocRasterBand;
 
@@ -2303,7 +2303,7 @@ class L1BGeolocDataset : public GDALDataset
 /*                       L1BGeolocRasterBand                            */
 /************************************************************************/
 
-class L1BGeolocRasterBand: public GDALRasterBand
+class L1BGeolocRasterBand final: public GDALRasterBand
 {
     public:
             L1BGeolocRasterBand(L1BGeolocDataset* poDS, int nBand);
@@ -2583,7 +2583,7 @@ GDALDataset* L1BGeolocDataset::CreateGeolocationDS(L1BDataset* poL1BDS,
 /*                    L1BSolarZenithAnglesDataset                       */
 /************************************************************************/
 
-class L1BSolarZenithAnglesDataset : public GDALDataset
+class L1BSolarZenithAnglesDataset final: public GDALDataset
 {
     friend class L1BSolarZenithAnglesRasterBand;
 
@@ -2600,7 +2600,7 @@ class L1BSolarZenithAnglesDataset : public GDALDataset
 /*                  L1BSolarZenithAnglesRasterBand                      */
 /************************************************************************/
 
-class L1BSolarZenithAnglesRasterBand: public GDALRasterBand
+class L1BSolarZenithAnglesRasterBand final: public GDALRasterBand
 {
     public:
         L1BSolarZenithAnglesRasterBand( L1BSolarZenithAnglesDataset* poDS,
@@ -2773,7 +2773,7 @@ GDALDataset* L1BSolarZenithAnglesDataset::CreateSolarZenithAnglesDS(L1BDataset* 
 /*                     L1BNOAA15AnglesDataset                           */
 /************************************************************************/
 
-class L1BNOAA15AnglesDataset : public GDALDataset
+class L1BNOAA15AnglesDataset final: public GDALDataset
 {
     friend class L1BNOAA15AnglesRasterBand;
 
@@ -2790,7 +2790,7 @@ class L1BNOAA15AnglesDataset : public GDALDataset
 /*                     L1BNOAA15AnglesRasterBand                        */
 /************************************************************************/
 
-class L1BNOAA15AnglesRasterBand: public GDALRasterBand
+class L1BNOAA15AnglesRasterBand final: public GDALRasterBand
 {
     public:
             L1BNOAA15AnglesRasterBand(L1BNOAA15AnglesDataset* poDS, int nBand);
@@ -2902,7 +2902,7 @@ GDALDataset* L1BNOAA15AnglesDataset::CreateAnglesDS(L1BDataset* poL1BDS)
 /*                          L1BCloudsDataset                            */
 /************************************************************************/
 
-class L1BCloudsDataset : public GDALDataset
+class L1BCloudsDataset final: public GDALDataset
 {
     friend class L1BCloudsRasterBand;
 
@@ -2919,7 +2919,7 @@ class L1BCloudsDataset : public GDALDataset
 /*                        L1BCloudsRasterBand                           */
 /************************************************************************/
 
-class L1BCloudsRasterBand: public GDALRasterBand
+class L1BCloudsRasterBand final: public GDALRasterBand
 {
     public:
             L1BCloudsRasterBand(L1BCloudsDataset* poDS, int nBand);
@@ -3032,8 +3032,7 @@ L1BFileFormat L1BDataset::DetectFormat( const char* pszFilename,
         return L1B_NONE;
 
     // try NOAA-18 formats
-    if ( nHeaderBytes > 22 + 10
-        && *(pabyHeader + 0) == '\0'
+    if (  *(pabyHeader + 0) == '\0'
         && *(pabyHeader + 1) == '\0'
         && *(pabyHeader + 2) == '\0'
         && *(pabyHeader + 3) == '\0'
@@ -3249,7 +3248,7 @@ GDALDataset *L1BDataset::Open( GDALOpenInfo * poOpenInfo )
 
     if( poDS->eL1BFormat == L1B_NOAA15_NOHDR &&
         poDS->nRecordSizeFromHeader == 22016 &&
-        (sStat.st_size % poDS->nRecordSizeFromHeader) == 0 )
+        (sStat.st_size % 22016 /* poDS->nRecordSizeFromHeader*/) == 0 )
     {
         poDS->iDataFormat = UNPACKED16BIT;
         poDS->ComputeFileOffsets();
@@ -3332,6 +3331,8 @@ GDALDataset *L1BDataset::Open( GDALOpenInfo * poOpenInfo )
 
     // Compute number of lines dynamically, so we can read partially
     // downloaded files.
+    if( poDS->nDataStartOffset > sStat.st_size )
+        goto bad;
     poDS->nRasterYSize =
         static_cast<int>( (sStat.st_size - poDS->nDataStartOffset)
                           / poDS->nRecordSize);
@@ -3549,7 +3550,7 @@ void GDALRegister_L1B()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "NOAA Polar Orbiter Level 1b Data Set" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_l1b.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/l1b.html" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_SUBDATASETS, "YES" );
 

@@ -8,7 +8,7 @@ Author: Even Rouault
 
 Contact: even.rouault@spatialys.com
 
-Status: Development
+Status: Adopted, implemented
 
 Summary
 -------
@@ -55,8 +55,8 @@ the variable types, their signedness, etc.
    */
    void CPL_DLL *VSIMalloc3( size_t nSize1, size_t nSize2, size_t nSize3 );
 
-The behaviour of VSIMalloc2 and VSIMalloc3 is consistent with the
-behaviour of VSIMalloc. Implementation of already existing memory
+The behavior of VSIMalloc2 and VSIMalloc3 is consistent with the
+behavior of VSIMalloc. Implementation of already existing memory
 allocation API (CPLMalloc, CPLCalloc, CPLRealloc, VSIMalloc, VSICalloc,
 VSIRealloc) will not be changed.
 

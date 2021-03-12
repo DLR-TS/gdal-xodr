@@ -8,7 +8,7 @@
 ################################################################################
 #  The MIT License (MIT)
 #
-#  Copyright (c) 2018-2019, NextGIS <info@nextgis.com>
+#  Copyright (c) 2018-2020, NextGIS <info@nextgis.com>
 #
 #  Permission is hereby granted, free of charge, to any person obtaining a copy
 #  of this software and associated documentation files (the "Software"), to deal
@@ -86,7 +86,7 @@ def test_ogr_ngw_1():
     if gdaltest.ngw_drv is None:
         pytest.skip()
 
-    gdaltest.ngw_test_server = 'https://sandbox.nextgis.com' # 'http://dev.nextgis.com/sandbox'
+    gdaltest.ngw_test_server = 'https://sandbox.nextgis.com'
 
     if check_availability(gdaltest.ngw_test_server) == False:
         gdaltest.ngw_drv = None
@@ -163,7 +163,7 @@ def test_ogr_ngw_4():
         'Did not get expected datasource metadata item. test_int.d is equal {}, but should {}.'.format(md_item, '777')
 
     md_item = gdaltest.ngw_ds.GetMetadataItem('test_float.f', 'NGW')
-    assert abs(float(md_item) - 777.555) < 0.00001, \
+    assert float(md_item) == pytest.approx(777.555, abs=0.00001), \
         'Did not get expected datasource metadata item. test_float.f is equal {}, but should {}.'.format(md_item, '777.555')
 
     md_item = gdaltest.ngw_ds.GetMetadataItem('test_string', 'NGW')
@@ -247,13 +247,13 @@ def test_ogr_ngw_5():
 
     add_metadata(lyr)
 
-    lyr = gdaltest.ngw_ds.CreateLayer('test_ln_layer', srs=sr, geom_type=ogr.wkbMultiLineString, options=['OVERWRITE=YES', 'DESCRIPTION=Test point layer'])
+    lyr = gdaltest.ngw_ds.CreateLayer('test_ln_layer', srs=sr, geom_type=ogr.wkbMultiLineString, options=['OVERWRITE=YES', 'DESCRIPTION=Test line layer'])
     assert lyr is not None, 'Create layer failed.'
 
     create_fields(lyr)
     add_metadata(lyr)
 
-    lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbMultiPolygon, options=['OVERWRITE=YES', 'DESCRIPTION=Test point layer'])
+    lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbMultiPolygon, options=['OVERWRITE=YES', 'DESCRIPTION=Test polygon layer'])
     assert lyr is not None, 'Create layer failed.'
 
     create_fields(lyr)
@@ -266,23 +266,30 @@ def test_ogr_ngw_5():
     create_fields(lyr)
     add_metadata(lyr)
 
-    lyr = gdaltest.ngw_ds.CreateLayer('test_ln_layer', srs=sr, geom_type=ogr.wkbLineString, options=['OVERWRITE=YES', 'DESCRIPTION=Test point layer'])
+    lyr = gdaltest.ngw_ds.CreateLayer('test_ln_layer', srs=sr, geom_type=ogr.wkbLineString, options=['OVERWRITE=YES', 'DESCRIPTION=Test line layer'])
     assert lyr is not None, 'Create layer failed.'
 
     create_fields(lyr)
     add_metadata(lyr)
 
-    lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbPolygon, options=['OVERWRITE=YES', 'DESCRIPTION=Test point layer'])
+    lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbPolygon, options=['OVERWRITE=YES', 'DESCRIPTION=Test polygon layer'])
     assert lyr is not None, 'Create layer failed.'
 
     create_fields(lyr)
     add_metadata(lyr)
 
     # Test without overwrite
-    lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbMultiPolygon, options=['OVERWRITE=NO', 'DESCRIPTION=Test point layer 1'])
+    lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbMultiPolygon, options=['OVERWRITE=NO', 'DESCRIPTION=Test polygon layer 1'])
     assert lyr is None, 'Create layer without overwrite should fail.'
     lyr = gdaltest.ngw_ds.CreateLayer('test_pl_layer', srs=sr, geom_type=ogr.wkbMultiPolygon, options=['DESCRIPTION=Test point layer 1'])
     assert lyr is None, 'Create layer without overwrite should fail.'
+
+    # Test geometry with Z
+    lyr = gdaltest.ngw_ds.CreateLayer('test_plz_layer', srs=sr, geom_type=ogr.wkbMultiPolygon25D, options=['OVERWRITE=YES', 'DESCRIPTION=Test polygonz layer'])
+    assert lyr is not None, 'Create layer failed.'
+
+    create_fields(lyr)
+    add_metadata(lyr)
 
     ds_resource_id = gdaltest.ngw_ds.GetMetadataItem('id', '')
     gdaltest.ngw_ds = None
@@ -292,7 +299,7 @@ def test_ogr_ngw_5():
     gdaltest.ngw_ds = gdal.OpenEx(url, gdal.OF_UPDATE) # gdaltest.ngw_drv.Open(url, update=1)
     assert gdaltest.ngw_ds is not None, 'Open datasource failed.'
 
-    for layer_name in ['test_pt_layer', 'test_ln_layer', 'test_pl_layer']:
+    for layer_name in ['test_pt_layer', 'test_ln_layer', 'test_pl_layer', 'test_plz_layer']:
         lyr = gdaltest.ngw_ds.GetLayerByName(layer_name)
         assert lyr is not None, 'Get layer {} failed.'.format(layer_name)
 
@@ -301,7 +308,7 @@ def test_ogr_ngw_5():
             'Did not get expected layer metadata item. test_int.d is equal {}, but should {}.'.format(md_item, '777')
 
         md_item = lyr.GetMetadataItem('test_float.f', 'NGW')
-        assert abs(float(md_item) - 777.555) < 0.00001, \
+        assert float(md_item) == pytest.approx(777.555, abs=0.00001), \
             'Did not get expected layer metadata item. test_float.f is equal {}, but should {}.'.format(md_item, '777.555')
 
         md_item = lyr.GetMetadataItem('test_string', 'NGW')
@@ -310,6 +317,8 @@ def test_ogr_ngw_5():
 
         resource_type = lyr.GetMetadataItem('resource_type', '')
         assert resource_type is not None, 'Did not get expected layer metadata item. Resourse type should be present.'
+
+        assert lyr.GetGeomType() != ogr.wkbUnknown and lyr.GetGeomType() != ogr.wkbNone
 
 ###############################################################################
 # Check open single vector layer.
@@ -535,6 +544,17 @@ def test_ogr_ngw_12():
     fc = lyr.GetFeatureCount()
     assert fc == 2, 'Expected feature count is 2, got {}.'.format(fc)
 
+    lyr.SetAttributeFilter("DECFIELD < 321")
+    fc = lyr.GetFeatureCount()
+    assert fc == 2, 'Expected feature count is 2, got {}.'.format(fc)
+
+    lyr.SetAttributeFilter('NGW:fld_REALFIELD__gt=1.5')
+    fc = lyr.GetFeatureCount()
+    assert fc == 1, 'Expected feature count is 1, got {}.'.format(fc)
+
+    lyr.SetAttributeFilter("STRFIELD ILIKE '%O_O'")
+    fc = lyr.GetFeatureCount()
+    assert fc == 2, 'Expected feature count is 2, got {}.'.format(fc)
 
 ###############################################################################
 # Check spatial filter.

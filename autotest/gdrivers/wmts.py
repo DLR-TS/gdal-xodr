@@ -36,6 +36,7 @@ from osgeo import gdal
 
 import gdaltest
 import pytest
+import struct
 
 ###############################################################################
 # Find WMTS driver
@@ -397,7 +398,7 @@ def test_wmts_13():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-20037508.342799999, 156543.03392811998, 0.0, 20037508.342799999, 0.0, -156543.03392811998)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('3857') >= 0
     assert ds.RasterCount == 4
     for i in range(4):
@@ -586,6 +587,7 @@ def test_wmts_14():
     <LowerRightY>-20037508.34278254</LowerRightY>
   </DataWindow>
   <BandsCount>4</BandsCount>
+  <DataType>Byte</DataType>
   <Cache />
   <UnsafeSSL>true</UnsafeSSL>
   <ZeroBlockHttpCodes>204,404</ZeroBlockHttpCodes>
@@ -898,7 +900,7 @@ def test_wmts_16():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-90, 0.3515625, 0.0, 90.0, 0.0, -0.3515625)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('4326') >= 0
     assert ds.GetSpatialRef().GetDataAxisToSRSAxisMapping() == [2, 1]
 
@@ -973,7 +975,7 @@ def test_wmts_17():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-90, 0.3515625, 0.0, 90.0, 0.0, -0.3515625)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('4326') >= 0
 
 ###############################################################################
@@ -1047,7 +1049,7 @@ def test_wmts_18():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-90, 0.3515625, 0.0, 90.0, 0.0, -0.3515625)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('4326') >= 0
 
 ###############################################################################
@@ -1126,7 +1128,7 @@ def test_wmts_19():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-90, 0.3515625, 0.0, 90.0, 0.0, -0.3515625)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('4326') >= 0
 
 ###############################################################################
@@ -1209,7 +1211,7 @@ def test_wmts_20():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-90, 0.3515625, 0.0, 90.0, 0.0, -0.3515625)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('4326') >= 0
 
 ###############################################################################
@@ -1288,7 +1290,7 @@ def test_wmts_21():
     got_gt = ds.GetGeoTransform()
     expected_gt = (90, 0.3515625, 0.0, 0.0, 0.0, -0.3515625)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('4326') >= 0
 
     tmp_ds = gdal.GetDriverByName('MEM').Create('', 256, 256, 4)
@@ -1358,7 +1360,7 @@ def test_wmts_22():
     got_gt = ds.GetGeoTransform()
     expected_gt = (-548576.0, 1.0000000000004, 0.0, 8388608.0, 0.0, -1.0000000000004)
     for i in range(6):
-        assert abs(got_gt[i] - expected_gt[i]) <= 1e-8
+        assert got_gt[i] == pytest.approx(expected_gt[i], abs=1e-8)
     assert ds.GetProjectionRef().find('3067') >= 0
 ###############################################################################
 #
@@ -1758,7 +1760,61 @@ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="1.0.0">
 
     gdal.Unlink(inputXml)
 
+###############################################################################
+# Test when local wmts tiles are missing
 
+
+def test_wmts_24():
+
+    if gdaltest.wmts_drv is None:
+        pytest.skip()
+
+    gdal.FileFromMemBuffer('/vsimem/wmts_missing_local_tiles.xml', """<Capabilities>
+    <Contents>
+        <Layer>
+            <ows:WGS84BoundingBox>
+                <ows:LowerCorner>-6.38153862706 55.6179644952</ows:LowerCorner>
+                <ows:UpperCorner>60.3815386271 75.5825702342</ows:UpperCorner>
+            </ows:WGS84BoundingBox>
+            <Identifier>lyr1</Identifier>
+            <Title>My layer1</Title>
+            <Style isDefault="true">
+                <Identifier>default_style</Identifier>
+                <Title>Default style</Title>
+            </Style>
+            <TileMatrixSetLink>
+                <TileMatrixSet>tms</TileMatrixSet>
+            </TileMatrixSetLink>
+            <ResourceURL format="image/png"
+    template="file:///invalid_path/{Style}/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.png" resourceType="tile"/>
+        </Layer>
+        <TileMatrixSet>
+            <Identifier>tms</Identifier>
+            <ows:Identifier>tms</ows:Identifier>
+            <ows:SupportedCRS>urn:ogc:def:crs:EPSG::3067</ows:SupportedCRS>
+            <TileMatrix>
+                <ows:Identifier>13</ows:Identifier>
+                <ScaleDenominator>3571.42857143</ScaleDenominator>
+                <TopLeftCorner>-548576.0 8388608.0</TopLeftCorner>
+                <TileWidth>256</TileWidth>
+                <TileHeight>256</TileHeight>
+                <MatrixWidth>8192</MatrixWidth>
+                <MatrixHeight>8192</MatrixHeight>
+            </TileMatrix>
+        </TileMatrixSet>
+    </Contents>
+    <ServiceMetadataURL xlink:href="/vsimem/wmts_missing_local_tiles.xml"/>
+</Capabilities>""")
+
+    ds = gdal.Open('WMTS:/vsimem/wmts_missing_local_tiles.xml')
+#   Read some data from the image
+    band = ds.GetRasterBand(1)
+    assert band is not None
+    structval=band.ReadRaster(0,0,1,1,buf_type=gdal.GDT_UInt16)
+    assert structval is not None
+    data = struct.unpack('h' , structval)
+#   Expect a null value for the pixel data
+    assert data[0] == 0
 
 ###############################################################################
 #

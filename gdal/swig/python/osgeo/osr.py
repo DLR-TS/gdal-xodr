@@ -271,6 +271,22 @@ OAO_Down = _osr.OAO_Down
 OAMS_TRADITIONAL_GIS_ORDER = _osr.OAMS_TRADITIONAL_GIS_ORDER
 OAMS_AUTHORITY_COMPLIANT = _osr.OAMS_AUTHORITY_COMPLIANT
 OAMS_CUSTOM = _osr.OAMS_CUSTOM
+PROJ_ERR_INVALID_OP = _osr.PROJ_ERR_INVALID_OP
+PROJ_ERR_INVALID_OP_WRONG_SYNTAX = _osr.PROJ_ERR_INVALID_OP_WRONG_SYNTAX
+PROJ_ERR_INVALID_OP_MISSING_ARG = _osr.PROJ_ERR_INVALID_OP_MISSING_ARG
+PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE = _osr.PROJ_ERR_INVALID_OP_ILLEGAL_ARG_VALUE
+PROJ_ERR_INVALID_OP_MUTUALLY_EXCLUSIVE_ARGS = _osr.PROJ_ERR_INVALID_OP_MUTUALLY_EXCLUSIVE_ARGS
+PROJ_ERR_INVALID_OP_FILE_NOT_FOUND_OR_INVALID = _osr.PROJ_ERR_INVALID_OP_FILE_NOT_FOUND_OR_INVALID
+PROJ_ERR_COORD_TRANSFM = _osr.PROJ_ERR_COORD_TRANSFM
+PROJ_ERR_COORD_TRANSFM_INVALID_COORD = _osr.PROJ_ERR_COORD_TRANSFM_INVALID_COORD
+PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN = _osr.PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN
+PROJ_ERR_COORD_TRANSFM_NO_OPERATION = _osr.PROJ_ERR_COORD_TRANSFM_NO_OPERATION
+PROJ_ERR_COORD_TRANSFM_OUTSIDE_GRID = _osr.PROJ_ERR_COORD_TRANSFM_OUTSIDE_GRID
+PROJ_ERR_COORD_TRANSFM_GRID_AT_NODATA = _osr.PROJ_ERR_COORD_TRANSFM_GRID_AT_NODATA
+PROJ_ERR_OTHER = _osr.PROJ_ERR_OTHER
+PROJ_ERR_OTHER_API_MISUSE = _osr.PROJ_ERR_OTHER_API_MISUSE
+PROJ_ERR_OTHER_NO_INVERSE_OP = _osr.PROJ_ERR_OTHER_NO_INVERSE_OP
+PROJ_ERR_OTHER_NETWORK_ERROR = _osr.PROJ_ERR_OTHER_NETWORK_ERROR
 
 def GetUseExceptions(*args):
     """GetUseExceptions() -> int"""
@@ -394,6 +410,11 @@ class SpatialReference(_object):
     def IsGeographic(self, *args):
         """IsGeographic(SpatialReference self) -> int"""
         return _osr.SpatialReference_IsGeographic(self, *args)
+
+
+    def IsDerivedGeographic(self, *args):
+        """IsDerivedGeographic(SpatialReference self) -> int"""
+        return _osr.SpatialReference_IsDerivedGeographic(self, *args)
 
 
     def IsProjected(self, *args):
@@ -811,6 +832,11 @@ class SpatialReference(_object):
         return _osr.SpatialReference_SetVDG(self, *args, **kwargs)
 
 
+    def SetVerticalPerspective(self, *args, **kwargs):
+        """SetVerticalPerspective(SpatialReference self, double topoOriginLat, double topoOriginLon, double topoOriginHeight, double viewPointHeight, double fe, double fn) -> OGRErr"""
+        return _osr.SpatialReference_SetVerticalPerspective(self, *args, **kwargs)
+
+
     def SetWellKnownGeogCS(self, *args):
         """SetWellKnownGeogCS(SpatialReference self, char const * name) -> OGRErr"""
         return _osr.SpatialReference_SetWellKnownGeogCS(self, *args)
@@ -831,9 +857,19 @@ class SpatialReference(_object):
         return _osr.SpatialReference_SetTOWGS84(self, *args)
 
 
+    def HasTOWGS84(self, *args):
+        """HasTOWGS84(SpatialReference self) -> bool"""
+        return _osr.SpatialReference_HasTOWGS84(self, *args)
+
+
     def GetTOWGS84(self, *args):
         """GetTOWGS84(SpatialReference self) -> OGRErr"""
         return _osr.SpatialReference_GetTOWGS84(self, *args)
+
+
+    def AddGuessedTOWGS84(self, *args):
+        """AddGuessedTOWGS84(SpatialReference self) -> OGRErr"""
+        return _osr.SpatialReference_AddGuessedTOWGS84(self, *args)
 
 
     def SetLocalCS(self, *args):
@@ -936,6 +972,11 @@ class SpatialReference(_object):
         return _osr.SpatialReference_ExportToPrettyWkt(self, *args)
 
 
+    def ExportToPROJJSON(self, *args):
+        """ExportToPROJJSON(SpatialReference self, char ** options=None) -> OGRErr"""
+        return _osr.SpatialReference_ExportToPROJJSON(self, *args)
+
+
     def ExportToProj4(self, *args):
         """ExportToProj4(SpatialReference self) -> OGRErr"""
         return _osr.SpatialReference_ExportToProj4(self, *args)
@@ -990,6 +1031,34 @@ class SpatialReference(_object):
         """ConvertToOtherProjection(SpatialReference self, char const * other_projection, char ** options=None) -> SpatialReference"""
         return _osr.SpatialReference_ConvertToOtherProjection(self, *args)
 
+
+    def PromoteTo3D(self, *args):
+        """PromoteTo3D(SpatialReference self, char const * name=None) -> OGRErr"""
+        return _osr.SpatialReference_PromoteTo3D(self, *args)
+
+
+    def DemoteTo2D(self, *args):
+        """DemoteTo2D(SpatialReference self, char const * name=None) -> OGRErr"""
+        return _osr.SpatialReference_DemoteTo2D(self, *args)
+
+
+
+    def __init__(self, *args, **kwargs):
+        """__init__(OSRSpatialReferenceShadow self, char const * wkt) -> SpatialReference"""
+        oldval = _osr.GetUseExceptions()
+        if not oldval:
+            _osr.UseExceptions()
+        try:
+            this = _osr.new_SpatialReference(*args, **kwargs)
+        finally:
+            if not oldval:
+                _osr.DontUseExceptions()
+        try:
+            self.this.append(this)
+        except __builtin__.Exception:
+            self.this = this
+
+
 SpatialReference_swigregister = _osr.SpatialReference_swigregister
 SpatialReference_swigregister(SpatialReference)
 
@@ -1020,6 +1089,16 @@ class CoordinateTransformationOptions(_object):
     def SetOperation(self, *args):
         """SetOperation(CoordinateTransformationOptions self, char const * operation) -> bool"""
         return _osr.CoordinateTransformationOptions_SetOperation(self, *args)
+
+
+    def SetDesiredAccuracy(self, *args):
+        """SetDesiredAccuracy(CoordinateTransformationOptions self, double accuracy) -> bool"""
+        return _osr.CoordinateTransformationOptions_SetDesiredAccuracy(self, *args)
+
+
+    def SetBallparkAllowed(self, *args):
+        """SetBallparkAllowed(CoordinateTransformationOptions self, bool allowBallpark) -> bool"""
+        return _osr.CoordinateTransformationOptions_SetBallparkAllowed(self, *args)
 
 CoordinateTransformationOptions_swigregister = _osr.CoordinateTransformationOptions_swigregister
 CoordinateTransformationOptions_swigregister(CoordinateTransformationOptions)
@@ -1054,6 +1133,11 @@ class CoordinateTransformation(_object):
         TransformPoint(CoordinateTransformation self, double x, double y, double z, double t)
         """
         return _osr.CoordinateTransformation_TransformPoint(self, *args)
+
+
+    def TransformPointWithErrorCode(self, *args):
+        """TransformPointWithErrorCode(CoordinateTransformation self, double x, double y, double z, double t)"""
+        return _osr.CoordinateTransformation_TransformPointWithErrorCode(self, *args)
 
 
     def TransformPoints(self, *args):
@@ -1192,6 +1276,10 @@ def SetPROJSearchPaths(*args):
     """SetPROJSearchPaths(char ** paths)"""
     return _osr.SetPROJSearchPaths(*args)
 
+def GetPROJSearchPaths(*args):
+    """GetPROJSearchPaths() -> char **"""
+    return _osr.GetPROJSearchPaths(*args)
+
 def GetPROJVersionMajor(*args):
     """GetPROJVersionMajor() -> int"""
     return _osr.GetPROJVersionMajor(*args)
@@ -1199,6 +1287,10 @@ def GetPROJVersionMajor(*args):
 def GetPROJVersionMinor(*args):
     """GetPROJVersionMinor() -> int"""
     return _osr.GetPROJVersionMinor(*args)
+
+def GetPROJVersionMicro(*args):
+    """GetPROJVersionMicro() -> int"""
+    return _osr.GetPROJVersionMicro(*args)
 # This file is compatible with both classic and new-style classes.
 
 

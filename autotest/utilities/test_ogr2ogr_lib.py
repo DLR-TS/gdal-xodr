@@ -29,9 +29,6 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-import sys
-
-
 from osgeo import gdal, gdalconst, ogr
 import gdaltest
 import ogrtest
@@ -70,10 +67,7 @@ def test_ogr2ogr_lib_2():
     gdal.Unlink('/vsimem/sql.txt')
 
     # Test @filename syntax with a UTF-8 BOM
-    if sys.version_info >= (3, 0, 0):
-        gdal.FileFromMemBuffer('/vsimem/sql.txt', '\xEF\xBB\xBFselect * from poly'.encode('LATIN1'))
-    else:
-        gdal.FileFromMemBuffer('/vsimem/sql.txt', '\xEF\xBB\xBFselect * from poly')
+    gdal.FileFromMemBuffer('/vsimem/sql.txt', '\xEF\xBB\xBFselect * from poly'.encode('LATIN1'))
     ds = gdal.VectorTranslate('', srcDS, format='Memory', SQLStatement='@/vsimem/sql.txt')
     assert ds is not None and ds.GetLayer(0).GetFeatureCount() == 10
     gdal.Unlink('/vsimem/sql.txt')
@@ -226,7 +220,7 @@ def test_ogr2ogr_lib_11():
     else:
         assert ds is not None and ds.GetLayer(0).GetFeatureCount() == 5
 
-    
+
 ###############################################################################
 # Test callback
 
@@ -274,7 +268,7 @@ def test_ogr2ogr_lib_14():
     except RuntimeError:
         pass
 
-    
+
 ###############################################################################
 # Test non existing zfield
 
@@ -321,7 +315,7 @@ def test_ogr2ogr_lib_16():
             print(wkt_before)
             pytest.fail(dim)
 
-    
+
 ###############################################################################
 # Test gdal.VectorTranslate(dst_ds, ...) without accessMode specified (#6612)
 
@@ -533,3 +527,92 @@ def test_ogr2ogr_lib_ct_no_srs():
     f = lyr.GetNextFeature()
     #f.DumpReadable()
     assert ogrtest.check_feature_geometry(f, "POLYGON ((-479819.84375 4765180.5,-479690.1875 4765259.5,-479647.0 4765369.5,-479730.375 4765400.5,-480039.03125 4765539.5,-480035.34375 4765558.5,-480159.78125 4765610.5,-480202.28125 4765482.0,-480365.0 4765015.5,-480389.6875 4764950.0,-480133.96875 4764856.5,-480080.28125 4764979.5,-480082.96875 4765049.5,-480088.8125 4765139.5,-480059.90625 4765239.5,-480019.71875 4765319.5,-479980.21875 4765409.5,-479909.875 4765370.0,-479859.875 4765270.0,-479819.84375 4765180.5))") == 0
+
+
+###############################################################################
+# Test -nlt CONVERT_TO_LINEAR -nlt PROMOTE_TO_MULTI
+
+@pytest.mark.parametrize('geometryType',
+                         [
+                            ['PROMOTE_TO_MULTI', 'CONVERT_TO_LINEAR'],
+                            ['CONVERT_TO_LINEAR', 'PROMOTE_TO_MULTI']
+                         ])
+def test_ogr2ogr_lib_convert_to_linear_promote_to_multi(geometryType):
+
+    src_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
+    lyr = src_ds.CreateLayer('layer')
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f.SetGeometry(ogr.CreateGeometryFromWkt('CIRCULARSTRING(0 0,1 0,0 0)'))
+    lyr.CreateFeature(f)
+
+    ds = gdal.VectorTranslate('', src_ds,
+                              format='Memory',
+                              geometryType=geometryType)
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    g = f.GetGeometryRef()
+    assert g.GetGeometryType() == ogr.wkbMultiLineString
+
+
+###############################################################################
+# Test -makevalid
+
+def test_ogr2ogr_lib_makevalid():
+
+    # Check if MakeValid() is available
+    g = ogr.CreateGeometryFromWkt('POLYGON ((0 0,10 10,0 10,10 0,0 0))')
+    with gdaltest.error_handler():
+        make_valid_available = g.MakeValid() is not None
+
+    tmpfilename = '/vsimem/tmp.csv'
+    with gdaltest.tempfile(tmpfilename,"""id,WKT
+1,"POLYGON ((0 0,10 10,0 10,10 0,0 0))"
+2,"POLYGON ((0 0,0 1,0.5 1,0.5 0.75,0.5 1,1 1,1 0,0 0))"
+"""):
+        if make_valid_available:
+            ds = gdal.VectorTranslate('', tmpfilename, format='Memory', makeValid=True)
+        else:
+            with gdaltest.error_handler():
+                with pytest.raises(Exception):
+                    gdal.VectorTranslate('', tmpfilename, format='Memory', makeValid=True)
+                return
+
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+    assert ogrtest.check_feature_geometry(f, "MULTIPOLYGON (((0 0,5 5,10 0,0 0)),((5 5,0 10,10 10,5 5)))") == 0
+    f = lyr.GetNextFeature()
+    assert ogrtest.check_feature_geometry(f, "POLYGON ((0 0,0 1,0.5 1.0,1 1,1 0,0 0))") == 0
+
+
+
+###############################################################################
+# Test SQLStatement with -sql @filename syntax
+
+
+def test_ogr2ogr_lib_sql_filename():
+
+    with gdaltest.tempfile('/vsimem/my.sql', """-- initial comment\nselect\n'--''--' as literalfield,* from --comment\npoly\n-- trailing comment"""):
+        ds = gdal.VectorTranslate('', '../ogr/data/poly.shp', options = '-f Memory -sql @/vsimem/my.sql')
+    lyr = ds.GetLayer(0)
+    assert lyr.GetFeatureCount() == 10
+    assert lyr.GetLayerDefn().GetFieldIndex('literalfield') == 0
+
+
+###############################################################################
+# Verify -emptyStrAsNull
+
+def test_ogr2ogr_emptyStrAsNull():
+
+    src_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
+    lyr = src_ds.CreateLayer('layer')
+    lyr.CreateField(ogr.FieldDefn('foo'))
+    f = ogr.Feature(lyr.GetLayerDefn())
+    f['foo'] = ''
+    lyr.CreateFeature(f)
+
+    ds = gdal.VectorTranslate('', src_ds, format='Memory', emptyStrAsNull=True)
+
+    lyr = ds.GetLayer(0)
+    f = lyr.GetNextFeature()
+
+    assert f['foo'] is None, 'expected empty string to be transformed to null'

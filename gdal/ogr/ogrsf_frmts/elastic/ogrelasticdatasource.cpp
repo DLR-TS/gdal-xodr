@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Project:  ElasticSearch Translator
+ * Project:  Elasticsearch Translator
  * Purpose:
  * Author:
  *
@@ -33,7 +33,7 @@
 #include "cpl_csv.h"
 #include "cpl_http.h"
 #include "ogrgeojsonreader.h"
-#include "swq.h"
+#include "ogr_swq.h"
 
 CPL_CVSID("$Id$")
 
@@ -50,8 +50,7 @@ OGRElasticDataSource::OGRElasticDataSource() :
     m_nBatchSize(100),
     m_nFeatureCountToEstablishFeatureDefn(100),
     m_bJSonField(false),
-    m_bFlattenNestedAttributes(true),
-    m_nMajorVersion(0)
+    m_bFlattenNestedAttributes(true)
 {
     const char* pszWriteMapIn = CPLGetConfigOption("ES_WRITEMAP", nullptr);
     if (pszWriteMapIn != nullptr) {
@@ -415,6 +414,7 @@ OGRLayer * OGRElasticDataSource::ICreateLayer(const char * pszLayerName,
         if( CPLFetchBool(papszOptions, "OVERWRITE_INDEX", false)  )
         {
             Delete(CPLSPrintf("%s/%s", GetURL(), osLaunderedName.c_str()));
+            bIndexExists = false;
         }
         else if( m_bOverwrite || CPLFetchBool(papszOptions, "OVERWRITE", false) )
         {
@@ -425,7 +425,7 @@ OGRLayer * OGRElasticDataSource::ICreateLayer(const char * pszLayerName,
                 CPLError(CE_Failure, CPLE_AppDefined,
                          "The index %s already exists. "
                          "You have to delete the whole index. You can do that "
-                         "with OVERWITE_INDEX=YES",
+                         "with OVERWRITE_INDEX=YES",
                          osLaunderedName.c_str());
                 return nullptr;
             }
@@ -440,6 +440,7 @@ OGRLayer * OGRElasticDataSource::ICreateLayer(const char * pszLayerName,
                 return nullptr;
             }
             Delete(CPLSPrintf("%s/%s", GetURL(), osLaunderedName.c_str()));
+            bIndexExists = false;
         }
         else
         {
@@ -558,11 +559,34 @@ OGRLayer * OGRElasticDataSource::ICreateLayer(const char * pszLayerName,
 /************************************************************************/
 
 CPLHTTPResult* OGRElasticDataSource::HTTPFetch(const char* pszURL,
-                                               char** papszOptions)
+                                               CSLConstList papszOptions)
 {
-    CPLStringList aosOptions(papszOptions, false);
+    CPLStringList aosOptions(papszOptions);
     if( !m_osUserPwd.empty() )
         aosOptions.SetNameValue("USERPWD", m_osUserPwd.c_str());
+    if( !m_oMapHeadersFromEnv.empty() )
+    {
+        const char* pszExistingHeaders = aosOptions.FetchNameValue("HEADERS");
+        std::string osHeaders;
+        if( pszExistingHeaders )
+        {
+            osHeaders += pszExistingHeaders;
+            osHeaders += '\n';
+        }
+        for( const auto& kv: m_oMapHeadersFromEnv )
+        {
+            const char* pszValueFromEnv =
+                CPLGetConfigOption(kv.second.c_str(), nullptr);
+            if( pszValueFromEnv )
+            {
+                osHeaders += kv.first;
+                osHeaders += ": ";
+                osHeaders += pszValueFromEnv;
+                osHeaders += '\n';
+            }
+        }
+        aosOptions.SetNameValue("HEADERS", osHeaders.c_str());
+    }
     return CPLHTTPFetch(pszURL, aosOptions);
 }
 
@@ -671,6 +695,9 @@ bool OGRElasticDataSource::CheckVersion()
             const char* pszVersion = json_object_get_string(poNumber);
             CPLDebug("ES", "Server version: %s", pszVersion);
             m_nMajorVersion = atoi(pszVersion);
+            const char* pszDot = strchr(pszVersion, '.');
+            if( pszDot )
+                m_nMinorVersion = atoi(pszDot+1);
         }
     }
     json_object_put(poMainInfo);
@@ -713,6 +740,23 @@ int OGRElasticDataSource::Open(GDALOpenInfo* poOpenInfo)
     m_bFlattenNestedAttributes = CPLFetchBool(
             poOpenInfo->papszOpenOptions, "FLATTEN_NESTED_ATTRIBUTES", true);
     m_osFID = CSLFetchNameValueDef(poOpenInfo->papszOpenOptions, "FID", "ogc_fid");
+
+    const char* pszHeadersFromEnv = CPLGetConfigOption("ES_FORWARD_HTTP_HEADERS_FROM_ENV",
+        CSLFetchNameValue(poOpenInfo->papszOpenOptions, "FORWARD_HTTP_HEADERS_FROM_ENV"));
+    if( pszHeadersFromEnv )
+    {
+        CPLStringList aosTokens(CSLTokenizeString2(pszHeadersFromEnv, ",", 0));
+        for( int i = 0; i < aosTokens.size(); ++i )
+        {
+            char* pszKey = nullptr;
+            const char* pszValue = CPLParseNameValue(aosTokens[i], &pszKey);
+            if( pszKey && pszValue )
+            {
+                m_oMapHeadersFromEnv[pszKey] = pszValue;
+            }
+            CPLFree(pszKey);
+        }
+    }
 
     if( !CheckVersion() )
         return FALSE;
@@ -805,6 +849,7 @@ int OGRElasticDataSource::Create(const char *pszFilename,
 
     const char* pszMetaFile = CPLGetConfigOption("ES_META", nullptr);
     m_bOverwrite = CPLTestBool(CPLGetConfigOption("ES_OVERWRITE", "0"));
+    // coverity[tainted_data]
     m_nBulkUpload = (int) CPLAtof(CPLGetConfigOption("ES_BULK", "0"));
 
     // Read in the meta file from disk

@@ -32,14 +32,13 @@
 #include "wmsdriver.h"
 #include <algorithm>
 
-CPL_CVSID("$Id$")
-
-/* CURLINFO_RESPONSE_CODE was known as CURLINFO_HTTP_CODE in libcurl 7.10.7 and earlier */
-#if LIBCURL_VERSION_NUM < 0x070a07
-#define CURLINFO_RESPONSE_CODE CURLINFO_HTTP_CODE
+#if LIBCURL_VERSION_NUM < 0x071c00
+// Needed for curl_multi_wait()
+#error Need libcurl version 7.28.0 or newer
+// 7.28 was released in Oct 2012
 #endif
 
-static size_t CPLHTTPWriteFunc(void *buffer, size_t count, size_t nmemb, void *req) {
+static size_t WriteFunc(void *buffer, size_t count, size_t nmemb, void *req) {
     WMSHTTPRequest *psRequest = reinterpret_cast<WMSHTTPRequest *>(req);
     size_t size = count * nmemb;
 
@@ -68,6 +67,29 @@ static size_t CPLHTTPWriteFunc(void *buffer, size_t count, size_t nmemb, void *r
     return nmemb;
 }
 
+// Process curl errors
+static void ProcessCurlErrors(CURLMsg* msg, WMSHTTPRequest* pasRequest, int nRequestCount)
+{
+    CPLAssert(msg != nullptr);
+    CPLAssert(msg->msg == CURLMSG_DONE);
+
+    // in case of local file error: update status code
+    if (msg->data.result == CURLE_FILE_COULDNT_READ_FILE) {
+        // identify current request
+        for (int current_req_i = 0; current_req_i < nRequestCount; ++current_req_i) {
+            WMSHTTPRequest* const psRequest = &pasRequest[current_req_i];
+            if (psRequest->m_curl_handle != msg->easy_handle)
+                continue;
+
+            // sanity check for local files
+            if (STARTS_WITH(psRequest->URL.c_str(), "file://")) {
+                psRequest->nStatus = 404;
+                break;
+            }
+        }
+    }
+}
+
 // Builds a curl request
 void WMSHTTPInitializeRequest(WMSHTTPRequest *psRequest) {
     psRequest->nStatus = 0;
@@ -85,13 +107,19 @@ void WMSHTTPInitializeRequest(WMSHTTPRequest *psRequest) {
         curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_RANGE, psRequest->Range.c_str());
 
     curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_WRITEDATA, psRequest);
-    curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_WRITEFUNCTION, CPLHTTPWriteFunc);
+    curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_WRITEFUNCTION, WriteFunc);
 
     psRequest->m_curl_error.resize(CURL_ERROR_SIZE + 1);
     curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_ERRORBUFFER, &psRequest->m_curl_error[0]);
 
     psRequest->m_headers = static_cast<struct curl_slist*>(
             CPLHTTPSetOptions(psRequest->m_curl_handle, psRequest->URL.c_str(), psRequest->options));
+    const char* pszAccept = CSLFetchNameValue(psRequest->options, "ACCEPT");
+    if( pszAccept )
+    {
+        psRequest->m_headers = curl_slist_append(psRequest->m_headers,
+                                        CPLSPrintf("Accept: %s", pszAccept));
+    }
     if( psRequest->m_headers != nullptr )
         curl_easy_setopt(psRequest->m_curl_handle, CURLOPT_HTTPHEADER,
                          psRequest->m_headers);
@@ -114,7 +142,6 @@ WMSHTTPRequest::~WMSHTTPRequest() {
 CPLErr WMSHTTPFetchMulti(WMSHTTPRequest *pasRequest, int nRequestCount) {
     CPLErr ret = CE_None;
     CURLM *curl_multi = nullptr;
-    int still_running;
     int max_conn;
     int i, conn_i;
 
@@ -158,7 +185,8 @@ CPLErr WMSHTTPFetchMulti(WMSHTTPRequest *pasRequest, int nRequestCount) {
     }
 
     // add at most max_conn requests
-    for (conn_i = 0; conn_i < std::min(nRequestCount, max_conn); ++conn_i) {
+    int torun = std::min(nRequestCount, max_conn);
+    for (conn_i = 0; conn_i < torun; ++conn_i) {
         WMSHTTPRequest *const psRequest = &pasRequest[conn_i];
         CPLDebug("HTTP", "Requesting [%d/%d] %s", conn_i + 1, nRequestCount,
             pasRequest[conn_i].URL.c_str());
@@ -166,65 +194,56 @@ CPLErr WMSHTTPFetchMulti(WMSHTTPRequest *pasRequest, int nRequestCount) {
     }
 
     void* old_handler = CPLHTTPIgnoreSigPipe();
-    while (curl_multi_perform(curl_multi, &still_running) == CURLM_CALL_MULTI_PERFORM);
-
-    while (still_running || (conn_i != nRequestCount)) {
-        struct timeval timeout;
-        fd_set fdread, fdwrite, fdexcep;
-        int maxfd;
-        CURLMsg *msg;
-        int msgs_in_queue;
-
+    int still_running;
+    do {
+        CURLMcode mc;
         do {
-            msg = curl_multi_info_read(curl_multi, &msgs_in_queue);
-            if (msg != nullptr) {
-                if (msg->msg == CURLMSG_DONE) {
-                    // transfer completed, add more handles if available
-                    if (conn_i < nRequestCount) {
-                        WMSHTTPRequest *const psRequest = &pasRequest[conn_i];
-                        CPLDebug("HTTP", "Requesting [%d/%d] %s", conn_i + 1,
-                                    nRequestCount, pasRequest[conn_i].URL.c_str());
-                        curl_multi_add_handle(curl_multi, psRequest->m_curl_handle);
-                        ++conn_i;
-                    }
+            mc = curl_multi_perform(curl_multi, &still_running);
+        } while (CURLM_CALL_MULTI_PERFORM == mc);
+
+        // Pick up messages, clean up the completed ones, add more
+        int msgs_in_queue = 0;
+        do {
+            CURLMsg *m = curl_multi_info_read(curl_multi, &msgs_in_queue);
+            if (m && (m->msg == CURLMSG_DONE)) {
+                ProcessCurlErrors(m, pasRequest, nRequestCount);
+
+                curl_multi_remove_handle(curl_multi, m->easy_handle);
+                if (conn_i < nRequestCount) {
+                    auto psRequest = &pasRequest[conn_i];
+                    CPLDebug("HTTP", "Requesting [%d/%d] %s", conn_i + 1,
+                        nRequestCount, pasRequest[conn_i].URL.c_str());
+                    curl_multi_add_handle(curl_multi, psRequest->m_curl_handle);
+                    ++conn_i;
+                    still_running = 1; // Still have request pending
                 }
             }
-        } while (msg != nullptr);
+        } while (msgs_in_queue);
 
-        FD_ZERO(&fdread);
-        FD_ZERO(&fdwrite);
-        FD_ZERO(&fdexcep);
-        curl_multi_fdset(curl_multi, &fdread, &fdwrite, &fdexcep, &maxfd);
-        if( maxfd >= 0 )
-        {
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100000;
-            if( select(maxfd + 1, &fdread, &fdwrite, &fdexcep, &timeout) < 0 )
-            {
-                CPLError(CE_Failure, CPLE_AppDefined, "select() failed");
-                break;
+        if (CURLM_OK == mc) {
+            int numfds;
+            curl_multi_wait(curl_multi, nullptr, 0, 100, &numfds);
+        }
+    } while (still_running || conn_i != nRequestCount);
+
+    // process any message still in queue
+    CURLMsg* msg;
+    int msgs_in_queue;
+    do {
+        msg = curl_multi_info_read(curl_multi, &msgs_in_queue);
+        if (msg != nullptr) {
+            if (msg->msg == CURLMSG_DONE) {
+                ProcessCurlErrors(msg, pasRequest, nRequestCount);
             }
         }
+    } while (msg != nullptr);
 
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-        if( CPLTestBool(CPLGetConfigOption("GDAL_WMS_ABORT_CURL_REQUEST",  "NO")) )
-        {
-            // oss-fuzz has no network interface and apparently this causes
-            // endless loop here. There might be a better/more general way of
-            // detecting this, and avoid this oss-fuzz specific trick, but
-            // for now that's good enough.
-            break;
-        }
-#endif
-
-        while (curl_multi_perform(curl_multi, &still_running) == CURLM_CALL_MULTI_PERFORM);
-    }
     CPLHTTPRestoreSigPipeHandler(old_handler);
 
     if (conn_i != nRequestCount) { // something gone really really wrong
         // oddly built libcurl or perhaps absence of network interface
         CPLError(CE_Failure, CPLE_AppDefined,
-                 "CPLHTTPFetchMulti(): conn_i != nRequestCount, this should never happen ...");
+                 "WMSHTTPFetchMulti(): conn_i != nRequestCount, this should never happen ...");
         nRequestCount = conn_i;
         ret = CE_Failure;
     }
@@ -234,7 +253,9 @@ CPLErr WMSHTTPFetchMulti(WMSHTTPRequest *pasRequest, int nRequestCount) {
 
         long response_code;
         curl_easy_getinfo(psRequest->m_curl_handle, CURLINFO_RESPONSE_CODE, &response_code);
-        psRequest->nStatus = static_cast<int>(response_code);
+        // for local files, don't update the status code if one is already set
+        if(!(psRequest->nStatus != 0 && STARTS_WITH(psRequest->URL.c_str(), "file://")))
+            psRequest->nStatus = static_cast<int>(response_code);
 
         char *content_type = nullptr;
         curl_easy_getinfo(psRequest->m_curl_handle, CURLINFO_CONTENT_TYPE, &content_type);
@@ -256,7 +277,7 @@ CPLErr WMSHTTPFetchMulti(WMSHTTPRequest *pasRequest, int nRequestCount) {
             && psRequest->pabyData != nullptr )
             psRequest->Error = reinterpret_cast<const char *>(psRequest->pabyData);
 
-        CPLDebug("HTTP", "Request [%d] %s : status = %d, content type = %s, error = %s",
+        CPLDebug("HTTP", "Request [%d] %s : status = %d, type = %s, error = %s",
                  i, psRequest->URL.c_str(), psRequest->nStatus,
                  !psRequest->ContentType.empty() ? psRequest->ContentType.c_str() : "(null)",
                  !psRequest->Error.empty() ? psRequest->Error.c_str() : "(null)");

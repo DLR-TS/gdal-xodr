@@ -8,6 +8,8 @@ JP2Lura -- JPEG2000 driver based on Lurawave library
 
 .. versionadded:: 2.2
 
+.. build_dependencies:: Lurawave library
+
 This driver is an implementation of a JPEG2000 reader/writer based on
 Lurawave library.
 
@@ -86,7 +88,7 @@ Creation Options
    the GeoJP2 (GeoTIFF in JPEG2000) specification should be included in
    the file. Defaults to NO.
 -  **SPLIT_IEEE754=YES/NO**: Whether encoding of Float32 bands as 3
-   bands with values decomposed according to IEEE-754 struture: first
+   bands with values decomposed according to IEEE-754 structure: first
    band (1 bit, signed) with sign bit, second band (8 bits, unsigned)
    with exponent value and third band (23 bits, unsigned) with mantissa
    value. Default to NO. This is a non-standard extension to encode
@@ -104,7 +106,7 @@ Creation Options
 -  **SPEED_MODE=Fast/Accurate**: This property tag is used to set the
    speed mode to be used during lossy compression. The following modes
    are defined. Default is Fast
--  **RATE=int_value.** When specifyig this value, the target compressed
+-  **RATE=int_value.** When specifying this value, the target compressed
    file size will be the uncompressed file size divided by RATE. In
    general the achieved rate will be exactly the requested size or a few
    bytes lower. Will force use of irreversible wavelet. Default value: 0
@@ -116,7 +118,7 @@ Creation Options
    JPEG2000 file will depend of the image content. Only used for
    irreversible compression. The compression quality cannot be used
    together the property RATE. Default value: 0 (maximum quality). When
-   usin this option together with SPLIT_IEEE754=YES, the sign bit and
+   using this option together with SPLIT_IEEE754=YES, the sign bit and
    exponent bands will have to be switched to irreversible encoding,
    which can lead to huge loss in the reconstructed floating-point
    value.
@@ -176,7 +178,7 @@ Creation Options
    several layers. The PCRL (position) should be used with precincts.
    Defaults to LRCP.
 
--  **JPX=YES/NO**: Whether to advertize JPX features, and add a Reader
+-  **JPX=YES/NO**: Whether to advertise JPX features, and add a Reader
    requirement box, when a GMLJP2 box is written (for GMLJP2 v2, the
    branding will also be "jpx "). Defaults to YES. This option should
    not be used unless compatibility problems with a reader occur.

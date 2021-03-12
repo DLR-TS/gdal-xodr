@@ -125,7 +125,7 @@ class ERSDataset final: public RawDataset
     static int Identify( GDALOpenInfo * );
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
-                                GDALDataType eType, char ** papszParmList );
+                                GDALDataType eType, char ** papszParamList );
 };
 
 /************************************************************************/
@@ -745,7 +745,7 @@ void ERSDataset::ReadGCPs()
 /* ==================================================================== */
 /************************************************************************/
 
-class ERSRasterBand : public RawRasterBand
+class ERSRasterBand final: public RawRasterBand
 {
   public:
     ERSRasterBand( GDALDataset *poDS, int nBand, VSILFILE * fpRaw,
@@ -1512,7 +1512,7 @@ void GDALRegister_ERS()
     poDriver->SetDescription( "ERS" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "ERMapper .ers Labelled" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_ers.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/ers.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "ers" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Int32 UInt32 "

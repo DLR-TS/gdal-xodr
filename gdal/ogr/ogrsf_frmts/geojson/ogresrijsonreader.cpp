@@ -292,10 +292,10 @@ bool OGRESRIJSONReader::AddFeature( OGRFeature* poFeature )
 }
 
 /************************************************************************/
-/*                           ReadGeometry()                             */
+/*                       OGRESRIJSONReadGeometry()                      */
 /************************************************************************/
 
-OGRGeometry* OGRESRIJSONReader::ReadGeometry( json_object* poObj )
+OGRGeometry* OGRESRIJSONReadGeometry( json_object* poObj )
 {
     OGRGeometry* poGeometry = nullptr;
 
@@ -310,6 +310,33 @@ OGRGeometry* OGRESRIJSONReader::ReadGeometry( json_object* poObj )
 
     return poGeometry;
 }
+
+
+/************************************************************************/
+/*                     OGR_G_CreateGeometryFromEsriJson()               */
+/************************************************************************/
+
+/** Create a OGR geometry from a ESRIJson geometry object */
+OGRGeometryH OGR_G_CreateGeometryFromEsriJson( const char* pszJson )
+{
+    if( nullptr == pszJson )
+    {
+        // Translation failed.
+        return nullptr;
+    }
+
+    json_object *poObj = nullptr;
+    if( !OGRJSonParse(pszJson, &poObj) )
+        return nullptr;
+
+    OGRGeometry* poGeometry = OGRESRIJSONReadGeometry( poObj );
+
+    // Release JSON tree.
+    json_object_put( poObj );
+
+    return OGRGeometry::ToHandle(poGeometry);
+}
+
 
 /************************************************************************/
 /*                           ReadFeature()                              */
@@ -390,19 +417,11 @@ OGRFeature* OGRESRIJSONReader::ReadFeature( json_object* poObj )
 
     if( nullptr != poObjGeom )
     {
-        OGRGeometry* poGeometry = ReadGeometry( poObjGeom );
+        OGRGeometry* poGeometry = OGRESRIJSONReadGeometry( poObjGeom );
         if( nullptr != poGeometry )
         {
             poFeature->SetGeometryDirectly( poGeometry );
         }
-    }
-    else
-    {
-        CPLError( CE_Failure, CPLE_AppDefined,
-                  "Invalid Feature object. "
-                  "Missing \'geometry\' member." );
-        delete poFeature;
-        return nullptr;
     }
 
     return poFeature;
@@ -1025,6 +1044,21 @@ OGRSpatialReference* OGRESRIJSONReadSpatialReference( json_object* poObj )
             {
                 delete poSRS;
                 poSRS = nullptr;
+            }
+            else
+            {
+                int nEntries = 0;
+                int* panMatchConfidence = nullptr;
+                OGRSpatialReferenceH* pahSRS = poSRS->FindMatches(
+                    nullptr, &nEntries, &panMatchConfidence);
+                if( nEntries == 1 && panMatchConfidence[0] >= 70 )
+                {
+                    delete poSRS;
+                    poSRS = OGRSpatialReference::FromHandle(pahSRS[0])->Clone();
+                    poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                }
+                OSRFreeSRSArray(pahSRS);
+                CPLFree(panMatchConfidence);
             }
 
             return poSRS;

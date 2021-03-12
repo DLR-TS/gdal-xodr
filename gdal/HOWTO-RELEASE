@@ -61,7 +61,9 @@ Perl module maintainer to make a CPAN release.
 4) Update LIBGDAL_CURRENT/REVISION/AGE macros in GDALmake.opt.in.
    - For a release with no interface changes just bump REVISION.
    - Adding interfaces, bump CURRENT/AGE, set REVISION to 0.
-   - Deleting interfaces / compatibility issues - bump CURRENT, others to zero.
+   - Deleting/changing interfaces in C or C++ API, or modification of
+     the C++ ABI (e.g. addition of virtual method, new argument with default value, etc.):
+     bump CURRENT, set others to zero.
 
 5) Prepare release overview in the NEWS file. For example, to get all changes
    from v2.2.0 to current HEAD (from gdal/ subdirectory)
@@ -69,76 +71,121 @@ Perl module maintainer to make a CPAN release.
 
   - commit new version to NEWS file.
 
-6) Update the GDAL http://trac.osgeo.org/gdal/wiki/DownloadSource topic to
-   refer to the latest available source.
-   Update http://trac.osgeo.org/gdal/wiki (Releases section)
-   Update http://trac.osgeo.org/gdal/wiki/NewsAndStatus
+  Create a News page in Trac for the release, like
+    http://trac.osgeo.org/gdal/wiki/Release/3.1.0-News
 
-7) If this is a major release, prepare a branch.
+6) If this is a feature release (e.g 3.1), prepare a branch.
 
    git checkout master
    git pull origin master
-   git checkout -b release/2.3
-   git push origin release/2.3
+   git checkout -b release/3.1
+   git push origin release/3.1
 
-8) Tag the release set in git:
+7) Tag the release with a RC suffix:
 
-   git checkout release/2.3
-   git pull origin release/2.3
-   git tag -a -m "Create tag v2.3.0" v2.3.0
-   git push origin v2.3.0
+   git checkout release/3.1
+   git pull origin release/3.1
+   git tag -a -m "Create tag v3.1.0RC1" v3.1.0RC1
+   git push origin v3.1.0RC1
 
-9) Create the source distributions using the mkgdaldist.sh script.  The
-   argument should be the version number (i.e. 1.4.2). As our process involves
+8) Prepare archives
+
+8.1) Log onto a dedicated machine, or a controlled
+   environment. Currently, I (Even Rouault), log on rouault@osgeo7-wordpress
+
+   with ~/.ssh/config containing:
+
+   Host osgeo7-*
+        ProxyCommand ssh rouault@download.osgeo.org -W $(sed -e "s/^osgeo7-//;s/$/.lxd/" <<< "%h"):%p
+
+   There I have SWIG 2.0.12 and Doxygen 1.8.11 that I enable with:
+
+   export PATH=$HOME/install-swig-2.0.12/bin:$PATH
+   export PATH=$HOME/install-doxygen-1.8.11/bin:$PATH
+
+   SWIG 3 could now probably been used.
+   There were issues with Doxygen versions regarding
+   man page generation (man/man1 content to be checked w.r.t older releases),
+   but this will only apply to GDAL < 3.1 since with GDAL 3.1 we use Sphinx.
+
+8.2) Create the source distributions using the mkgdaldist.sh script (under gdal/
+   in git). 
+   The argument should be the version number (i.e. 1.4.2). As our process involves
    doing betas or RCs, use the -rc option so that the filenames include this
    information (after promotion to official release, filename renaming will have
    to be done)
 
-   % mkgdaldist.sh 2.3.0 -tag v2.3.0 -rc RC1
+   % mkgdaldist.sh 3.1.0 -tag v3.1.0RC1 -rc rc1
 
    For a beta version:
 
-   % mkgdaldist.sh 2.3.0beta1 -tag v2.3.0beta1
+   % mkgdaldist.sh 3.1.0beta1 -tag v3.1.0beta1
 
-10) Create a snapshot of the documentation.
+   It might be useful to compare the content of the generated tarball, with
+   a previous release (diff -Nur gdal-3.0.1 gdal-3.0.2).
+   This is more easily doable for a bugfix release.
 
- i.e. On www.gdal.org:
- % cd /var/www/gdal
- % ./gdal-web-refresh.sh
- % zip -r ~/gdal230beta1doc.zip gdal-web --exclude "gdal-web/1.11/*" --exclude "gdal-web/daily/*"
+8.3) Create a snapshot of the documentation (only for feature releases)
 
-12) Publish the resulting files in download.osgeo.org/gdal/X.Y.Z (where X.Y.Z is the version number)
-    and add a symlink from X.Y.Z to CURRENT (except for stable releases in a "old" branch).
+    0. Potentially refresh
+       https://download.osgeo.org/gdal/for_doc/javadoc.zip (./make_doc.sh from swig/java)
+       https://download.osgeo.org/gdal/for_doc/python-doc.tar.gz (make doc-tarball from swig/python)
+    1. cd doc
+    2. ./build_doc_snapshot 310
+       This generates gdal310doc.zip
+
+8.4) Publish the resulting files on download.osgeo.org, 
+    in /osgeo/download/gdal/X.Y.Z (where X.Y.Z is the version number)
+
+
+9) Announce the release candidate availability to gdal-dev@
+   Example: https://lists.osgeo.org/pipermail/gdal-dev/2019-June/050509.html
+
+10) If new RC is needed, update gcore/gdal_version.h.in with the new date
+    and update NEWS,and go to 7)
+
+    If no new RC is needed, after a few days, raise a motion to gdal-dev@ for approval
+
+11) Once the vote has positively completed,
+
+11.1) Tag the release as final:
+
+    git checkout v3.1.0RC1
+    git tag -a -m "Create tag v3.1.0" v3.1.0
+    git push origin v3.1.0
+
+11.2) Log on download.osgeo.org, go to /osgeo/download/gdal/X.Y.Z
+
+      Remove the RC suffixes for the final RC, like:
+      mv gdal-3.1.0rc1.tar.xz gdal-3.1.0.tar.xz
+      mv gdal-3.1.0rc1.tar.xz.md5 gdal-3.1.0.tar.xz.md5
+      mv gdal-3.1.0rc1.tar.gz gdal-3.1.0.tar.gz
+      mv gdal-3.1.0rc1.tar.gz.md5 gdal-3.1.0.tar.gz.md5
+      mv gdal310rc1.zip gdal310.zip
+      mv gdal310rc1.zip.md5 gdal310.zip.md5
+      mv gdalautotest-3.1.0rc1.tar.gz gdalautotest-3.1.0.tar.gz
+      mv gdalautotest-3.1.0rc1.zip gdalautotest-3.1.0.zip
+
+      And edit the .md5 file to remove the reference to RC in the names they contain
+      vim gdal-3.1.0.tar.gz.md5
+      vim gdal-3.1.0.tar.xz.md5
+      vim gdal310.zip.md5
+
+      Check that everything is fine:
+      md5sum -c *.md5
+
+11.3) In /osgeo/download/gdal, add a symlink from X.Y.Z to CURRENT (except for stable releases in a "old" branch).
 
   % ln -sf X.Y.Z CURRENT
 
-13) Announce release to :
-    - major release: gdal-dev@lists.osgeo.org, gdal-announce@lists.osgeo.org, news_item@osgeo.org.
-    - bugfix release: gdal-dev@lists.osgeo.org, gdal-announce@lists.osgeo.org
+12) (Removed)
 
-Note: gdal-announce@ is moderated. Make sure that your email address is approved
-('mod' tick disabled in https://lists.osgeo.org/mailman/admin/gdal-announce/members),
-or your message manually approved, with an administrator of the list.
+13) Update doc/source/about_no_title.rst and doc/source/download.rst to advertise the new release and link to the release notes
 
-14) Update the freecode.com (previously freshmeat) entry for GDAL.
+14) Update GitHub to close the release milestone. 
+    Then create a new milestone for the next release.
 
-15) Update the freegis.org entry for GDAL.
-
-16) Update doc/source/about_no_title.rst and doc/source/download.rst to advertize the new release and link to the release notes
-
-17) Create a News page in Trac for the release (like
-http://trac.osgeo.org/gdal/wiki/Release/1.7.0-News) and reference it from
-http://trac.osgeo.org/gdal/ (Releases) and
-http://trac.osgeo.org/gdal/wiki/NewsAndStatus .
-
-18) Add pointers to the source releases at:
-
-  http://trac.osgeo.org/gdal/wiki/DownloadSource
-
-19) Update Trac to mark this release milestone as "Completed", and create
-    a corresponding version.  Then create a new milestone for the next release.
-
-20) Upload the new Python bindings to Pypi (requires upload rights to
+15) Upload the new Python bindings to Pypi (requires upload rights to
 the GDAL package by one of the current owners : HowardB/FrankW/EvenR)
 ( procedure taken from http://peterdowns.com/posts/first-time-with-pypi.html )
 
@@ -170,7 +217,7 @@ e) For trial :
 f) For real :
     twine upload dist/GDAL*.gz
 
-21) Build and bundle the java bindings.
+16) Build and bundle the java bindings.
 
 a) cd swig/java
 
@@ -182,7 +229,7 @@ c) Build the bindings:
 
      make
 
-22) Build maven artifacts. NOTE: This step only works on Linux and OSX since it
+17) Build maven artifacts. NOTE: This step only works on Linux and OSX since it
     requires a shell script to build javadocs.
 
     A quick one-liner for this step is:
@@ -229,7 +276,7 @@ b)  Sign maven artifacts with GPG. This step is required in order to deploy the
     that contains all the maven artifacts with signatures. This file is what
     will be uploaded to maven central. See the next step.
 
-23) Deploy maven artifacts to Maven central.
+18) Deploy maven artifacts to Maven central.
 
     NOTE: Before you can deploy to maven central you must set up an account
     in Sonatype JIRA. That can be done here:
@@ -273,4 +320,27 @@ f) Select the staging repository. If all is well You should see the option to
 e) Click the "Release" button and that is it! The release should be available in
    Maven Central shortly. You can verify this by going to search.maven.org and
    searching for "gdal".
+
+19) Create a release on GitHub
+    Go to https://github.com/OSGeo/gdal/releases/new
+    And create a release for the vX.Y.Z tag
+    Attach the gdal-X.Y.Z.tar.gz, gdal-X.Y.Z.tar.gz.md5, gdalXYZ.zip, gdalXYZ.zip.md5 and gdalautotest-X.Y.Z.zip files
+
+20) Regenerate Docker images
+
+    e.g
+        ./docker/build-all.sh --tag 3.0.2 --gdal v3.0.2 --proj 6.2.1 --release --push
+
+
+21) Announce release to :
+    - major release: gdal-dev@lists.osgeo.org, gdal-announce@lists.osgeo.org, news_item@osgeo.org.
+    - bugfix release: gdal-dev@lists.osgeo.org, gdal-announce@lists.osgeo.org
+
+   Example:
+    - bugfix release: https://lists.osgeo.org/pipermail/gdal-dev/2019-July/050543.html
+    - feature release: https://lists.osgeo.org/pipermail/gdal-dev/2020-May/052117.html
+
+Note: gdal-announce@ is moderated. Make sure that your email address is approved
+('mod' tick disabled in https://lists.osgeo.org/mailman/admin/gdal-announce/members),
+or your message manually approved, with an administrator of the list.
 

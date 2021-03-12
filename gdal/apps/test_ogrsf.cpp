@@ -33,6 +33,7 @@
 #include "ogr_api.h"
 #include "ogr_p.h"
 #include "ogrsf_frmts.h"
+#include "ogr_swq.h"
 #include "commonutils.h"
 
 #include <algorithm>
@@ -897,7 +898,8 @@ static int TestCreateLayer( GDALDriver* poDriver, OGRwkbGeometryType eGeomType )
         !EQUAL(poDriver->GetDescription(), "PDF") &&
         !EQUAL(poDriver->GetDescription(), "GeoJSON") &&
         !EQUAL(poDriver->GetDescription(), "OGR_GMT") &&
-        !EQUAL(poDriver->GetDescription(), "PDS4") )
+        !EQUAL(poDriver->GetDescription(), "PDS4") &&
+        !EQUAL(poDriver->GetDescription(), "FlatGeobuf") )
     {
         /* Reopen dataset */
         poDS = LOG_ACTION(static_cast<GDALDataset*>(GDALOpenEx(osFilename,
@@ -1350,6 +1352,18 @@ static int TestOGRLayerFeatureCount( GDALDataset* poDS, OGRLayer *poLayer,
         printf("ERROR: An error was reported : %s\n",
                CPLGetLastErrorMsg());
     }
+
+    // Drivers might or might not emit errors when attempting to iterate
+    // after EOF
+    CPLPushErrorHandler(CPLQuietErrorHandler);
+    auto poFeat = LOG_ACTION(poLayer->GetNextFeature());
+    CPLPopErrorHandler();
+    if( poFeat != nullptr )
+    {
+        bRet = FALSE;
+        printf("ERROR: GetNextFeature() returned non NULL feature after end of iteration.\n");
+    }
+    delete poFeat;
 
     if( nFC != nClaimedFC )
     {
@@ -2355,7 +2369,10 @@ static int TestAttributeFilter( CPL_UNUSED GDALDataset* poDS,
 /* -------------------------------------------------------------------- */
 
     CPLString osAttributeFilter;
-    if( pszFieldName[0] == '\0' || strchr(pszFieldName, '_') || strchr(pszFieldName, ' ') )
+    const bool bMustQuoteAttrName =
+        pszFieldName[0] == '\0' || strchr(pszFieldName, '_') ||
+        strchr(pszFieldName, ' ') || swq_is_reserved_keyword(pszFieldName);
+    if( bMustQuoteAttrName )
     {
         osAttributeFilter = "\"";
         osAttributeFilter += pszFieldName;
@@ -2413,7 +2430,7 @@ static int TestAttributeFilter( CPL_UNUSED GDALDataset* poDS,
 /* -------------------------------------------------------------------- */
 /*      Construct exclusive filter.                                     */
 /* -------------------------------------------------------------------- */
-    if( pszFieldName[0] == '\0' || strchr(pszFieldName, '_') || strchr(pszFieldName, ' ') )
+    if( bMustQuoteAttrName )
     {
         osAttributeFilter = "\"";
         osAttributeFilter += pszFieldName;
@@ -2548,7 +2565,7 @@ static int TestOGRLayerUTF8 ( OGRLayer *poLayer )
     bool bFoundString = false;
     bool bFoundNonASCII = false;
     bool bFoundUTF8 = false;
-    bool bCanAdvertizeUTF8 = true;
+    bool bCanAdvertiseUTF8 = true;
 
     OGRFeature* poFeature = nullptr;
     while( bRet &&
@@ -2595,7 +2612,7 @@ static int TestOGRLayerUTF8 ( OGRLayer *poLayer )
                     else
                     {
                         if (!bIsUTF8)
-                            bCanAdvertizeUTF8 = false;
+                            bCanAdvertiseUTF8 = false;
                     }
                 }
             }
@@ -2606,7 +2623,7 @@ static int TestOGRLayerUTF8 ( OGRLayer *poLayer )
     if( !bFoundString )
     {
     }
-    else if (bCanAdvertizeUTF8 && bVerbose)
+    else if (bCanAdvertiseUTF8 && bVerbose)
     {
         if (bIsAdvertizedAsUTF8)
         {
@@ -2707,7 +2724,7 @@ static int TestGetExtent ( OGRLayer *poLayer, int iGeomField )
             else
             {
                 printf("INFO: unknown relationship between sExtent and "
-                       "sExentSlow.\n");
+                       "sExtentSlow.\n");
             }
             printf("INFO: sExtentSlow.MinX = %.15f\n", sExtentSlow.MinX);
             printf("INFO: sExtentSlow.MinY = %.15f\n", sExtentSlow.MinY);
@@ -3317,11 +3334,7 @@ static int TestLayerSQL( GDALDataset* poDS, OGRLayer * poLayer )
     DestroyFeatureAndNullify(poLayerFeat);
     DestroyFeatureAndNullify(poSQLFeat);
 
-    if( poSQLLyr )
-    {
-        LOG_ACTION(poDS->ReleaseResultSet(poSQLLyr));
-        poSQLLyr = nullptr;
-    }
+    LOG_ACTION(poDS->ReleaseResultSet(poSQLLyr));
 
     /* Try ResetReading(), GetNextFeature(), ResetReading(), GetNextFeature() */
     poSQLLyr = LOG_ACTION(poDS->ExecuteSQL(osSQL.c_str(), nullptr, nullptr));

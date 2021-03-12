@@ -30,7 +30,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-
+import struct
 
 from osgeo import gdal, ogr, osr
 import gdaltest
@@ -129,7 +129,7 @@ def test_gdal_rasterize_lib_3():
     gt_ref = ds_ref.GetGeoTransform()
     gt = ds.GetGeoTransform()
     for i in range(6):
-        assert abs(gt[i] - gt_ref[i]) <= 1e-6, 'did not get expected geotransform'
+        assert gt[i] == pytest.approx(gt_ref[i], abs=1e-6), 'did not get expected geotransform'
 
     wkt = ds.GetProjectionRef()
     assert wkt.find("WGS_1984") != -1, 'did not get expected SRS'
@@ -319,6 +319,86 @@ def test_gdal_rasterize_lib_4():
 
         target_ds = None
 
-    
+
+def test_gdal_rasterize_lib_multipolygon():
+
+    sr_wkt = 'LOCAL_CS["arbitrary"]'
+    sr = osr.SpatialReference(sr_wkt)
+
+    # Try rasterizing a multipolygon
+    vector_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
+    layer = vector_ds.CreateLayer('', sr)
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometryDirectly(ogr.CreateGeometryFromWkt('MULTIPOLYGON (((0 0,0 1,1 1,0 0)),((1 1,2 1,2 0,1 1)))'))
+    layer.CreateFeature(feature)
+
+    target_ds = gdal.GetDriverByName('MEM').Create('', 3, 2)
+    target_ds.SetGeoTransform((-0.5, 1, 0, 1.5, 0, -1))
+    target_ds.SetSpatialRef(sr)
+    ret = gdal.Rasterize(target_ds, vector_ds, burnValues=[10])
+    assert ret == 1
+    cs1 = target_ds.GetRasterBand(1).Checksum()
+
+    # And now each of its parts
+    vector_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
+    layer = vector_ds.CreateLayer('', sr)
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometryDirectly(ogr.CreateGeometryFromWkt('POLYGON ((0 0,0 1,1 1,0 0))'))
+    layer.CreateFeature(feature)
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometryDirectly(ogr.CreateGeometryFromWkt('POLYGON ((1 1,2 1,2 0,1 1))'))
+    layer.CreateFeature(feature)
+
+    target_ds = gdal.GetDriverByName('MEM').Create('', 3, 2)
+    target_ds.SetGeoTransform((-0.5, 1, 0, 1.5, 0, -1))
+    target_ds.SetSpatialRef(sr)
+    ret = gdal.Rasterize(target_ds, vector_ds, burnValues=[10])
+    assert ret == 1
+    cs2 = target_ds.GetRasterBand(1).Checksum()
+
+    # Check that results are the same
+    assert cs1 == cs2
 
 
+def test_gdal_rasterize_lib_inverse():
+
+    sr_wkt = 'LOCAL_CS["arbitrary"]'
+    sr = osr.SpatialReference(sr_wkt)
+
+    # Try rasterizing a multipolygon
+    vector_ds = gdal.GetDriverByName('Memory').Create('', 0, 0, 0)
+    layer = vector_ds.CreateLayer('', sr)
+
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometryDirectly(ogr.CreateGeometryFromWkt('MULTIPOLYGON (((1 1,1 9,4 9,4 1,1 1),(2 2,2 8,3 8,3 2,2 2)))'))
+    layer.CreateFeature(feature)
+
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometryDirectly(ogr.CreateGeometryFromWkt('POLYGON ((5 1,5 9,9 9,9 1,5 1))'))
+    layer.CreateFeature(feature)
+
+    # Will not be rasterized
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetGeometryDirectly(ogr.CreateGeometryFromWkt('POINT (5 5)'))
+    layer.CreateFeature(feature)
+
+    target_ds = gdal.GetDriverByName('MEM').Create('', 11, 11)
+    target_ds.SetGeoTransform((-0.5, 1, 0, 10.5, 0, -1))
+    target_ds.SetSpatialRef(sr)
+
+    with gdaltest.error_handler():
+        ret = gdal.Rasterize(target_ds, vector_ds, burnValues=[9], inverse=True)
+    assert ret == 1
+
+    expected = (9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                9, 9, 0, 0, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 0, 9, 0, 9, 0, 0, 0, 0, 9,
+                9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+                9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,)
+    assert struct.unpack('B'* 121, target_ds.ReadRaster()) == expected

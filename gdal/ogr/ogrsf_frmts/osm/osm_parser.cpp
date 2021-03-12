@@ -1918,7 +1918,6 @@ static OSMRetCode PBF_ProcessBlock(OSMContext* psCtxt)
     psCtxt->nBlobOffset = 0;
     psCtxt->nBlobSize = 0;
 
-    bool nRet = false;
     int nBlobCount = 0;
     OSMRetCode eRetCode = OSM_OK;
     unsigned int nBlobSizeAcc = 0;
@@ -1956,10 +1955,10 @@ static OSMRetCode PBF_ProcessBlock(OSMContext* psCtxt)
         psCtxt->nBytesRead += nHeaderSize;
 
         memset(psCtxt->pabyBlobHeader + nHeaderSize, 0, EXTRA_BYTES);
-        nRet = ReadBlobHeader(psCtxt->pabyBlobHeader, 
+        const bool bRet = ReadBlobHeader(psCtxt->pabyBlobHeader, 
                               psCtxt->pabyBlobHeader + nHeaderSize,
                               &nBlobSize, &eType);
-        if( !nRet || eType == BLOB_UNKNOWN )
+        if( !bRet || eType == BLOB_UNKNOWN )
         {
             eRetCode = OSM_ERROR;
             break;
@@ -1987,7 +1986,7 @@ static OSMRetCode PBF_ProcessBlock(OSMContext* psCtxt)
             }
             psCtxt->pabyBlob = pabyBlobNew;
         }
-        // Given how Protocol buffer work, we can merge sevaral buffers
+        // Given how Protocol buffer work, we can merge several buffers
         // by just appending them to the previous ones.
         if( VSIFReadL(psCtxt->pabyBlob + nBlobSizeAcc, 1,
                       nBlobSize, psCtxt->fp) != nBlobSize )
@@ -2020,8 +2019,8 @@ static OSMRetCode PBF_ProcessBlock(OSMContext* psCtxt)
     {
         psCtxt->nBlobOffset = 0;
         psCtxt->nBlobSize = nBlobSizeAcc;
-        nRet = ReadBlob(psCtxt, eType);
-        if( nRet )
+        const bool bRet = ReadBlob(psCtxt, eType);
+        if( bRet )
         {
             if( eRetCode == OSM_EOF &&
                 (psCtxt->iNextJob < psCtxt->nJobs ||

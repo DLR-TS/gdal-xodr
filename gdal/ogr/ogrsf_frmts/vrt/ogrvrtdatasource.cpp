@@ -44,7 +44,7 @@
 #include "ogr_core.h"
 #include "ogr_feature.h"
 #include "ogr_spatialref.h"
-#include "ogrlayerpool.h"
+#include "ogrlayerpool.h" 
 #include "ogrunionlayer.h"
 #include "ogrwarpedlayer.h"
 #include "ogrsf_frmts.h"
@@ -402,6 +402,7 @@ OGRLayer *OGRVRTDataSource::InstantiateUnionLayer(
         if( !EQUAL(pszLayerSRS, "NULL") )
         {
             OGRSpatialReference oSRS;
+            oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
             if( oSRS.SetFromUserInput(pszLayerSRS) != OGRERR_NONE )
             {
@@ -425,8 +426,7 @@ OGRLayer *OGRVRTDataSource::InstantiateUnionLayer(
         if( psSubNode->eType != CXT_Element )
             continue;
 
-        if( psSubNode->eType == CXT_Element &&
-            EQUAL(psSubNode->pszValue, "Field") )
+        if( EQUAL(psSubNode->pszValue, "Field") )
         {
             // Field name.
             const char *l_pszName = CPLGetXMLValue(psSubNode, "name", nullptr);
@@ -529,6 +529,7 @@ OGRLayer *OGRVRTDataSource::InstantiateUnionLayer(
                 if( !EQUAL(pszSRS, "NULL") )
                 {
                     OGRSpatialReference oSRS;
+                    oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
                     if( oSRS.SetFromUserInput(pszSRS) != OGRERR_NONE )
                     {

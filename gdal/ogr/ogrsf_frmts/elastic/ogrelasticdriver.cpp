@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Project:  ElasticSearch Translator
+ * Project:  Elasticsearch Translator
  * Purpose:
  * Author:
  *
@@ -32,23 +32,23 @@
 CPL_CVSID("$Id$")
 
 /************************************************************************/
-/*                   OGRElasticSearchDriverIdentify()                   */
+/*                   OGRElasticsearchDriverIdentify()                   */
 /************************************************************************/
 
-static int OGRElasticSearchDriverIdentify( GDALOpenInfo* poOpenInfo )
+static int OGRElasticsearchDriverIdentify( GDALOpenInfo* poOpenInfo )
 
 {
     return STARTS_WITH_CI(poOpenInfo->pszFilename, "ES:");
 }
 
 /************************************************************************/
-/*                  OGRElasticSearchDriverOpen()                        */
+/*                  OGRElasticsearchDriverOpen()                        */
 /************************************************************************/
 
-static GDALDataset* OGRElasticSearchDriverOpen( GDALOpenInfo* poOpenInfo )
+static GDALDataset* OGRElasticsearchDriverOpen( GDALOpenInfo* poOpenInfo )
 
 {
-    if( !OGRElasticSearchDriverIdentify(poOpenInfo) )
+    if( !OGRElasticsearchDriverIdentify(poOpenInfo) )
         return nullptr;
 
     OGRElasticDataSource *poDS = new OGRElasticDataSource();
@@ -61,9 +61,9 @@ static GDALDataset* OGRElasticSearchDriverOpen( GDALOpenInfo* poOpenInfo )
 }
 
 /************************************************************************/
-/*                     OGRElasticSearchDriverCreate()                   */
+/*                     OGRElasticsearchDriverCreate()                   */
 /************************************************************************/
-static GDALDataset* OGRElasticSearchDriverCreate( const char * pszName,
+static GDALDataset* OGRElasticsearchDriverCreate( const char * pszName,
                                                   CPL_UNUSED int nXSize,
                                                   CPL_UNUSED int nYSize,
                                                   CPL_UNUSED int nBands,
@@ -88,15 +88,15 @@ void RegisterOGRElastic() {
     if (!GDAL_CHECK_VERSION("OGR/Elastic Search driver"))
         return;
 
-    if( GDALGetDriverByName( "ElasticSearch" ) != nullptr )
+    if( GDALGetDriverByName( "Elasticsearch" ) != nullptr )
       return;
 
     GDALDriver  *poDriver = new GDALDriver();
 
-    poDriver->SetDescription( "ElasticSearch" );
+    poDriver->SetDescription( "Elasticsearch" );
     poDriver->SetMetadataItem( GDAL_DCAP_VECTOR, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "Elastic Search" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drv_elasticsearch.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/vector/elasticsearch.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CONNECTION_PREFIX, "ES:" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONOPTIONLIST,
                                "<CreationOptionList/>");
@@ -105,7 +105,7 @@ void RegisterOGRElastic() {
     "<LayerCreationOptionList>"
     "  <Option name='INDEX_NAME' type='string' description='Name of the index to create (or reuse). By default the index name is the layer name.'/>"
     "  <Option name='INDEX_DEFINITION' type='string' description='Filename from which to read a user-defined index definition, or index definition as serialized JSon.'/>"
-    "  <Option name='MAPPING_NAME' type='string' description='(ES &lt; 7) Name of the mapping type within the index.' default='FeatureCollection'/>."
+    "  <Option name='MAPPING_NAME' type='string' description='(ES &lt; 7) Name of the mapping type within the index.' default='FeatureCollection'/>"
     "  <Option name='MAPPING' type='string' description='Filename from which to read a user-defined mapping, or mapping as serialized JSon.'/>"
     "  <Option name='WRITE_MAPPING' type='string' description='Filename where to write the OGR generated mapping.'/>"
     "  <Option name='OVERWRITE' type='boolean' description='Whether to overwrite an existing type mapping with the layer name to be created' default='NO'/>"
@@ -115,6 +115,10 @@ void RegisterOGRElastic() {
     "    <Value>AUTO</Value>"
     "    <Value>GEO_POINT</Value>"
     "    <Value>GEO_SHAPE</Value>"
+    "  </Option>"
+    "  <Option name='GEO_SHAPE_ENCODING' type='string-select' description='Encoding for geo_shape geometry fields' default='GeoJSON'>"
+    "    <Value>GeoJSON</Value>"
+    "    <Value>WKT</Value>"
     "  </Option>"
     "  <Option name='GEOM_PRECISION' type='string' description='Desired geometry precision. Number followed by unit. For example 1m'/>"
     "  <Option name='STORE_FIELDS' type='boolean' description='Whether fields should be stored in the index' default='NO'/>"
@@ -138,11 +142,16 @@ void RegisterOGRElastic() {
 "  <Option name='LAYER' type='string' description='Index name or index_mapping to use for restricting layer listing'/>"
 "  <Option name='BATCH_SIZE' type='integer' description='Number of features to retrieve per batch' default='100'/>"
 "  <Option name='FEATURE_COUNT_TO_ESTABLISH_FEATURE_DEFN' type='integer' description='Number of features to retrieve to establish feature definition. -1 = unlimited' default='100'/>"
+"  <Option name='SINGLE_QUERY_TIMEOUT' type='float' description='Timeout in second for request such as GetFeatureCount() or GetExtent()'/>"
+"  <Option name='SINGLE_QUERY_TERMINATE_AFTER' type='integer' description='Maximum number of documents to collect for request such as GetFeatureCount() or GetExtent()'/>"
+"  <Option name='FEATURE_ITERATION_TIMEOUT' type='float' description='Timeout in second for feature iteration'/>"
+"  <Option name='FEATURE_ITERATION_TERMINATE_AFTER' type='integer' description='Maximum number of documents to collect for feature iteration'/>"
 "  <Option name='JSON_FIELD' type='boolean' description='Whether to include a field with the full document as JSON' default='NO'/>"
 "  <Option name='FLATTEN_NESTED_ATTRIBUTES' type='boolean' description='Whether to recursively explore nested objects and produce flatten OGR attributes' default='YES'/>"
 "  <Option name='BULK_INSERT' type='boolean' description='Whether to use bulk insert for feature creation' default='YES'/>"
 "  <Option name='BULK_SIZE' type='integer' description='Size in bytes of the buffer for bulk upload' default='1000000'/>"
 "  <Option name='FID' type='string' description='Field name, with integer values, to use as FID' default='ogc_fid'/>"
+"  <Option name='FORWARD_HTTP_HEADERS_FROM_ENV' type='string' description='Comma separated list of http_header_name=env_variable_name'/>"
 "</OpenOptionList>");
 
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONFIELDDATATYPES,
@@ -150,9 +159,9 @@ void RegisterOGRElastic() {
                                "Time IntegerList Integer64List RealList "
                                "StringList Binary" );
 
-    poDriver->pfnIdentify = OGRElasticSearchDriverIdentify;
-    poDriver->pfnOpen = OGRElasticSearchDriverOpen;
-    poDriver->pfnCreate = OGRElasticSearchDriverCreate;
+    poDriver->pfnIdentify = OGRElasticsearchDriverIdentify;
+    poDriver->pfnOpen = OGRElasticsearchDriverOpen;
+    poDriver->pfnCreate = OGRElasticsearchDriverCreate;
 
     GetGDALDriverManager()->RegisterDriver( poDriver );
 }

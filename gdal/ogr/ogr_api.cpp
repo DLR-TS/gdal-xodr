@@ -1284,7 +1284,7 @@ int OGR_G_GetGeometryCount( OGRGeometryH hGeom )
 /**
  * \brief Fetch geometry from a geometry container.
  *
- * This function returns an handle to a geometry within the container.
+ * This function returns a handle to a geometry within the container.
  * The returned geometry remains owned by the container, and should not be
  * modified.  The handle is only valid until the next change to the
  * geometry container.  Use OGR_G_Clone() to make a copy.
@@ -1819,7 +1819,7 @@ OGRGeometryH OGR_G_Value( OGRGeometryH hGeom, double dfDistance )
  * Libraries should generally *not* use that method, since that could interfere
  * with other libraries or applications.
  *
- * Note that it *does* not affect the behaviour of the C++ API.
+ * Note that it *does* not affect the behavior of the C++ API.
  *
  * @param bFlag TRUE if non-linear geometries might be returned (default value).
  *              FALSE to ask for non-linear geometries to be approximated as

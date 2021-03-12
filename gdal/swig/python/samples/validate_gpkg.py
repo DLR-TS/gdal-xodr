@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ###############################################################################
 # $Id$
@@ -101,16 +101,16 @@ class GPKGChecker(object):
                 if name != expected_name:
                     continue
 
-                if expected_type == 'INTEGER' and expected_pk:
+                if 'INTEGER' in expected_type and expected_pk:
                     expected_notnull = 1
                 if typ == 'INTEGER' and pk:
                     notnull = 1
                 if not self.extended_pragma_info and expected_pk > 1:
                     expected_pk = 1
 
-                self._assert(typ == expected_type, req,
+                self._assert(typ in expected_type, req,
                              'Wrong type for %s of %s. Expected %s, got %s' %
-                             (name, table_name, expected_type, typ))
+                             (name, table_name, str(expected_type), typ))
                 self._assert(notnull == expected_notnull, req,
                              ('Wrong notnull for %s of %s. ' +
                               'Expected %s, got %s') %
@@ -535,11 +535,11 @@ class GPKGChecker(object):
             c.execute('PRAGMA table_info(%s)' % _esc_id(rtree_name))
             columns = c.fetchall()
             expected_columns = [
-                (0, 'id', '', 0, None, 0),
-                (1, 'minx', '', 0, None, 0),
-                (2, 'maxx', '', 0, None, 0),
-                (3, 'miny', '', 0, None, 0),
-                (4, 'maxy', '', 0, None, 0)
+                (0, 'id', ['', 'INT'], 0, None, 0),
+                (1, 'minx', ['', 'NUM', 'REAL'], 0, None, 0),
+                (2, 'maxx', ['', 'NUM', 'REAL'], 0, None, 0),
+                (3, 'miny', ['', 'NUM', 'REAL'], 0, None, 0),
+                (4, 'maxy', ['', 'NUM', 'REAL'], 0, None, 0)
             ]
             self._check_structure(columns, expected_columns, 77, rtree_name)
 
@@ -1116,11 +1116,7 @@ class GPKGChecker(object):
                                  'Tile for %s should be PNG' % table_name)
                     if has_gdal:
                         tmp_file = '/vsimem/temp_validate_gpkg.tif'
-                        try:
-                            blob = bytes(blob)
-                        except:
-                            blob = str(blob)
-                        gdal.FileFromMemBuffer(tmp_file, blob)
+                        gdal.FileFromMemBuffer(tmp_file, bytes(blob))
                         ds = gdal.Open(tmp_file)
                         try:
                             self._assert(ds is not None, 'gpkg_2d_gridded_coverage#13',
@@ -1145,11 +1141,7 @@ class GPKGChecker(object):
                                  'Tile for %s should be TIFF' % table_name)
                     if has_gdal:
                         tmp_file = '/vsimem/temp_validate_gpkg.tif'
-                        try:
-                            blob = bytes(blob)
-                        except:
-                            blob = str(blob)
-                        gdal.FileFromMemBuffer(tmp_file, blob)
+                        gdal.FileFromMemBuffer(tmp_file, bytes(blob))
                         ds = gdal.Open(tmp_file)
                         try:
                             self._assert(ds is not None, 'gpkg_2d_gridded_coverage#15',
@@ -1646,17 +1638,16 @@ def Usage():
     print('')
     print('-q: quiet mode')
     print('-k: (try to) keep going when error is encountered')
-    sys.exit(1)
+    return 1
 
 
-if __name__ == '__main__':
-
+def main(argv):
     filename = None
     verbose = False
     abort_at_first_error = True
-    if len(sys.argv) == 1:
-        Usage()
-    for arg in sys.argv[1:]:
+    if len(argv) == 1:
+        return Usage()
+    for arg in argv[1:]:
         if arg == '-k':
             abort_at_first_error = False
         elif arg == '-q':
@@ -1664,20 +1655,26 @@ if __name__ == '__main__':
         elif arg == '-v':
             verbose = True
         elif arg[0] == '-':
-            Usage()
+            return Usage()
         else:
             filename = arg
     if filename is None:
-        Usage()
+        return Usage()
     ret = check(filename, abort_at_first_error=abort_at_first_error,
                 verbose=verbose)
     if not abort_at_first_error:
         if not ret:
-            sys.exit(0)
+            return 0
         else:
             for (req, msg) in ret:
                 if req:
                     print('Req %d: %s' % (req, msg))
                 else:
                     print(msg)
-            sys.exit(1)
+            return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
+

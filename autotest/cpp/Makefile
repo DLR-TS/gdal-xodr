@@ -6,7 +6,7 @@ CPPFLAGS:=$(filter-out -DGDAL_COMPILATION,$(CPPFLAGS))
 
 CFLAGS += -I. -Itut $(GDAL_INCLUDE)
 
-PROGS = gdal_unit_test testperfcopywords testcopywords testclosedondestroydm testthreadcond testvirtualmem testblockcache testblockcachewrite testblockcachelimits testdestroy testmultithreadedwriting test_include_from_c_file test_include_from_cpp_file test_include_from_cpp_file_with_extern_c test_osr_set_proj_search_paths bug1488
+PROGS = gdal_unit_test testperfcopywords testcopywords testclosedondestroydm testthreadcond testvirtualmem testblockcache testblockcachewrite testblockcachelimits testdestroy testmultithreadedwriting test_include_from_c_file test_include_from_cpp_file test_include_from_cpp_file_with_extern_c test_osr_set_proj_search_paths bug1488 proj_with_fork
 
 all: $(PROGS)
 
@@ -14,7 +14,7 @@ test check: all
 	make quick_test
 	./testperfcopywords
 
-quick_test: gdal_unit_test testcopywords testclosedondestroydm testthreadcond testvirtualmem testblockcache testblockcachewrite testblockcachelimits testmultithreadedwriting testdestroy bug1488
+quick_test: gdal_unit_test testcopywords testclosedondestroydm testthreadcond testvirtualmem testblockcache testblockcachewrite testblockcachelimits testmultithreadedwriting testdestroy test_osr_set_proj_search_paths bug1488 proj_with_fork
 	./gdal_unit_test
 	./testcopywords
 	./testclosedondestroydm
@@ -33,17 +33,20 @@ quick_test: gdal_unit_test testcopywords testclosedondestroydm testthreadcond te
 	./testdestroy
 	./test_osr_set_proj_search_paths
 	./bug1488
+	./proj_with_fork
 
-test_sse:
+testsse2:
 	$(CXX) -g -O2  testsse.cpp -o testsse -I../../gdal/port -I../../gdal/gcore
 	./testsse
+	$(CXX) -g -O2 -DUSE_SSE2_EMULATION -DNO_WARN_USE_SSE2_EMULATION testsse.cpp -o testsse -I../../gdal/port -I../../gdal/gcore
+	./testsse
+
+testavx2: testsse2
 	$(CXX) -g -O2 -mssse3 testsse.cpp -o testsse -I../../gdal/port -I../../gdal/gcore
 	./testsse
 	$(CXX) -g -O2 -mssse3 -msse4.1 testsse.cpp -o testsse -I../../gdal/port -I../../gdal/gcore
 	./testsse
 	$(CXX) -g -O2 -mavx2 testsse.cpp -o testsse -I../../gdal/port -I../../gdal/gcore
-	./testsse
-	$(CXX) -g -O2 -DUSE_SSE2_EMULATION testsse.cpp -o testsse -I../../gdal/port -I../../gdal/gcore
 	./testsse
 
 OBJ = \
@@ -126,6 +129,9 @@ test_osr_set_proj_search_paths: test_osr_set_proj_search_paths.o
 	$(LD) $(LDFLAGS) $< $(CONFIG_LIBS) -o $@
 
 bug1488: bug1488.o
+	$(LD) $(LDFLAGS) $< $(CONFIG_LIBS) -o $@
+
+proj_with_fork: proj_with_fork.o
 	$(LD) $(LDFLAGS) $< $(CONFIG_LIBS) -o $@
 
 vsipreload.so: ../../gdal/port/vsipreload.o

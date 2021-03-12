@@ -5,7 +5,7 @@ Vector API tutorial
 ================================================================================
 
 This document is intended to document using the OGR C++ classes to read
-and write data from a file.  It is strongly advised that the read first
+and write data from a file.  It is strongly advised that the reader first
 review the :ref:`vector_data_model` document describing
 the key classes and their roles in OGR.
 
@@ -81,8 +81,8 @@ In C :
     }
 
 A GDALDataset can potentially have many layers associated with it.  The
-number of layers available can be queried with :c:func:`GDALDataset::GetLayerCount`
-and individual layers fetched by index using :c:func:`GDALDataset::GetLayer`.
+number of layers available can be queried with :cpp:func:`GDALDataset::GetLayerCount`
+and individual layers fetched by index using :cpp:func:`GDALDataset::GetLayer`.
 However, we will just fetch the layer by name.
 
 In C++ :
@@ -122,11 +122,11 @@ With GDAL 2.3 and C:
 
 If using older GDAL versions, while it isn't strictly necessary in this
 circumstance since we are starting fresh with the layer, it is often wise
-to call :c:func:`OGRLayer::ResetReading` to ensure we are starting at the beginning of
+to call :cpp:func:`OGRLayer::ResetReading` to ensure we are starting at the beginning of
 the layer.  We iterate through all the features in the layer using
 OGRLayer::GetNextFeature().  It will return NULL when we run out of features.
 
-With GDAL > 2.3 and C++ :
+With GDAL < 2.3 and C++ :
 
 .. code-block:: c++
 
@@ -137,7 +137,7 @@ With GDAL > 2.3 and C++ :
     {
 
 
-With GDAL > 2.3 and C :
+With GDAL < 2.3 and C :
 
 .. code-block:: c
 
@@ -178,7 +178,7 @@ With GDAL 2.3 and C++11:
         }
     }
 
-With GDAL > 2.3 and C++ :
+With GDAL < 2.3 and C++ :
 
 .. code-block:: c
 
@@ -240,7 +240,7 @@ In C :
 
 There are a few more field types than those explicitly handled above, but
 a reasonable representation of them can be fetched with the
-:c:func:`OGRFeature::GetFieldAsString` method.  In fact we could shorten the above
+:cpp:func:`OGRFeature::GetFieldAsString` method.  In fact we could shorten the above
 by using GetFieldAsString() for all the types.
 
 Next we want to extract the geometry from the feature, and write out the point
@@ -289,13 +289,13 @@ In C :
         printf( "no point geometry\n" );
     }
 
-The :c:func:`wkbFlatten` macro is used above to convert the type for a wkbPoint25D
+The :cpp:func:`wkbFlatten` macro is used above to convert the type for a wkbPoint25D
 (a point with a z coordinate) into the base 2D geometry type code (wkbPoint).
 For each 2D geometry type there is a corresponding 2.5D type code.  The 2D
 and 2.5D geometry cases are handled by the same C++ class, so our code will
 handle 2D or 3D cases properly.
 
-Starting with OGR 1.11, several geometry fields can be associated to a feature.
+Several geometry fields can be associated to a feature.
 
 In C++ :
 
@@ -367,7 +367,7 @@ In Python:
 Note that :cpp:func:`OGRFeature::GetGeometryRef` and :cpp:func:`OGRFeature::GetGeomFieldRef`
 return a pointer to
 the internal geometry owned by the OGRFeature.  There we don't actually
-deleted the return geometry.
+delete the return geometry.
 
 
 With GDAL 2.3 and C++11, the looping over features is simply terminated by
@@ -386,7 +386,7 @@ the following.
     OGR_FOR_EACH_FEATURE_END(hFeature)
 
 
-For GDAL > 2.3, as the :cpp:func:`OGRLayer::GetNextFeature` method
+For GDAL < 2.3, as the :cpp:func:`OGRLayer::GetNextFeature` method
 returns a copy of the feature that is now owned by us.  So at the end of
 use we must free the feature.  We could just "delete" it, but this can cause
 problems in windows builds where the GDAL DLL has a different "heap" from the
@@ -789,7 +789,7 @@ In C :
 
 Now that the layer exists, we need to create any attribute fields that should
 appear on the layer.  Fields must be added to the layer before any features
-are written.  To create a field we initialize an :cpp:class:`OGRField` object with the
+are written.  To create a field we initialize an :cpp:union:`OGRField` object with the
 information about the field.  In the case of Shapefiles, the field width and
 precision is significant in the creation of the output .dbf file, so we
 set it specifically, though generally the defaults are OK.  For this example
@@ -1160,7 +1160,7 @@ In Python :
     ds = None
 
 
-Starting with OGR 1.11, everal geometry fields< can be associated to a feature. This capability
+Several geometry fields can be associated to a feature. This capability
 is just available for a few file formats, such as PostGIS.
 
 To create such datasources, geometry fields must be first created.
@@ -1302,8 +1302,6 @@ In Python :
         feat.SetGeomFieldDirectly( "PointField2",
             ogr.CreateGeometryFromWkt( "POINT (500000 4500000)" ) )
 
-        if lyr.CreateFeature( feat ) != 0 )
-        {
+        if lyr.CreateFeature( feat ) != 0:
             print( "Failed to create feature.\n" );
             sys.exit( 1 );
-        }

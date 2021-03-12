@@ -20,7 +20,7 @@ Synopsis
                  [-snodata n] [-i <interval>]
                  [-f <formatname>] [[-dsco NAME=VALUE] ...] [[-lco NAME=VALUE] ...]
                  [-off <offset>] [-fl <level> <level>...] [-e <exp_base>]
-                 [-nln <outlayername>] [-p]
+                 [-nln <outlayername>] [-q] [-p]
                  <src_filename> <dst_filename>
 
 Description
@@ -29,10 +29,10 @@ Description
 The :program:`gdal_contour` generates a vector contour file from the input
 raster elevation model (DEM).
 
-.. versionadded:: 1.7.0
+The contour line-strings are oriented consistently and the high side will
+be on the right, i.e. a line string goes clockwise around a top.
 
-    The contour line-strings are oriented consistently and the high side will
-    be on the right, i.e. a line string goes clockwise around a top.
+.. program:: gdal_contour
 
 .. option:: -b <band>
 
@@ -55,7 +55,7 @@ raster elevation model (DEM).
 .. option:: -amax <name>
 
     Provides a name for the attribute in which to put the maximum elevation of
-    contour polygon. If not provided no maximim elevation attribute is attached.
+    contour polygon. If not provided no maximum elevation attribute is attached.
     Ignored in default line contouring mode.
 
     .. versionadded:: 2.4.0
@@ -116,6 +116,10 @@ raster elevation model (DEM).
     Generate contour polygons rather than contour lines.
 
     .. versionadded:: 2.4.0
+
+.. option:: -q
+
+    Be quiet.
 
 C API
 -----

@@ -13,27 +13,22 @@ used to provide a subset of SQL SELECT capability to applications.  This
 page discusses the generic SQL implementation implemented within OGR, and
 issue with driver specific SQL support.
 
-Since GDAL/OGR 1.10, an alternate "dialect", the SQLite dialect, can be used
+An alternate "dialect", the SQLite dialect, can be used
 instead of the OGRSQL dialect. Refer to the :ref:`sql_sqlite_dialect` page for more details.
 
 The OGRLayer class also supports applying an attribute query filter to
-features returned using the OGRLayer::SetAttributeFilter() method.  The
+features returned using the :cpp:func:`OGRLayer::SetAttributeFilter()` method.  The
 syntax for the attribute filter is the same as the WHERE clause in the
 OGR SQL SELECT statement.  So everything here with regard to the WHERE
-clause applies in the context of the SetAttributeFilter() method.
-
-NOTE: OGR SQL has been reimplemented for GDAL/OGR 1.8.0.  Many features
-discussed below, notably arithmetic expressions, and expressions in the
-field list, were not support in GDAL/OGR 1.7.x and earlier.  See RFC 28 for
-details of the new features in GDAL/OGR 1.8.0.
+clause applies in the context of the ``SetAttributeFilter()`` method.
 
 SELECT
 ------
 
 The SELECT statement is used to fetch layer features (analogous to table
 rows in an RDBMS) with the result of the query represented as a temporary layer
-of features.   The layers of the datasource are analogous to tables in an
-RDBMS and feature attributes are analogous to column values.  The simplest
+of features. The layers of the datasource are analogous to tables in an
+RDBMS and feature attributes are analogous to column values. The simplest
 form of OGR SQL SELECT statement looks like this:
 
 .. code-block::
@@ -41,14 +36,15 @@ form of OGR SQL SELECT statement looks like this:
     SELECT * FROM polylayer
 
 In this case all features are fetched from the layer named "polylayer", and
-all attributes of those features are returned.  This is essentially
-equivalent to accessing the layer directly.  In this example the "*"
+all attributes of those features are returned. This is essentially
+equivalent to accessing the layer directly. In this example the "*"
 is the list of fields to fetch from the layer, with "*" meaning that all
 fields should be fetched.
 
 This slightly more sophisticated form still pulls all features from the layer
-but the schema will only contain the EAS_ID and PROP_VALUE attributes.   Any
-other attributes would be discarded.
+but the schema will only contain the geometry column and the EAS_ID and PROP_VALUE
+attributes. With OGR SQL dialect the geometry column is always included in the
+result so it does not need to appear in the SQL statement.
 
 .. code-block::
 
@@ -61,8 +57,8 @@ WHERE clause, and sorting the results might look like:
 
     SELECT * from polylayer WHERE prop_value > 220000.0 ORDER BY prop_value DESC
 
-This select statement will produce a table with just one feature, with one
-attribute (named something like "count_eas_id") containing the number of
+This select statement will produce a table with just one feature, with geometry
+and one attribute (named something like "count_eas_id") containing the number of
 distinct values of the eas_id attribute.
 
 .. code-block::
@@ -123,10 +119,6 @@ a count of distinct values, for instance:
 
     SELECT COUNT(DISTINCT areacode) FROM polylayer
 
-Note: prior to OGR 1.9.0, null values were counted in COUNT(column_name) or
-COUNT(DISTINCT column_name), which was not conformant with the SQL standard. Since
-OGR 1.9.0, only non-null values are counted.
-
 As a special case, the COUNT() operator can be given a "*" argument instead
 of a field name which is a short form for count all the records.
 
@@ -142,8 +134,7 @@ the JOIN section.
 Field definitions can also be complex expressions using arithmetic, and
 functional operators.   However, the DISTINCT keyword, and summarization
 operators like MIN, MAX, AVG and SUM may not be applied to expression fields.
-Starting with GDAL 2.0, boolean resulting expressions (comparisons, logical
-operators) can also be used.
+Boolean resulting expressions (comparisons, logical operators) can also be used.
 
 .. code-block::
 
@@ -159,7 +150,7 @@ or
 Functions
 *********
 
-Starting with OGR 1.8.2, the SUBSTR function can be used to extract a substring from a string.
+The SUBSTR function can be used to extract a substring from a string.
 Its syntax is the following one : SUBSTR(string_expr, start_offset [, length]). It extracts a substring of string_expr,
 starting at offset start_offset (1 being the first character of string_expr, 2 the second one, etc...).
 If start_offset is a negative value, the substring is extracted from the end of the string (-1 is the
@@ -176,7 +167,7 @@ appropriate for multi-byte encodings like UTF-8.
     SELECT SUBSTR('abcdef',4)   FROM xxx   --> 'def'
     SELECT SUBSTR('abcdef',-2)  FROM xxx   --> 'ef'
 
-Starting with OGR 2.0, the ``hstore_get_value()`` function can be used to extract
+The ``hstore_get_value()`` function can be used to extract
 a value associate to a key from a HSTORE string, formatted like 'key=>value,other_key=>other_value,...'
 
 .. code-block::
@@ -205,7 +196,7 @@ rename whole column expression, like these two:
 Changing the type of the fields
 *******************************
 
-Starting with GDAL 1.6.0, OGR SQL supports changing the type of the columns by using the SQL92 compliant CAST
+OGR SQL supports changing the type of the columns by using the SQL92 compliant CAST
 operator according to the following example:
 
 .. code-block::
@@ -214,13 +205,13 @@ operator according to the following example:
 
 Currently casting to the following target types are supported:
 
-- boolean (GDAL >= 2.0)
+- boolean
 - character(field_length). By default, field_length=1.
 - float(field_length)
 - numeric(field_length, field_precision)
-- smallint(field_length) : 16 bit signed integer (GDAL >= 2.0)
+- smallint(field_length) : 16 bit signed integer
 - integer(field_length)
-- bigint(field_length), 64 bit integer, extension to SQL92 (GDAL >= 2.0)
+- bigint(field_length), 64 bit integer, extension to SQL92
 - date(field_length)
 - time(field_length)
 - timestamp(field_length)
@@ -238,15 +229,14 @@ supported if the CAST operator is the "outer most" operators on a field
 in the field definition list.  In other contexts it is still useful to
 convert between numeric, string and date data types.
 
-Starting with OGR 1.11, casting a WKT string to a geometry is allowed.
+Casting a WKT string to a geometry is allowed.
 geometry_type can be POINT[Z], LINESTRING[Z], POLYGON[Z], MULTIPOINT[Z],
 MULTILINESTRING[Z], MULTIPOLYGON[Z], GEOMETRYCOLLECTION[Z] or GEOMETRY[Z].
 
 String literals and identifiers quoting
 ***************************************
 
-Starting with GDAL 2.0, strict SQL92 rules are applied regarding string literals
-and identifiers quoting.
+Strict SQL92 rules are applied regarding string literals and identifiers quoting.
 
 String literals (constants) must be surrounded with single-quote characters. e.g.
 WHERE a_field = 'a_value'
@@ -282,9 +272,13 @@ The available logical operators are
 ``IN``.
 Most of the operators are self explanatory, but it is worth noting that ``!=``
 is the same as ``<>``, the string equality is
-case insensitive, but the ``<``, ``>``, ``<=`` and ``>=`` operators *are* case sensitive.  Both the LIKE and ILIKE operators are case insensitive.
+case insensitive, but the ``<``, ``>``, ``<=`` and ``>=`` operators *are* case sensitive. 
 
-The value argument to the ``LIKE`` operator is a pattern against which
+Starting with GDAL 3.1, LIKE is case sensitive, and ILIKE is case insensitive.
+In previous versions, LIKE was also case insensitive. If the old behavior is
+wished in GDAL 3.1, the :decl_configoption:`OGR_SQL_LIKE_AS_ILIKE` can be set to ``YES``.
+
+The value argument to the ``LIKE`` and ``ILIKE`` operators is a pattern against which
 the value string is matched.  In this pattern percent (%) matches any number of
 characters, and underscore ( _ ) matches any one character. An optional ESCAPE escape_char
 clause can be added so that the percent or underscore characters can be searched
@@ -345,7 +339,7 @@ ORDER BY
 ++++++++
 
 The ``ORDER BY`` clause is used force the returned features to be reordered
-into sorted order (ascending or descending) on one of the field values.
+into sorted order (ascending or descending) on one or multiple fields.
 Ascending (increasing) order is the default if neither the ASC or DESC keyword
 is provided.  For example:
 
@@ -355,6 +349,7 @@ is provided.  For example:
     SELECT * FROM property ORDER BY prop_value
     SELECT * FROM property ORDER BY prop_value ASC
     SELECT DISTINCT zip_code FROM property ORDER BY zip_code
+    SELECT * FROM property ORDER BY prop_value ASC, another_field DESC
 
 Note that ORDER BY clauses cause two passes through the feature set.  One to
 build an in-memory table of field values corresponded with feature ids, and
@@ -476,10 +471,10 @@ It is possible to do multiple joins in a single query.
     LEFT JOIN province ON city.prov_id = province.id
     LEFT JOIN nation ON city.nation_id = nation.id
 
-Before GDAL 2.0, the expression after ON should necessarily be of the form
+The expression after ON is typically of the form
 "{primary_table}.{field_name} = {secondary_table}.{field_name}", and in that
 order.
-Starting with GDAL 2.0, it is possible to use a more complex boolean expression,
+It is also possible to use a more complex boolean expression,
 involving multiple comparison operators, but with the restrictions mentioned
 in the below "JOIN limitations" section. In particular, in case of multiple joins (3 tables
 or more) the fields compared in a JOIN must belong to the primary table (the one
@@ -542,12 +537,29 @@ the feature id, but it may be explicitly included using a syntax like:
 
     SELECT FID, * FROM nation
 
+Geometry field
+++++++++++++++
+
+The OGR SQL dialect adds the geometry field of the datasource to the result set
+by default. Users do not need to select the geometry explicitly but it is still
+possible to do so. Common use case is when geometry is the only field that is needed.
+In this case the name of the geometry field to be used in the SQL statement is the
+name returned by :cpp:func:`OGRLayer::GetGeometryColumn`. If the method returns
+an empty string then a special name "_ogr_geometry_" must be used. The name begins
+with an underscore and SQL syntax requires that it must appear between double quotes.
+In addition the command line interpreter may require that double quotes are escaped
+and the final SELECT statement could look like:
+
+.. code-block::
+
+    SELECT "_ogr_geometry_" FROM nation
+    
 OGR_GEOMETRY
 ++++++++++++
 
 Some of the data sources (like MapInfo tab) can handle geometries of different
 types within the same layer. The ``OGR_GEOMETRY`` special field represents
-the geometry type returned by OGRGeometry::getGeometryName() and can be used to
+the geometry type returned by :cpp:func:`OGRGeometry::getGeometryName` and can be used to
 distinguish the various types. By using this field one can select particular
 types of the geometries like:
 

@@ -120,7 +120,7 @@ class CPL_DLL OGROCISession {
 
     int      Failed( sword nStatus, const char *pszFunction = nullptr );
 
-    CPLErr   GetParmInfo( OCIParam *hParmDesc, OGRFieldDefn *poOGRDefn,
+    CPLErr   GetParamInfo( OCIParam *hParamDesc, OGRFieldDefn *poOGRDefn,
                           ub2 *pnOCIType, ub4 *pnOCILen );
 
     void     CleanName( char * );
@@ -219,7 +219,7 @@ public:
 
 class OGROCIDataSource;
 
-class OGROCILayer : public OGRLayer
+class OGROCILayer CPL_NON_FINAL: public OGRLayer
 {
   protected:
     OGRFeatureDefn     *poFeatureDefn;
@@ -282,7 +282,7 @@ class OGROCILayer : public OGRLayer
 /*                         OGROCIWritableLayer                          */
 /************************************************************************/
 
-class OGROCIWritableLayer : public OGROCILayer
+class OGROCIWritableLayer CPL_NON_FINAL: public OGROCILayer
 {
 protected:
     int                 nDimension;

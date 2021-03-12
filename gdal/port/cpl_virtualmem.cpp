@@ -400,7 +400,10 @@ CPLVirtualMem* CPLVirtualMemNew( size_t nSize,
     CPLVirtualMemVMA* ctxt = static_cast<CPLVirtualMemVMA *>(
         VSI_CALLOC_VERBOSE(1, sizeof(CPLVirtualMemVMA)));
     if( ctxt == nullptr )
+    {
+        munmap(pData, nRoundedMappingSize);
         return nullptr;
+    }
     ctxt->sBase.nRefCount = 1;
     ctxt->sBase.eType = VIRTUAL_MEM_TYPE_VMA;
     ctxt->sBase.eAccessMode = eAccessMode;
@@ -679,6 +682,7 @@ void CPLVirtualMemAddPage( CPLVirtualMemVMA* ctxt, void* target_addr,
         const void * const pRet = mmap(addr, ctxt->sBase.nPageSize, PROT_NONE,
                     MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         IGNORE_OR_ASSERT_IN_DEBUG(pRet == addr);
+        // cppcheck-suppress memleak
     }
     ctxt->panLRUPageIndices[ctxt->iLRUStart] = iPage;
     ctxt->iLRUStart = (ctxt->iLRUStart + 1) % ctxt->nCacheMaxSizeInPages;
@@ -815,6 +819,7 @@ void CPLVirtualMemAddPage( CPLVirtualMemVMA* ctxt, void* target_addr,
         CPLReleaseMutex(ctxt->hMutexThreadArray);
 #endif
     }
+    // cppcheck-suppress memleak
 }
 
 /************************************************************************/
@@ -2045,8 +2050,8 @@ CPLVirtualMemFileMapNew( VSILFILE* fp,
 
     const off_t nAlignedOffset =
         static_cast<off_t>((nOffset / CPLGetPageSize()) * CPLGetPageSize());
-    size_t nAligment = static_cast<size_t>(nOffset - nAlignedOffset);
-    size_t nMappingSize = static_cast<size_t>(nLength + nAligment);
+    size_t nAlignment = static_cast<size_t>(nOffset - nAlignedOffset);
+    size_t nMappingSize = static_cast<size_t>(nLength + nAlignment);
 
     // Need to ensure that the requested extent fits into the file size
     // otherwise SIGBUS errors will occur when using the mapping.
@@ -2102,7 +2107,7 @@ CPLVirtualMemFileMapNew( VSILFILE* fp,
     ctxt->eType = VIRTUAL_MEM_TYPE_FILE_MEMORY_MAPPED;
     ctxt->nRefCount = 1;
     ctxt->eAccessMode = eAccessMode;
-    ctxt->pData = static_cast<GByte *>(addr) + nAligment;
+    ctxt->pData = static_cast<GByte *>(addr) + nAlignment;
     ctxt->pDataToFree = addr;
     ctxt->nSize = static_cast<size_t>(nLength);
     ctxt->nPageSize = CPLGetPageSize();

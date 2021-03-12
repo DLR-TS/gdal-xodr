@@ -75,6 +75,7 @@ static void Usage(const char* pszErrorMsg = nullptr)
             "\n"
             " - To generate a Terrain Ruggedness Index (TRI) map from any GDAL-supported elevation raster\n"
             "     gdaldem TRI input_dem output_TRI_map\n"
+            "                 [-alg Wilson|Riley]\n"
             "                 [-compute_edges] [-b Band (default=1)] [-of format] [-co \"NAME=VALUE\"]* [-q]\n"
             "\n"
             " - To generate a Topographic Position Index (TPI) map from any GDAL-supported elevation raster\n"
@@ -158,6 +159,7 @@ MAIN_START(argc, argv)
 
     GDALDEMProcessingOptionsForBinary* psOptionsForBinary =
         GDALDEMProcessingOptionsForBinaryNew();
+    // coverity[tainted_data]
     GDALDEMProcessingOptions *psOptions =
         GDALDEMProcessingOptionsNew(argv + 1, psOptionsForBinary);
     CSLDestroy( argv );

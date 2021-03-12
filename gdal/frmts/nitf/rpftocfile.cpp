@@ -406,11 +406,13 @@ RPFToc* RPFTOCReadFromBuffer(const char* pszFilename, VSILFILE* fp, const char* 
 
     for( int i = 0; i < static_cast<int>( nFrameFileIndexRecords ); i++ )
     {
-        if( VSIFSeekL( fp, frameFileIndexSubsectionPhysIndex + frameFileIndexRecordLength * i, SEEK_SET ) != 0)
+        vsi_l_offset nFrameOffset = static_cast<vsi_l_offset>(
+            frameFileIndexSubsectionPhysIndex) + static_cast<vsi_l_offset>(frameFileIndexRecordLength) * i;
+        if( VSIFSeekL( fp, nFrameOffset, SEEK_SET ) != 0)
         {
             CPLError( CE_Failure, CPLE_NotSupported,
-                    "Invalid TOC file. Unable to seek to frameFileIndexSubsectionPhysIndex(%d) at offset %d.",
-                     i, frameFileIndexSubsectionPhysIndex + frameFileIndexRecordLength * i);
+                    "Invalid TOC file. Unable to seek to frameFileIndexSubsectionPhysIndex(%d) at offset " CPL_FRMT_GUIB ".",
+                     i, static_cast<GUIntBig>(nFrameOffset));
             RPFTOCFree(toc);
             return nullptr;
         }
@@ -463,6 +465,12 @@ RPFToc* RPFTOCReadFromBuffer(const char* pszFilename, VSILFILE* fp, const char* 
         else
         {
             /* Trick so that frames are numbered north to south */
+            if( entry->nVertFrames-1 < frameRow )
+            {
+                CPLError(CE_Failure, CPLE_FileIO, "Invalid nVertFrames vs frameRow");
+                RPFTOCFree(toc);
+                return nullptr;
+            }
             frameRow = (unsigned short)((entry->nVertFrames-1) - frameRow);
         }
 
@@ -546,13 +554,13 @@ RPFToc* RPFTOCReadFromBuffer(const char* pszFilename, VSILFILE* fp, const char* 
         /* Go to start of pathname record */
         /* New path_off offset from start of frame file index section of TOC?? */
         /* Add pathoffset wrt frame file index table subsection (loc[3]) */
-        if( !bOK || VSIFSeekL( fp, frameFileIndexSubsectionPhysIndex + offsetFrameFilePathName, SEEK_SET ) != 0)
+        if( !bOK || VSIFSeekL( fp, static_cast<vsi_l_offset>(frameFileIndexSubsectionPhysIndex) + offsetFrameFilePathName, SEEK_SET ) != 0)
         {
             CPLError( CE_Failure, CPLE_NotSupported,
                       "Invalid TOC file. Unable to seek to "
                       "frameFileIndexSubsectionPhysIndex + "
-                      "offsetFrameFilePathName(%d) at offset %d.",
-                     i, frameFileIndexSubsectionPhysIndex + offsetFrameFilePathName);
+                      "offsetFrameFilePathName(%d) at offset " CPL_FRMT_GUIB ".",
+                     i, static_cast<GUIntBig>(frameFileIndexSubsectionPhysIndex) + offsetFrameFilePathName);
             RPFTOCFree(toc);
             return nullptr;
         }

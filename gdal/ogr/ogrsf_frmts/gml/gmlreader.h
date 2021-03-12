@@ -34,6 +34,7 @@
 #include "cpl_port.h"
 #include "cpl_vsi.h"
 #include "cpl_minixml.h"
+#include "ogr_core.h"
 #include "gmlutils.h"
 
 #include <map>
@@ -58,7 +59,10 @@ typedef enum {
     GMLPT_Short = 12,
     GMLPT_Float = 13,
     GMLPT_Integer64 = 14,
-    GMLPT_Integer64List = 15
+    GMLPT_Integer64List = 15,
+    GMLPT_DateTime = 16,
+    GMLPT_Date = 17,
+    GMLPT_Time = 18,
 } GMLPropertyType;
 
 /************************************************************************/
@@ -82,6 +86,7 @@ class CPL_DLL GMLPropertyDefn
     size_t            m_nSrcElementLen;
     char             *m_pszCondition;
     bool              m_bNullable;
+    bool              m_bUnique = false;
 
 public:
 
@@ -105,6 +110,9 @@ public:
 
     void        SetNullable( bool bNullable ) { m_bNullable = bNullable; }
     bool        IsNullable() const { return m_bNullable; }
+
+    void        SetUnique( bool bUnique ) { m_bUnique = bUnique; }
+    bool        IsUnique() const { return m_bUnique; }
 
     void        AnalysePropertyValue( const GMLProperty* psGMLProperty,
                                       bool bSetWidth = true );
@@ -311,7 +319,6 @@ class CPL_DLL IGMLReader
                                    int iSqliteCacheMB ) = 0;
 
     virtual bool PrescanForSchema( bool bGetExtents = true,
-                                  bool bAnalyzeSRSPerFeature = true,
                                   bool bOnlyDetectSRS = false ) = 0;
     virtual bool PrescanForTemplate() = 0;
 
@@ -332,5 +339,7 @@ IGMLReader *CreateGMLReader(bool bUseExpatParserPreferably,
                             bool bConsiderEPSGAsURN,
                             GMLSwapCoordinatesEnum eSwapCoordinates,
                             bool bGetSecondaryGeometryOption);
+
+OGRFieldType GML_GetOGRFieldType(GMLPropertyType eType, OGRFieldSubType& eSubType);
 
 #endif /* GMLREADER_H_INCLUDED */

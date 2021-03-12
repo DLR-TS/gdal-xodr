@@ -29,6 +29,7 @@
 #define __NETCDFSG_H__
 #include <cstring>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 #include "netcdf.h"
@@ -89,8 +90,8 @@ namespace nccfdriver
         std::vector<int> node_counts;    // node counts of each geometry in a container
         std::vector<int> pnode_counts;    // part node counts of each geometry in a container
         std::vector<bool> int_rings;    // list of parts that are interior rings
-        std::vector<size_t> bound_list;    // a quick list used to store the real beginning indicies of shapes
-        std::vector<size_t> pnc_bl;    // a quick list of indicies for part counts corresponding to a geometry
+        std::vector<size_t> bound_list;    // a quick list used to store the real beginning indices of shapes
+        std::vector<size_t> pnc_bl;    // a quick list of indices for part counts corresponding to a geometry
         std::vector<int> parts_count;    // a count of total parts in a single geometry instance
         std::vector<int> poly_count;    // count of polygons, for use only when interior rings are present
         std::unique_ptr<Point> pt_buffer;    // holds the current point
@@ -150,11 +151,10 @@ namespace nccfdriver
          */
         int getContainerId() { return gc_varId; }
 
-        /* void unsigned char * serializeToWKB
+        /* std::vector<unsigned char> serializeToWKB
          * Returns a pre-allocated array which serves as the WKB reference to this geometry
-         * the size of the WKB representation is written to the passed in wkbSize
          */
-        unsigned char * serializeToWKB(size_t featureInd, int& wkbSize);
+        std::vector<unsigned char> serializeToWKB(size_t featureInd);
 
         /* Return a point at a specific index specifically
          * this point should NOT be explicitly freed.
@@ -186,7 +186,7 @@ namespace nccfdriver
         std::vector<std::string> v_headers;
         int nc;
         
-        void open(int container_id);    // opens and intializes a geometry_container into the scanner 
+        void open(int container_id);    // opens and initializes a geometry_container into the scanner 
         
         public:
             std::vector<std::string>& headers() { return this->v_headers; }
@@ -291,8 +291,8 @@ namespace nccfdriver
         SG_Exception_EmptyDim() : err_msg("A dimension has length <= 0, but it must have length > 0") {}
     };
 
-    // arg1 is general corruption or malformed error
-    class SG_Exception_General_Malformed: public SG_Exception
+    //general corruption or malformed error
+    class SG_Exception_General_Malformed : public SG_Exception
     {
         std::string err_msg;
 
@@ -301,6 +301,33 @@ namespace nccfdriver
         
         explicit SG_Exception_General_Malformed(const char*); 
     };
+
+    // Invalid value detected
+    class SG_Exception_Value_Violation : public SG_Exception
+    {
+        std::string err_msg;
+
+        public:
+            const char* get_err_msg() override { return err_msg.c_str(); }
+            SG_Exception_Value_Violation(const char* containername, const char* type, const char* badvalue) :
+                err_msg( std::string("[") + std::string(containername) + std::string("] ") + std::string(type) +
+                         std::string(" values may not be ") + std::string(badvalue)
+                       ) {}
+    };
+
+    // Required value(s)
+    class SG_Exception_Value_Required : public SG_Exception
+    {
+        std::string err_msg;
+
+        public:
+            const char* get_err_msg() override { return err_msg.c_str(); }
+            SG_Exception_Value_Required(const char* containername, const char* type, const char* expvalue) :
+                err_msg( std::string("[") + std::string(containername) + std::string("] ") + std::string(type) +
+                         std::string(" values must be ") + std::string(expvalue)
+                       ) {}
+    };
+
     // Some helpers which simply call some netcdf library functions, unless otherwise mentioned, ncid, refers to its use in netcdf.h
     
     /* Retrieves the version from the value Conventions global attr
@@ -314,10 +341,10 @@ namespace nccfdriver
      */
     geom_t getGeometryType(int ncid, int varid); 
     
-    void* inPlaceSerialize_Point(SGeometry_Reader * ge, size_t seek_pos, void * serializeBegin);
-    void* inPlaceSerialize_LineString(SGeometry_Reader * ge, int node_count, size_t seek_begin, void * serializeBegin);
-    void* inPlaceSerialize_PolygonExtOnly(SGeometry_Reader * ge, int node_count, size_t seek_begin, void * serializeBegin);
-    void* inPlaceSerialize_Polygon(SGeometry_Reader * ge, std::vector<int>& pnc, int ring_count, size_t seek_begin, void * serializeBegin);
+    void inPlaceSerialize_Point(SGeometry_Reader * ge, size_t seek_pos, std::vector<unsigned char>& buffer);
+    void inPlaceSerialize_LineString(SGeometry_Reader * ge, int node_count, size_t seek_begin, std::vector<unsigned char>& buffer);
+    void inPlaceSerialize_PolygonExtOnly(SGeometry_Reader * ge, int node_count, size_t seek_begin, std::vector<unsigned char>& buffer);
+    void inPlaceSerialize_Polygon(SGeometry_Reader * ge, std::vector<int>& pnc, int ring_count, size_t seek_begin, std::vector<unsigned char>& buffer);
 
     /* scanForGeometryContainers
      * A simple function that scans a netCDF File for Geometry Containers
@@ -325,7 +352,7 @@ namespace nccfdriver
      * Scans the given ncid for geometry containers
      * The vector passed in will be overwritten with a vector of scan results
      */
-    int scanForGeometryContainers(int ncid, std::vector<int> & r_ids);
+    int scanForGeometryContainers(int ncid, std::set<int> & r_ids);
 
     /* Attribute Fetch
      * -

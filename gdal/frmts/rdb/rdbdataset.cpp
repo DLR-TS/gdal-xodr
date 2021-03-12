@@ -65,7 +65,7 @@ template <typename T> struct CPLMallocGuard
 
 template <typename T> class RDBRasterBandInternal;
 
-template <typename T> class RDBRasterBandInternal : public RDBRasterBand
+template <typename T> class RDBRasterBandInternal final: public RDBRasterBand
 {
     std::vector<std::unique_ptr<RDBRasterBandInternal<T>>> aoOverviewBands;
     std::vector<VRTSourcedRasterBand *> aoVRTRasterBand;
@@ -99,14 +99,14 @@ template <typename T> class RDBRasterBandInternal : public RDBRasterBand
     RDBRasterBandInternal(
         RDBDataset *poDSIn, const std::string &osAttributeNameIn,
         const riegl::rdb::pointcloud::PointAttribute &oPointAttributeIn,
-        int nBandIn, GDALDataType eDataTypeIn, int nLevelIn, int nNumerOfLayers)
+        int nBandIn, GDALDataType eDataTypeIn, int nLevelIn, int nNumberOfLayers)
         : RDBRasterBandInternal(poDSIn, osAttributeNameIn, oPointAttributeIn,
                                 nBandIn, eDataTypeIn, nLevelIn)
     {
-        aoOverviewBands.resize(nNumerOfLayers);
-        poDSIn->apoVRTDataset.resize(nNumerOfLayers);
+        aoOverviewBands.resize(nNumberOfLayers);
+        poDSIn->apoVRTDataset.resize(nNumberOfLayers);
 
-        for(int i = nNumerOfLayers - 2; i >= 0; i--)
+        for(int i = nNumberOfLayers - 2; i >= 0; i--)
         {
             aoOverviewBands[i].reset(new RDBRasterBandInternal<T>(
                 poDSIn, osAttributeNameIn, oPointAttributeIn, nBandIn,
@@ -131,7 +131,8 @@ template <typename T> class RDBRasterBandInternal : public RDBRasterBand
                 poDSIn->apoVRTDataset[i]->GetRasterBand(nBandIn)));
 
             int bSuccess = FALSE;
-            double dfNoDataValue = GetNoDataValue(&bSuccess);
+            double dfNoDataValue =
+                RDBRasterBandInternal::GetNoDataValue(&bSuccess);
             if(bSuccess == FALSE)
             {
                 dfNoDataValue = VRT_NODATA_UNSET;
@@ -193,7 +194,7 @@ template <typename T> class RDBRasterBandInternal : public RDBRasterBand
             // this could maybe be a problem when combining multiple files.
 
             // Using always the maximum or minimum value in such cases might be
-            // at least consistend across multiple files.
+            // at least consistent across multiple files.
             if(pbSuccess != nullptr)
             {
                 *pbSuccess = FALSE;
@@ -335,7 +336,7 @@ void RDBDataset::SetBandInternal(
     RDBDataset *poDs, const std::string &osAttributeName,
     const riegl::rdb::pointcloud::PointAttribute &oPointAttribute,
     riegl::rdb::pointcloud::DataType eRDBDataType, int nLevel,
-    int nNumerOfLayers, int &nBandIndex)
+    int nNumberOfLayers, int &nBandIndex)
 {
     RDBRasterBand *poBand = nullptr;
     // map riegl rdb datatype to gdal data type
@@ -346,37 +347,37 @@ void RDBDataset::SetBandInternal(
     case riegl::rdb::pointcloud::DataType::INT8:
         poBand = new RDBRasterBandInternal<std::uint8_t>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_Byte,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     case riegl::rdb::pointcloud::DataType::UINT16:
         poBand = new RDBRasterBandInternal<std::uint16_t>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_UInt16,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     case riegl::rdb::pointcloud::DataType::INT16:
         poBand = new RDBRasterBandInternal<std::int16_t>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_Int16,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     case riegl::rdb::pointcloud::DataType::UINT32:
         poBand = new RDBRasterBandInternal<std::uint32_t>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_UInt32,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     case riegl::rdb::pointcloud::DataType::INT32:
         poBand = new RDBRasterBandInternal<std::int32_t>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_Int32,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     case riegl::rdb::pointcloud::DataType::FLOAT32:
         poBand = new RDBRasterBandInternal<float>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_Float32,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     case riegl::rdb::pointcloud::DataType::FLOAT64:
         poBand = new RDBRasterBandInternal<double>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_Float64,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     default:
         // for all reamining use double. e.g. u/int64_t
@@ -385,7 +386,7 @@ void RDBDataset::SetBandInternal(
         // multiple files.
         poBand = new RDBRasterBandInternal<double>(
             poDs, osAttributeName, oPointAttribute, nBandIndex, GDT_Float64,
-            nLevel, nNumerOfLayers);
+            nLevel, nNumberOfLayers);
         break;
     }
 
@@ -775,9 +776,8 @@ void GDALRegister_RDB()
     poDriver->SetDescription("RDB");
     poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
     poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "RIEGL RDB Map Pixel (.mpx)");
-    // TODO:
-    // poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC,
-    //                          "");
+    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC,
+                              "drivers/raster/rdb.html");
     poDriver->SetMetadataItem(GDAL_DMD_EXTENSION, "mpx");
     poDriver->pfnOpen = rdb::RDBDataset::Open;
     poDriver->pfnIdentify = rdb::RDBDataset::Identify;

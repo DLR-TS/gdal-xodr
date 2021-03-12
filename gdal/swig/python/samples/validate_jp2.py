@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ******************************************************************************
 #  $Id$
@@ -537,9 +537,9 @@ def validate(filename, oidoc, inspire_tg, expected_gmljp2, ogc_schemas_location,
                 error_report.EmitError('GENERAL', 'rreq.NSF (=%d) != NSF_found (=%d)' % (NSF, NSF_found))
             if gmljp2_found and not SF67Found:
                 if inspire_tg:
-                    error_report.EmitError('INSPIRE_TG', '"rreq" box does not advertize standard flag 67 whereas GMLJP2 box is present')
+                    error_report.EmitError('INSPIRE_TG', '"rreq" box does not advertise standard flag 67 whereas GMLJP2 box is present')
                 else:
-                    error_report.EmitWarning('GENERAL', '"rreq" box does not advertize standard flag 67 whereas GMLJP2 box is present')
+                    error_report.EmitWarning('GENERAL', '"rreq" box does not advertise standard flag 67 whereas GMLJP2 box is present')
 
             NVF = get_field_val(rreq, 'NVF')
             if NVF is None:
@@ -1163,7 +1163,7 @@ def validate(filename, oidoc, inspire_tg, expected_gmljp2, ogc_schemas_location,
                     error_report.EmitWarning(
                         'GENERAL',
                         'User-defined precincts %d found but '
-                        'SPcod_transformation did not advertize it' % i)
+                        'SPcod_transformation did not advertise it' % i)
                 elif SPcod_Precincts is None and (Scod & 1) != 0:
                     error_report.EmitWarning('GENERAL', 'No user-defined precincts %d defined but SPcod_transformation advertized it' % i)
                 elif SPcod_Precincts is None and inspire_tg:
@@ -1194,7 +1194,7 @@ def validate(filename, oidoc, inspire_tg, expected_gmljp2, ogc_schemas_location,
     return error_report
 
 
-def main():
+def main(argv):
     i = 1
     filename = None
     oidoc = None
@@ -1202,30 +1202,30 @@ def main():
     inspire_tg = False
     expected_gmljp2 = False
     datatype = 'imagery'
-    while i < len(sys.argv):
-        if sys.argv[i] == "-oidoc":
-            if i >= len(sys.argv) - 1:
+    while i < len(argv):
+        if argv[i] == "-oidoc":
+            if i >= len(argv) - 1:
                 return Usage()
-            oidoc = sys.argv[i + 1]
+            oidoc = argv[i + 1]
             i = i + 1
-        elif sys.argv[i] == "-ogc_schemas_location":
-            if i >= len(sys.argv) - 1:
+        elif argv[i] == "-ogc_schemas_location":
+            if i >= len(argv) - 1:
                 return Usage()
-            ogc_schemas_location = sys.argv[i + 1]
+            ogc_schemas_location = argv[i + 1]
             i = i + 1
-        elif sys.argv[i] == "-datatype":
-            if i >= len(sys.argv) - 1:
+        elif argv[i] == "-datatype":
+            if i >= len(argv) - 1:
                 return Usage()
-            datatype = sys.argv[i + 1]
+            datatype = argv[i + 1]
             i = i + 1
-        elif sys.argv[i] == "-inspire_tg":
+        elif argv[i] == "-inspire_tg":
             inspire_tg = True
-        elif sys.argv[i] == "-expected_gmljp2":
+        elif argv[i] == "-expected_gmljp2":
             expected_gmljp2 = True
-        elif sys.argv[i][0] == '-':
+        elif argv[i][0] == '-':
             return Usage()
         elif filename is None:
-            filename = sys.argv[i]
+            filename = argv[i]
         else:
             return Usage()
 
@@ -1256,4 +1256,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv))

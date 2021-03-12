@@ -48,7 +48,6 @@ OGRPGDataSource::OGRPGDataSource() :
     papoLayers(nullptr),
     nLayers(0),
     pszName(nullptr),
-    pszDBName(nullptr),
     bDSUpdate(FALSE),
     bHavePostGIS(FALSE),
     bHaveGeography(FALSE),
@@ -92,7 +91,6 @@ OGRPGDataSource::~OGRPGDataSource()
     OGRPGDataSource::FlushCache();
 
     CPLFree( pszName );
-    CPLFree( pszDBName );
     CPLFree( pszForcedTables );
     CSLDestroy( papszSchemaList );
 
@@ -367,8 +365,24 @@ int OGRPGDataSource::Open( const char * pszNewName, int bUpdate,
 
     pszName = CPLStrdup( pszNewName );
 
+    const auto QuoteAndEscapeConnectionParam = [](const char* pszParam)
+    {
+        CPLString osRet("\'");
+        for( int i = 0; pszParam[i]; ++i )
+        {
+            if( pszParam[i] == '\'' )
+                osRet += "\\'";
+            else if( pszParam[i] == '\\' )
+                osRet += "\\\\";
+            else
+                osRet += pszParam[i];
+        }
+        osRet += '\'';
+        return osRet;
+    };
+
     CPLString osConnectionName(pszName);
-    const char* apszOpenOptions[] = { "dbname", "port", "user", "password",
+    const char* apszOpenOptions[] = { "service", "dbname", "port", "user", "password",
                                       "host", "active_schema", "schemas", "tables" };
     for(int i=0; i <(int)(sizeof(apszOpenOptions)/sizeof(char*));i++)
     {
@@ -379,38 +393,124 @@ int OGRPGDataSource::Open( const char * pszNewName, int bUpdate,
                 osConnectionName += " ";
             osConnectionName += apszOpenOptions[i];
             osConnectionName += "=";
-            osConnectionName += pszVal;
+            osConnectionName += QuoteAndEscapeConnectionParam(pszVal);
         }
     }
 
+/* -------------------------------------------------------------------- */
+/*      Set application name if not found in connection string          */
+/* -------------------------------------------------------------------- */
+
+    if (strstr(pszName, "application_name") == nullptr &&
+        getenv("PGAPPNAME") == nullptr )
+    {
+        if( osConnectionName.back() != ':' )
+            osConnectionName += " ";
+        osConnectionName += "application_name=";
+        osConnectionName += "'";
+        osConnectionName += "GDAL ";
+        osConnectionName += GDALVersionInfo("RELEASE_NAME");
+        osConnectionName += "'";
+    }
+
+    const auto ParseAndRemoveParam = [](char* pszStr, const char* pszParamName,
+                                        CPLString& osValue)
+    {
+        const int nParamNameLen = static_cast<int>(strlen(pszParamName));
+        bool bInSingleQuotedString = false;
+        for( int i = 0; pszStr[i]; i++ )
+        {
+            if( bInSingleQuotedString )
+            {
+                if( pszStr[i] == '\\' )
+                {
+                    if( pszStr[i + 1] == '\\' ||
+                        pszStr[i + 1] == '\'' )
+                    {
+                        ++i;
+                    }
+                }
+                else if( pszStr[i] == '\'' )
+                {
+                    bInSingleQuotedString = false;
+                }
+            }
+            else if( pszStr[i] == '\'' )
+            {
+                bInSingleQuotedString = true;
+            }
+            else if( EQUALN(pszStr + i, pszParamName, nParamNameLen) &&
+                        (pszStr[i + nParamNameLen] == '=' ||
+                         pszStr[i + nParamNameLen] == ' ' ) )
+            {
+                const int iStart = i;
+                i += nParamNameLen;
+                while( pszStr[i] == ' ' )
+                    ++i;
+                if( pszStr[i] == '=' )
+                {
+                    ++i;
+                    while( pszStr[i] == ' ' )
+                        ++i;
+                    if( pszStr[i] == '\'' )
+                    {
+                        ++i;
+                        for( ; pszStr[i]; i++ )
+                        {
+                            if( pszStr[i] == '\\' )
+                            {
+                                if( pszStr[i + 1] == '\\' ||
+                                    pszStr[i + 1] == '\'' )
+                                {
+                                    osValue += pszStr[i+1];
+                                    ++i;
+                                }
+                            }
+                            else if( pszStr[i] == '\'' )
+                            {
+                                ++i;
+                                break;
+                            }
+                            else
+                            {
+                                osValue += pszStr[i];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        for( ; pszStr[i] && pszStr[i] != ' '; i++ )
+                        {
+                            osValue += pszStr[i];
+                        }
+                    }
+
+                    // Edit pszStr to remove the parameter and its value
+                    if( pszStr[i] == ' ' )
+                    {
+                        memmove(pszStr + iStart, pszStr + i,
+                                strlen(pszStr + i) + 1);
+                    }
+                    else
+                    {
+                        pszStr[iStart] = 0;
+                    }
+
+                }
+                return true;
+            }
+        }
+        return false;
+    };
+
     char* pszConnectionName = CPLStrdup(osConnectionName);
+    char* pszConnectionNameNoPrefix = pszConnectionName + (STARTS_WITH_CI(pszNewName, "PGB:") ? 4 : 3);
 
 /* -------------------------------------------------------------------- */
 /*      Determine if the connection string contains an optional         */
 /*      ACTIVE_SCHEMA portion. If so, parse it out.                     */
 /* -------------------------------------------------------------------- */
-    char *pszActiveSchemaStart = strstr(pszConnectionName, "active_schema=");
-    if (pszActiveSchemaStart == nullptr)
-        pszActiveSchemaStart = strstr(pszConnectionName, "ACTIVE_SCHEMA=");
-    if (pszActiveSchemaStart != nullptr)
-    {
-        char *pszActiveSchema =
-            CPLStrdup( pszActiveSchemaStart + strlen("active_schema=") );
-
-        const char *pszEnd = strchr(pszActiveSchemaStart, ' ');
-        if( pszEnd == nullptr )
-            pszEnd = pszConnectionName + strlen(pszConnectionName);
-
-        // Remove ACTIVE_SCHEMA=xxxxx from pszConnectionName string
-        memmove( pszActiveSchemaStart, pszEnd, strlen(pszEnd) + 1 );
-
-        pszActiveSchema[pszEnd - pszActiveSchemaStart -
-                        strlen("active_schema=")] = '\0';
-
-        osActiveSchema = pszActiveSchema;
-        CPLFree(pszActiveSchema);
-    }
-    else
+    if( !ParseAndRemoveParam(pszConnectionNameNoPrefix, "active_schema", osActiveSchema) )
     {
         osActiveSchema = "public";
     }
@@ -419,26 +519,10 @@ int OGRPGDataSource::Open( const char * pszNewName, int bUpdate,
 /*      Determine if the connection string contains an optional         */
 /*      SCHEMAS portion. If so, parse it out.                           */
 /* -------------------------------------------------------------------- */
-    char             *pszSchemasStart;
-    pszSchemasStart = strstr(pszConnectionName, "schemas=");
-    if (pszSchemasStart == nullptr)
-        pszSchemasStart = strstr(pszConnectionName, "SCHEMAS=");
-    if (pszSchemasStart != nullptr)
+    CPLString osSchemas;
+    if( ParseAndRemoveParam(pszConnectionNameNoPrefix, "schemas", osSchemas) )
     {
-        char *pszSchemas = CPLStrdup( pszSchemasStart + strlen("schemas=") );
-
-        const char *pszEnd = strchr(pszSchemasStart, ' ');
-        if( pszEnd == nullptr )
-            pszEnd = pszConnectionName + strlen(pszConnectionName);
-
-        // Remove SCHEMAS=xxxxx from pszConnectionName string
-        memmove( pszSchemasStart, pszEnd, strlen(pszEnd) + 1 );
-
-        pszSchemas[pszEnd - pszSchemasStart - strlen("schemas=")] = '\0';
-
-        papszSchemaList = CSLTokenizeString2( pszSchemas, ",", 0 );
-
-        CPLFree(pszSchemas);
+        papszSchemaList = CSLTokenizeString2( osSchemas, ",", 0 );
 
         /* If there is only one schema specified, make it the active schema */
         if (CSLCount(papszSchemaList) == 1)
@@ -458,28 +542,16 @@ int OGRPGDataSource::Open( const char * pszNewName, int bUpdate,
 /*      string; PQconnectdb() does not like unknown directives          */
 /* -------------------------------------------------------------------- */
 
-    char *pszTableStart = strstr(pszConnectionName, "tables=");
-    if (pszTableStart == nullptr)
-        pszTableStart = strstr(pszConnectionName, "TABLES=");
-
-    if( pszTableStart != nullptr )
+    CPLString osForcedTables;
+    if( ParseAndRemoveParam(pszConnectionNameNoPrefix, "tables", osForcedTables) )
     {
-        pszForcedTables = CPLStrdup( pszTableStart + 7 );
-
-        const char* pszEnd = strchr(pszTableStart, ' ');
-        if( pszEnd == nullptr )
-            pszEnd = pszConnectionName + strlen(pszConnectionName);
-
-        // Remove TABLES=xxxxx from pszConnectionName string
-        memmove( pszTableStart, pszEnd, strlen(pszEnd) + 1 );
-
-        pszForcedTables[pszEnd - pszTableStart - 7] = '\0';
+        pszForcedTables = CPLStrdup(osForcedTables);
     }
 
 /* -------------------------------------------------------------------- */
 /*      Try to establish connection.                                    */
 /* -------------------------------------------------------------------- */
-    hPGConn = PQconnectdb( pszConnectionName + (STARTS_WITH_CI(pszNewName, "PGB:") ? 4 : 3) );
+    hPGConn = PQconnectdb( pszConnectionNameNoPrefix );
     CPLFree(pszConnectionName);
     pszConnectionName = nullptr;
 
@@ -513,7 +585,7 @@ int OGRPGDataSource::Open( const char * pszNewName, int bUpdate,
     }
 
 /* -------------------------------------------------------------------- */
-/*      Set the encoding to UTF8 as the driver advertizes UTF8          */
+/*      Set the encoding to UTF8 as the driver advertises UTF8          */
 /*      unless PGCLIENTENCODING is defined                              */
 /* -------------------------------------------------------------------- */
     if (CPLGetConfigOption("PGCLIENTENCODING", nullptr) == nullptr)
@@ -533,36 +605,45 @@ int OGRPGDataSource::Open( const char * pszNewName, int bUpdate,
     PQsetNoticeProcessor( hPGConn, OGRPGNoticeProcessor, this );
 
 /* -------------------------------------------------------------------- */
-/*      Try to establish the database name from the connection          */
-/*      string passed.                                                  */
+/*      Detect PostGIS schema                                           */
 /* -------------------------------------------------------------------- */
-    if( strstr(pszNewName, "dbname=") != nullptr )
+    CPLString osPostgisSchema;
     {
-        pszDBName = CPLStrdup( strstr(pszNewName, "dbname=") + 7 );
-
-        for( int i = 0; pszDBName[i] != '\0'; i++ )
+        PGresult*hResult = OGRPG_PQexec(hPGConn,
+            "SELECT n.nspname FROM pg_proc p JOIN pg_namespace n "
+            "ON n.oid = p.pronamespace WHERE proname = 'postgis_version'");
+        if( hResult && PQresultStatus(hResult) == PGRES_TUPLES_OK
+            && PQntuples(hResult) > 0 )
         {
-            if( pszDBName[i] == ' ' )
-            {
-                pszDBName[i] = '\0';
-                break;
-            }
+            const char* pszPostgisSchema = PQgetvalue(hResult,0,0);
+
+            CPLDebug("PG","PostGIS schema: '%s'", pszPostgisSchema);
+
+            osPostgisSchema = pszPostgisSchema;
         }
+        OGRPGClearResult(hResult);
     }
-    else if( getenv( "USER" ) != nullptr )
-        pszDBName = CPLStrdup( getenv("USER") );
-    else
-        pszDBName = CPLStrdup( "unknown_dbname" );
-
-    CPLDebug( "PG", "DBName=\"%s\"", pszDBName );
 
 /* -------------------------------------------------------------------- */
-/*      Set active schema if different from 'public'                    */
+/*      Set active schema and/or postgis schema if different from       */
+/*      'public'                                                        */
 /* -------------------------------------------------------------------- */
-    if (strcmp(osActiveSchema, "public") != 0)
+    if (osActiveSchema != "public" ||
+        (!osPostgisSchema.empty() && osPostgisSchema != "public"))
     {
-        CPLString osCommand;
-        osCommand.Printf("SET search_path='%s',public", osActiveSchema.c_str());
+        CPLString osCommand = "SET search_path=";
+        if( osActiveSchema != "public" )
+        {
+            osCommand += OGRPGEscapeString(hPGConn, osActiveSchema.c_str());
+            osCommand += ',';
+        }
+        osCommand += "public";
+        if( !osPostgisSchema.empty() && osPostgisSchema != "public" )
+        {
+            osCommand += ',';
+            osCommand += OGRPGEscapeString(hPGConn, osPostgisSchema.c_str());
+        }
+
         PGresult    *hResult = OGRPG_PQexec(hPGConn, osCommand );
 
         if( !hResult || PQresultStatus(hResult) != PGRES_COMMAND_OK )
@@ -2184,7 +2265,7 @@ OGRSpatialReference *OGRPGDataSource::FetchSRS( int nId )
     OGRSpatialReference *poSRS = nullptr;
 
     osCommand.Printf(
-             "SELECT srtext FROM spatial_ref_sys "
+             "SELECT srtext, auth_name, auth_srid FROM spatial_ref_sys "
              "WHERE srid = %d",
              nId );
     PGresult* hResult = OGRPG_PQexec(hPGConn, osCommand.c_str() );
@@ -2194,10 +2275,20 @@ OGRSpatialReference *OGRPGDataSource::FetchSRS( int nId )
         && PQntuples(hResult) == 1 )
     {
         const char *pszWKT = PQgetvalue(hResult,0,0);
+        const char *pszAuthName = PQgetvalue(hResult,0,1);
+        const char *pszAuthSRID = PQgetvalue(hResult,0,2);
         poSRS = new OGRSpatialReference();
         poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
 
-        if( poSRS->importFromWkt( pszWKT ) != OGRERR_NONE )
+        // Try to import first from EPSG code, and then from WKT
+        if( pszAuthName && pszAuthSRID &&
+            EQUAL(pszAuthName, "EPSG") &&
+            atoi(pszAuthSRID) == nId &&
+            poSRS->importFromEPSG(nId) == OGRERR_NONE )
+        {
+            // do nothing
+        }
+        else if( poSRS->importFromWkt( pszWKT ) != OGRERR_NONE )
         {
             delete poSRS;
             poSRS = nullptr;
@@ -2210,6 +2301,9 @@ OGRSpatialReference *OGRPGDataSource::FetchSRS( int nId )
     }
 
     OGRPGClearResult( hResult );
+
+    if( poSRS )
+        poSRS->StripTOWGS84IfKnownDatumAndAllowed();
 
 /* -------------------------------------------------------------------- */
 /*      Add to the cache.                                               */
@@ -2674,7 +2768,7 @@ OGRErr OGRPGDataSource::DoTransactionCommand(const char* pszCommand)
 /*                     OGRPGNoResetResultLayer                          */
 /************************************************************************/
 
-class OGRPGNoResetResultLayer : public OGRPGLayer
+class OGRPGNoResetResultLayer final: public OGRPGLayer
 {
   public:
                         OGRPGNoResetResultLayer(OGRPGDataSource *poDSIn,
@@ -2749,7 +2843,7 @@ OGRFeature *OGRPGNoResetResultLayer::GetNextFeature()
 /*                      OGRPGMemLayerWrapper                            */
 /************************************************************************/
 
-class OGRPGMemLayerWrapper : public OGRLayer
+class OGRPGMemLayerWrapper final: public OGRLayer
 {
   private:
       GDALDataset  *poMemDS;
@@ -2854,7 +2948,7 @@ OGRLayer * OGRPGDataSource::ExecuteSQL( const char *pszSQLCommand,
         (strstr(pszSQLCommand, "from") == nullptr && strstr(pszSQLCommand, "FROM") == nullptr))
     {
         /* For something that is not a select or a select without table, do not */
-        /* run under transaction (CREATE DATABASE, VACCUUM don't like transactions) */
+        /* run under transaction (CREATE DATABASE, VACUUM don't like transactions) */
 
         hResult = OGRPG_PQexec(hPGConn, pszSQLCommand, TRUE /* multiple allowed */ );
         if (hResult && PQresultStatus(hResult) == PGRES_TUPLES_OK)
@@ -2922,6 +3016,28 @@ OGRLayer * OGRPGDataSource::ExecuteSQL( const char *pszSQLCommand,
     OGRPGClearResult( hResult );
 
     return nullptr;
+}
+
+
+/************************************************************************/
+/*                          AbortSQL()                                  */
+/************************************************************************/
+
+
+OGRErr OGRPGDataSource::AbortSQL()
+{
+  auto cancel = PQgetCancel( hPGConn ) ;
+  int result;
+  if ( cancel )
+  {
+    char errbuf[255];
+    result = PQcancel( cancel, errbuf, 255 );
+    if ( ! result )
+       CPLDebug( "PG", "Error canceling the query: %s", errbuf );
+    PQfreeCancel( cancel );
+    return result ? OGRERR_NONE : OGRERR_FAILURE;
+  }
+  return OGRERR_FAILURE;
 }
 
 /************************************************************************/

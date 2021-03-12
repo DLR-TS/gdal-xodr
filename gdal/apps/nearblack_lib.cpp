@@ -86,7 +86,7 @@ static void ProcessLine( GByte *pabyLine, GByte *pabyMask, int iStart,
 /**
  * Convert nearly black/white borders to exact value.
  *
- * This is the equivalent of the <a href="nearblack.html">nearblack</a> utility.
+ * This is the equivalent of the <a href="/programs/nearblack.html">nearblack</a> utility.
  *
  * GDALNearblackOptions* must be allocated and freed with GDALNearblackOptionsNew()
  * and GDALNearblackOptionsFree() respectively.
@@ -99,7 +99,7 @@ static void ProcessLine( GByte *pabyLine, GByte *pabyMask, int iStart,
  * @param hDstDS the destination dataset or NULL. Might be equal to hSrcDataset.
  * @param hSrcDataset the source dataset handle.
  * @param psOptionsIn the options struct returned by GDALNearblackOptionsNew() or NULL.
- * @param pbUsageError the pointer to int variable to determine any usage error has occurred or NULL.
+ * @param pbUsageError pointer to a integer output variable to store if any usage error has occurred or NULL.
  * @return the output dataset (new dataset that must be closed using GDALClose(), or hDstDS is not NULL) or NULL in case of error.
  *
  * @since GDAL 2.1
@@ -535,6 +535,7 @@ GDALDatasetH CPL_DLL GDALNearblack( const char *pszDest, GDALDatasetH hDstDS,
         CPLFree(pabyMask);
 
     CPLFree( panLastLineCounts );
+    GDALNearblackOptionsFree(psOptionsToFree);
 
     return hDstDS;
 }
@@ -750,7 +751,7 @@ static bool IsInt( const char *pszArg )
  * Allocates a GDALNearblackOptions struct.
  *
  * @param papszArgv NULL terminated list of options (potentially including filename and open options too), or NULL.
- *                  The accepted options are the ones of the <a href="nearblack.html">nearblack</a> utility.
+ *                  The accepted options are the ones of the <a href="/programs/nearblack.html">nearblack</a> utility.
  * @param psOptionsForBinary (output) may be NULL (and should generally be NULL),
  *                           otherwise (gdal_translate_bin.cpp use case) must be allocated with
  *                           GDALNearblackOptionsForBinaryNew() prior to this function. Will be

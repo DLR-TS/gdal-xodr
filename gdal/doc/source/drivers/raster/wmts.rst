@@ -8,6 +8,8 @@ WMTS -- OGC Web Map Tile Service
 
 .. versionadded:: 2.1
 
+.. build_dependencies:: libcurl
+
 Access to WMTS layers is possible with the GDAL WMTS
 client driver (needs Curl support). It support both RESTful and KVP
 protocols.
@@ -181,6 +183,11 @@ It is important that there be no spaces or other content before the
 |                                   | grayscale data, 3 for RGB, 4 for  |
 |                                   | RGBA. (optional, defaults to 4)   |
 +-----------------------------------+-----------------------------------+
+| <DataType>Byte</DataType>         | Band data type, one of: Byte,     |
+|                                   | Int16, UInt16, Int32, UInt32,     |
+|                                   | Float32, Float64, etc..           |
+|                                   | (optional, defaults to Byte)      |
++-----------------------------------+-----------------------------------+
 | <ExtendBeyondDateLine>false</Exte | Whether to make the extent go     |
 | ndBeyondDateLine>                 | over dateline and warp tile       |
 |                                   | requests. Only appropriate when   |
@@ -294,6 +301,10 @@ It is important that there be no spaces or other content before the
 +-----------------------------------+-----------------------------------+
 |                                   |                                   |
 +-----------------------------------+-----------------------------------+
+
+Starting with GDAL 2.3, additional HTTP headers can be sent by setting the
+GDAL_HTTP_HEADER_FILE configuration option to point to a filename of a text
+file with “key: value” HTTP headers. 
 
 GetFeatureInfo request
 ----------------------

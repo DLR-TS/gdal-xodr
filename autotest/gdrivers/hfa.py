@@ -30,7 +30,7 @@
 ###############################################################################
 
 import os
-import array
+import struct
 from osgeo import gdal
 
 
@@ -139,7 +139,7 @@ def test_hfa_histrewrite():
 
 def test_hfa_int_stats_1():
 
-    ds = gdal.Open('data/int.img')
+    ds = gdal.Open('data/hfa/int.img')
     md = ds.GetRasterBand(1).GetMetadata()
     ds = None
 
@@ -163,19 +163,19 @@ def test_hfa_int_stats_1():
 
 def test_hfa_int_stats_2():
 
-    ds = gdal.Open('data/int.img')
+    ds = gdal.Open('data/hfa/int.img')
     stats = ds.GetRasterBand(1).GetStatistics(False, True)
     ds = None
 
     tolerance = 0.0001
 
-    assert abs(stats[0] - 40918.0) <= tolerance, 'Minimum value is wrong.'
+    assert stats[0] == pytest.approx(40918.0, abs=tolerance), 'Minimum value is wrong.'
 
-    assert abs(stats[1] - 41134.0) <= tolerance, 'Maximum value is wrong.'
+    assert stats[1] == pytest.approx(41134.0, abs=tolerance), 'Maximum value is wrong.'
 
-    assert abs(stats[2] - 41019.784218148) <= tolerance, 'Mean value is wrong.'
+    assert stats[2] == pytest.approx(41019.784218148, abs=tolerance), 'Mean value is wrong.'
 
-    assert abs(stats[3] - 44.637237445468) <= tolerance, 'StdDev value is wrong.'
+    assert stats[3] == pytest.approx(44.637237445468, abs=tolerance), 'StdDev value is wrong.'
 
 ###############################################################################
 # Verify we can read metadata of float.img.
@@ -183,29 +183,29 @@ def test_hfa_int_stats_2():
 
 def test_hfa_float_stats_1():
 
-    ds = gdal.Open('data/float.img')
+    ds = gdal.Open('data/hfa/float.img')
     md = ds.GetRasterBand(1).GetMetadata()
     ds = None
 
     tolerance = 0.0001
 
     mini = float(md['STATISTICS_MINIMUM'])
-    assert abs(mini - 40.91858291626) <= tolerance, 'STATISTICS_MINIMUM is wrong.'
+    assert mini == pytest.approx(40.91858291626, abs=tolerance), 'STATISTICS_MINIMUM is wrong.'
 
     maxi = float(md['STATISTICS_MAXIMUM'])
-    assert abs(maxi - 41.134323120117) <= tolerance, 'STATISTICS_MAXIMUM is wrong.'
+    assert maxi == pytest.approx(41.134323120117, abs=tolerance), 'STATISTICS_MAXIMUM is wrong.'
 
     median = float(md['STATISTICS_MEDIAN'])
-    assert abs(median - 41.017182931304) <= tolerance, 'STATISTICS_MEDIAN is wrong.'
+    assert median == pytest.approx(41.017182931304, abs=tolerance), 'STATISTICS_MEDIAN is wrong.'
 
     mod = float(md['STATISTICS_MODE'])
-    assert abs(mod - 41.0104410499) <= tolerance, 'STATISTICS_MODE is wrong.'
+    assert mod == pytest.approx(41.0104410499, abs=tolerance), 'STATISTICS_MODE is wrong.'
 
     histMin = float(md['STATISTICS_HISTOMIN'])
-    assert abs(histMin - 40.91858291626) <= tolerance, 'STATISTICS_HISTOMIN is wrong.'
+    assert histMin == pytest.approx(40.91858291626, abs=tolerance), 'STATISTICS_HISTOMIN is wrong.'
 
     histMax = float(md['STATISTICS_HISTOMAX'])
-    assert abs(histMax - 41.134323120117) <= tolerance, 'STATISTICS_HISTOMAX is wrong.'
+    assert histMax == pytest.approx(41.134323120117, abs=tolerance), 'STATISTICS_HISTOMAX is wrong.'
 
     assert md['LAYER_TYPE'] == 'athematic', 'LAYER_TYPE is wrong.'
 
@@ -215,19 +215,19 @@ def test_hfa_float_stats_1():
 
 def test_hfa_float_stats_2():
 
-    ds = gdal.Open('data/float.img')
+    ds = gdal.Open('data/hfa/float.img')
     stats = ds.GetRasterBand(1).GetStatistics(False, True)
     ds = None
 
     tolerance = 0.0001
 
-    assert abs(stats[0] - 40.91858291626) <= tolerance, 'Minimum value is wrong.'
+    assert stats[0] == pytest.approx(40.91858291626, abs=tolerance), 'Minimum value is wrong.'
 
-    assert abs(stats[1] - 41.134323120117) <= tolerance, 'Maximum value is wrong.'
+    assert stats[1] == pytest.approx(41.134323120117, abs=tolerance), 'Maximum value is wrong.'
 
-    assert abs(stats[2] - 41.020284249223) <= tolerance, 'Mean value is wrong.'
+    assert stats[2] == pytest.approx(41.020284249223, abs=tolerance), 'Mean value is wrong.'
 
-    assert abs(stats[3] - 0.044636441749041) <= tolerance, 'StdDev value is wrong.'
+    assert stats[3] == pytest.approx(0.044636441749041, abs=tolerance), 'StdDev value is wrong.'
 
 ###############################################################################
 # Verify we can read image data.
@@ -235,7 +235,7 @@ def test_hfa_float_stats_2():
 
 def test_hfa_int_read():
 
-    ds = gdal.Open('data/int.img')
+    ds = gdal.Open('data/hfa/int.img')
     band = ds.GetRasterBand(1)
     cs = band.Checksum()
     band.ReadRaster(100, 100, 1, 1)
@@ -249,7 +249,7 @@ def test_hfa_int_read():
 
 def test_hfa_float_read():
 
-    ds = gdal.Open('data/float.img')
+    ds = gdal.Open('data/hfa/float.img')
     band = ds.GetRasterBand(1)
     cs = band.Checksum()
     data = band.ReadRaster(100, 100, 1, 1)
@@ -261,7 +261,7 @@ def test_hfa_float_read():
     import struct
     value = struct.unpack('f' * 1, data)[0]
 
-    assert abs(value - 41.021659851074219) <= 0.0001, 'Pixel value is wrong.'
+    assert value == pytest.approx(41.021659851074219, abs=0.0001), 'Pixel value is wrong.'
 
 ###############################################################################
 # verify we can read PE_STRING coordinate system.
@@ -269,7 +269,7 @@ def test_hfa_float_read():
 
 def test_hfa_pe_read():
 
-    ds = gdal.Open('data/87test.img')
+    ds = gdal.Open('data/hfa/87test.img')
     wkt = ds.GetProjectionRef()
     expected = 'PROJCS["World_Cube",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Cube"],PARAMETER["False_Easting",0],PARAMETER["False_Northing",0],PARAMETER["Central_Meridian",0],PARAMETER["Option",1],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]'
 
@@ -282,7 +282,7 @@ def test_hfa_pe_read():
 def test_hfa_pe_write():
 
     drv = gdal.GetDriverByName('HFA')
-    ds_src = gdal.Open('data/87test.img')
+    ds_src = gdal.Open('data/hfa/87test.img')
     out_ds = drv.CreateCopy('tmp/87test.img', ds_src)
     del out_ds
     ds_src = None
@@ -350,7 +350,7 @@ def test_hfa_grow_rrdlist():
 
     import shutil
 
-    shutil.copyfile('data/bug_1109.img', 'tmp/bug_1109.img')
+    shutil.copyfile('data/hfa/bug_1109.img', 'tmp/bug_1109.img')
     # os.system("copy data\\bug_1109.img tmp")
 
     # Add two overview levels.
@@ -420,7 +420,7 @@ def test_hfa_corrupt_aux():
     # dataset.
 
     gdal.PushErrorHandler('CPLQuietErrorHandler')
-    ds = gdal.Open('data/F0116231.aux')
+    ds = gdal.Open('data/hfa/F0116231.aux')
     gdal.PopErrorHandler()
 
     assert ds.RasterXSize == 1104, 'did not get expected dataset characteristics'
@@ -440,7 +440,7 @@ def test_hfa_mapinformation_units():
     # dataset.
 
     gdal.PushErrorHandler('CPLQuietErrorHandler')
-    ds = gdal.Open('data/fg118-91.aux')
+    ds = gdal.Open('data/hfa/fg118-91.aux')
     gdal.PopErrorHandler()
 
     wkt = ds.GetProjectionRef()
@@ -460,7 +460,7 @@ def test_hfa_nodata_write():
     ds = drv.Create('tmp/nodata.img', 7, 7, 1, gdal.GDT_Byte)
 
     p = [1, 2, 1, 4, 1, 2, 1]
-    raw_data = array.array('h', p).tostring()
+    raw_data = b''.join(struct.pack('h', x) for x in p)
 
     for line in range(7):
         ds.WriteRaster(0, line, 7, 1, raw_data,
@@ -486,13 +486,13 @@ def test_hfa_nodata_read():
 
     tolerance = 0.0001
 
-    assert abs(stats[0] - 2) <= tolerance, 'Minimum value is wrong.'
+    assert stats[0] == pytest.approx(2, abs=tolerance), 'Minimum value is wrong.'
 
-    assert abs(stats[1] - 4) <= tolerance, 'Maximum value is wrong.'
+    assert stats[1] == pytest.approx(4, abs=tolerance), 'Maximum value is wrong.'
 
-    assert abs(stats[2] - 2.6666666666667) <= tolerance, 'Mean value is wrong.'
+    assert stats[2] == pytest.approx(2.6666666666667, abs=tolerance), 'Mean value is wrong.'
 
-    assert abs(stats[3] - 0.94280904158206) <= tolerance, 'StdDev value is wrong.'
+    assert stats[3] == pytest.approx(0.94280904158206, abs=tolerance), 'StdDev value is wrong.'
 
     b = None
     ds = None
@@ -505,7 +505,7 @@ def test_hfa_nodata_read():
 
 def test_hfa_rotated_read():
 
-    ds = gdal.Open('data/fg118-91.aux')
+    ds = gdal.Open('data/hfa/fg118-91.aux')
 
     check_gt = (11856857.07898215, 0.895867662235625, 0.02684252936279331,
                 7041861.472946444, 0.01962103617166367, -0.9007880319529181)
@@ -514,7 +514,7 @@ def test_hfa_rotated_read():
 
     new_gt = ds.GetGeoTransform()
     for i in range(6):
-        if abs(new_gt[i] - check_gt[i]) > gt_epsilon:
+        if new_gt[i] != pytest.approx(check_gt[i], abs=gt_epsilon):
             print('')
             print('old = ', check_gt)
             print('new = ', new_gt)
@@ -576,7 +576,7 @@ def test_hfa_rotated_write():
 
     new_gt = ds.GetGeoTransform()
     for i in range(6):
-        if abs(new_gt[i] - check_gt[i]) > gt_epsilon:
+        if new_gt[i] != pytest.approx(check_gt[i], abs=gt_epsilon):
             print('')
             print('old = ', check_gt)
             print('new = ', new_gt)
@@ -607,7 +607,7 @@ def test_hfa_vsimem():
 def test_hfa_proName():
 
     drv = gdal.GetDriverByName('HFA')
-    src_ds = gdal.Open('data/stateplane.vrt')
+    src_ds = gdal.Open('data/hfa/stateplane.vrt')
     dst_ds = drv.CreateCopy('tmp/proname.img', src_ds)
 
     del dst_ds
@@ -663,7 +663,7 @@ def test_hfa_read_empty_compressed():
 
 def test_hfa_unique_values_color_table():
 
-    ds = gdal.Open('data/i8u_c_i.img')
+    ds = gdal.Open('data/hfa/i8u_c_i.img')
 
     ct = ds.GetRasterBand(1).GetRasterColorTable()
 
@@ -686,7 +686,7 @@ def test_hfa_unique_values_hist():
     except:
         pytest.skip()
 
-    ds = gdal.Open('data/i8u_c_i.img')
+    ds = gdal.Open('data/hfa/i8u_c_i.img')
 
     md = ds.GetRasterBand(1).GetMetadata()
 
@@ -715,7 +715,7 @@ def test_hfa_unique_values_hist():
 
 def test_hfa_xforms_3rd():
 
-    ds = gdal.Open('data/42BW_420730_VT2.aux')
+    ds = gdal.Open('data/hfa/42BW_420730_VT2.aux')
 
     check_list = [
         ('XFORM_STEPS', 2),
@@ -735,7 +735,7 @@ def test_hfa_xforms_3rd():
         except (TypeError, ValueError):
             pytest.fail('metadata item %d missing' % check_item[0])
 
-        assert abs(value - check_item[1]) <= abs(value / 100000.0), \
+        assert value == pytest.approx(check_item[1], abs=abs(value / 100000.0)), \
             ('metadata item %s has wrong value: %.15g' %
                                  (check_item[0], value))
 
@@ -744,10 +744,10 @@ def test_hfa_xforms_3rd():
 
     gcps = ds.GetGCPs()
 
-    assert gcps[0].GCPPixel == 0.5 and gcps[0].GCPLine == 0.5 and abs(gcps[0].GCPX - 1667635.007) <= 0.001 and abs(gcps[0].GCPY - 2620003.171) <= 0.001, \
+    assert gcps[0].GCPPixel == 0.5 and gcps[0].GCPLine == 0.5 and gcps[0].GCPX == pytest.approx(1667635.007, abs=0.001) and gcps[0].GCPY == pytest.approx(2620003.171, abs=0.001), \
         'GCP 0 value wrong.'
 
-    assert abs(gcps[14].GCPPixel - 1769.7) <= 0.1 and abs(gcps[14].GCPLine - 2124.9) <= 0.1 and abs(gcps[14].GCPX - 1665221.064) <= 0.001 and abs(gcps[14].GCPY - 2632414.379) <= 0.001, \
+    assert gcps[14].GCPPixel == pytest.approx(1769.7, abs=0.1) and gcps[14].GCPLine == pytest.approx(2124.9, abs=0.1) and gcps[14].GCPX == pytest.approx(1665221.064, abs=0.001) and gcps[14].GCPY == pytest.approx(2632414.379, abs=0.001), \
         'GCP 14 value wrong.'
 
     ds = None
@@ -758,7 +758,7 @@ def test_hfa_xforms_3rd():
 
 def test_hfa_delete_colortable():
     # copy a file to tmp dir to modify.
-    open('tmp/i8u.img', 'wb').write(open('data/i8u_c_i.img', 'rb').read())
+    open('tmp/i8u.img', 'wb').write(open('data/hfa/i8u_c_i.img', 'rb').read())
 
     # clear color table.
     ds = gdal.Open('tmp/i8u.img', gdal.GA_Update)
@@ -826,7 +826,7 @@ def test_hfa_delete_colortable2():
 
 def test_hfa_excluded_values():
 
-    ds = gdal.Open('data/dem10.img')
+    ds = gdal.Open('data/hfa/dem10.img')
     md = ds.GetRasterBand(1).GetMetadata()
     ds = None
 
@@ -834,13 +834,13 @@ def test_hfa_excluded_values():
         'STATISTICS_EXCLUDEDVALUE is wrong.'
 
 ###############################################################################
-# verify that we propagate nodata to overviews in .img/.rrd format.
+# verify that we propagate nodata to overviews in .hfa/.rrd format.
 
 
 def test_hfa_ov_nodata():
 
     drv = gdal.GetDriverByName('HFA')
-    src_ds = gdal.Open('data/nodata_int.asc')
+    src_ds = gdal.Open('data/aaigrid/nodata_int.asc')
     wrk_ds = drv.CreateCopy('/vsimem/ov_nodata.img', src_ds)
     src_ds = None
 
@@ -874,7 +874,7 @@ def test_hfa_ov_nodata():
 
 def test_hfa_read_bit2grayscale():
 
-    ds = gdal.Open('data/small1bit.img')
+    ds = gdal.Open('data/hfa/small1bit.img')
     band = ds.GetRasterBand(1)
     ov = band.GetOverview(0)
 
@@ -893,8 +893,8 @@ def test_hfa_write_bit2grayscale():
 
     import shutil
 
-    shutil.copyfile('data/small1bit.img', 'tmp/small1bit.img')
-    shutil.copyfile('data/small1bit.rrd', 'tmp/small1bit.rrd')
+    shutil.copyfile('data/hfa/small1bit.img', 'tmp/small1bit.img')
+    shutil.copyfile('data/hfa/small1bit.rrd', 'tmp/small1bit.rrd')
 
     gdal.SetConfigOption('USE_RRD', 'YES')
     gdal.SetConfigOption('HFA_USE_RRD', 'YES')
@@ -923,7 +923,7 @@ def test_hfa_write_bit2grayscale():
 
 def test_hfa_camera_md():
 
-    ds = gdal.Open('/vsisparse/data/251_sparse.xml')
+    ds = gdal.Open('/vsisparse/data/hfa/251_sparse.xml')
 
     md = ds.GetMetadata('CAMERA_MODEL')
 
@@ -992,7 +992,10 @@ def test_hfa_write_tmso_projection():
 
 def test_hfa_read_homva_projection():
     exp_wkt = 'PROJCS["Hotine Oblique Mercator (Variant A)",GEOGCS["GDM 2000",DATUM["Geodetic_Datum_of_Malaysia_2000",SPHEROID["GRS 1980",6378137,298.257222096042],TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Hotine_Oblique_Mercator"],PARAMETER["latitude_of_center",4],PARAMETER["longitude_of_center",115],PARAMETER["azimuth",53.31580995],PARAMETER["rectified_grid_angle",53.1301023611111],PARAMETER["scale_factor",0.99984],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["meters",1],AXIS["Easting",EAST],AXIS["Northing",NORTH]]'
-    return hfa_verify_dataset_projection('../gcore/data/3376.tif', exp_wkt)
+    ds = gdal.Open('../gcore/data/3376.tif')
+    srs_wkt = ds.GetProjectionRef()
+    assert gdaltest.equal_srs_from_wkt(srs_wkt, exp_wkt, verbose=False) or \
+           gdaltest.equal_srs_from_wkt(srs_wkt, exp_wkt.replace('Geodetic_Datum_of_Malaysia_2000', 'GDM 2000'), verbose=False), srs_wkt
 
 ###############################################################################
 # Verify can write  Hotine Oblique Mercator (Variant A) projections to aux files
@@ -1003,7 +1006,7 @@ def test_hfa_write_homva_projection():
     out_ds = gdal.GetDriverByName('HFA').Create(dataset_path, 1, 1)
     gt = (0, 1, 0, 0, 0, 1)
     out_ds.SetGeoTransform(gt)
-    out_ds.SetProjection('PROJCS["Hotine Oblique Mercator (Variant A)",GEOGCS["GDM 2000",DATUM["GDM 2000",SPHEROID["GRS 1980",6378137,298.2572220960422],TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Hotine_Oblique_Mercator"],PARAMETER["latitude_of_center",4],PARAMETER["longitude_of_center",115],PARAMETER["azimuth",53.31580995],PARAMETER["rectified_grid_angle",53.13010236111111],PARAMETER["scale_factor",0.99984],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["meters",1]]')
+    out_ds.SetProjection('PROJCS["Hotine Oblique Mercator (Variant A)",GEOGCS["GDM 2000",DATUM["GDM_2000",SPHEROID["GRS 1980",6378137,298.2572220960422],TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433]],PROJECTION["Hotine_Oblique_Mercator"],PARAMETER["latitude_of_center",4],PARAMETER["longitude_of_center",115],PARAMETER["azimuth",53.31580995],PARAMETER["rectified_grid_angle",53.13010236111111],PARAMETER["scale_factor",0.99984],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["meters",1]]')
     out_ds = None
     exp_wkt = 'PROJCS["Hotine Oblique Mercator (Variant A)",GEOGCS["GDM_2000",DATUM["GDM_2000",SPHEROID["GRS 1980",6378137,298.257222096042],TOWGS84[0,0,0,0,0,0,0]],PRIMEM["Greenwich",0],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Hotine_Oblique_Mercator"],PARAMETER["latitude_of_center",4],PARAMETER["longitude_of_center",115],PARAMETER["azimuth",53.31580995],PARAMETER["rectified_grid_angle",53.1301023611111],PARAMETER["scale_factor",0.99984],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["meters",1],AXIS["Easting",EAST],AXIS["Northing",NORTH]]'
     ret = hfa_verify_dataset_projection(dataset_path, exp_wkt)
@@ -1019,7 +1022,7 @@ def test_hfa_rde_overviews():
 
     # Create an imagine file, forcing creation of an .ige file.
 
-    ds = gdal.Open('data/spill.img')
+    ds = gdal.Open('data/hfa/spill.img')
 
     exp_cs = 1631
     cs = ds.GetRasterBand(1).Checksum()
@@ -1032,10 +1035,8 @@ def test_hfa_rde_overviews():
     assert exp_cs == cs, 'did not get expected overview checksum'
 
     filelist = ds.GetFileList()
-    exp_filelist = ['data/spill.img', 'data/spill.ige', 'data/spill.rrd', 'data/spill.rde']
-    exp_filelist_win32 = ['data/spill.img', 'data\\spill.ige', 'data\\spill.rrd', 'data\\spill.rde']
-    assert filelist == exp_filelist or filelist == exp_filelist_win32, \
-        'did not get expected file list.'
+    exp_filelist = ['data/hfa/spill.img', 'data/hfa/spill.ige', 'data/hfa/spill.rrd', 'data/hfa/spill.rde']
+    assert [x.replace('\\', '/') for x in filelist] == exp_filelist
 
     ds = None
 
@@ -1047,7 +1048,7 @@ def test_hfa_rde_overviews():
 def test_hfa_copyfiles():
 
     drv = gdal.GetDriverByName('HFA')
-    drv.CopyFiles('tmp/newnamexxx_after_copy.img', 'data/spill.img')
+    drv.CopyFiles('tmp/newnamexxx_after_copy.img', 'data/hfa/spill.img')
 
     drv.Rename('tmp/newnamexxx.img', 'tmp/newnamexxx_after_copy.img')
 
@@ -1089,7 +1090,7 @@ def test_hfa_write_rat():
 
     drv = gdal.GetDriverByName('HFA')
 
-    src_ds = gdal.Open('data/i8u_c_i.img')
+    src_ds = gdal.Open('data/hfa/i8u_c_i.img')
 
     rat = src_ds.GetRasterBand(1).GetDefaultRAT()
 

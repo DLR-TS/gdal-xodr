@@ -163,7 +163,7 @@ class IDADataset final: public RawDataset
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType,
-                                char ** /* papszParmList */ );
+                                char ** /* papszParamList */ );
 };
 
 /************************************************************************/
@@ -172,7 +172,7 @@ class IDADataset final: public RawDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class IDARasterBand : public RawRasterBand
+class IDARasterBand final: public RawRasterBand
 {
     friend class IDADataset;
 
@@ -796,6 +796,9 @@ GDALDataset *IDADataset::Open( GDALOpenInfo * poOpenInfo )
     if( nActualFileSize != nExpectedFileSize )
         return nullptr;
 
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("IDA") )
+        return nullptr;
+
 /* -------------------------------------------------------------------- */
 /*      Create the dataset.                                             */
 /* -------------------------------------------------------------------- */
@@ -989,9 +992,12 @@ GDALDataset *IDADataset::Open( GDALOpenInfo * poOpenInfo )
 GDALDataset *IDADataset::Create( const char * pszFilename,
                                  int nXSize, int nYSize, int nBands,
                                  GDALDataType eType,
-                                 char ** /* papszParmList */ )
+                                 char ** /* papszParamList */ )
 
 {
+    if( !GDALIsDriverDeprecatedForGDAL35StillEnabled("IDA") )
+        return nullptr;
+
 /* -------------------------------------------------------------------- */
 /*      Verify input options.                                           */
 /* -------------------------------------------------------------------- */
@@ -1088,7 +1094,7 @@ void GDALRegister_IDA()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Image Data and Analysis" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#IDA" );
+                               "drivers/raster/ida.html" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES, "Byte" );
 
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );

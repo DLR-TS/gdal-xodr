@@ -7,7 +7,7 @@
 # Howard Butler hobu.inc@gmail.com
 
 
-gdal_version = '3.0.0'
+gdal_version = '3.2.0'
 
 import sys
 import os
@@ -97,41 +97,14 @@ except ImportError:
     print('WARNING: numpy not available!  Array support will not be enabled')
     pass
 
-fixer_names = [
-    'lib2to3.fixes.fix_import',
-    'lib2to3.fixes.fix_next',
-    'lib2to3.fixes.fix_renames',
-    'lib2to3.fixes.fix_unicode',
-    'lib2to3.fixes.fix_ws_comma',
-    'lib2to3.fixes.fix_xrange',
-]
-extra = {}
 try:
-    from setuptools import setup
+    from setuptools import setup, find_packages
     from setuptools import Extension
     HAVE_SETUPTOOLS = True
 except ImportError:
     from distutils.core import setup, Extension
-
-    try:
-        from distutils.command.build_py import build_py_2to3 as build_py
-        from distutils.command.build_scripts import build_scripts_2to3 as build_scripts
-    except ImportError:
-        from distutils.command.build_py import build_py
-        from distutils.command.build_scripts import build_scripts
-    else:
-        build_py.fixer_names = fixer_names
-        build_scripts.fixer_names = fixer_names
-else:
-    if sys.version_info >= (3,):
-        from lib2to3.refactor import get_fixers_from_package
-
-        all_fixers = set(get_fixers_from_package('lib2to3.fixes'))
-        exclude_fixers = sorted(all_fixers.difference(fixer_names))
-
-        extra['use_2to3'] = True
-        extra['use_2to3_fixers'] = []
-        extra['use_2to3_exclude_fixers'] = exclude_fixers
+    from distutils.command.build_py import build_py
+    from distutils.command.build_scripts import build_scripts
 
 
 class gdal_config_error(Exception):
@@ -142,34 +115,16 @@ def fetch_config(option, gdal_config='gdal-config'):
 
     command = gdal_config + " --%s" % option
 
+    import subprocess
+    command, args = command.split()[0], command.split()[1]
     try:
-        import subprocess
-        command, args = command.split()[0], command.split()[1]
-        from sys import version_info
-        if version_info >= (3, 0, 0):
-            try:
-                p = subprocess.Popen([command, args], stdout=subprocess.PIPE)
-            except OSError:
-                e = sys.exc_info()[1]
-                raise gdal_config_error(e)
-            r = p.stdout.readline().decode('ascii').strip()
-        else:
-            exec("""try:
-    p = subprocess.Popen([command, args], stdout=subprocess.PIPE)
-except OSError, e:
-    raise gdal_config_error, e""")
-            r = p.stdout.readline().strip()
-        p.stdout.close()
-        p.wait()
-
-    except ImportError:
-
-        import popen2
-
-        p = popen2.popen3(command)
-        r = p[0].readline().strip()
-        if not r:
-            raise Warning(p[2].readline())
+        p = subprocess.Popen([command, args], stdout=subprocess.PIPE)
+    except OSError:
+        e = sys.exc_info()[1]
+        raise gdal_config_error(e)
+    r = p.stdout.readline().decode('ascii').strip()
+    p.stdout.close()
+    p.wait()
 
     return r
 
@@ -253,7 +208,15 @@ class gdal_ext(build_ext):
             # the gdal-config location given in setup.cfg is
             # incorrect, or possibly the default -- ../../apps/gdal-config
             # We'll try to use the gdal-config that might be on the path.
-            return fetch_config(option)
+            try:
+                return fetch_config(option)
+            except gdal_config_error as e:
+                msg = 'Could not find gdal-config. Make sure you have installed the GDAL native library and development headers.'
+                import sys
+                import traceback
+                traceback_string = ''.join(traceback.format_exception(*sys.exc_info()))
+                raise gdal_config_error(traceback_string + '\n' + msg)
+
 
     def build_extensions(self):
 
@@ -324,23 +287,6 @@ class gdal_ext(build_ext):
         ext.extra_compile_args.extend(self.extra_cflags)
         return build_ext.build_extension(self, ext)
 
-# This is only needed with Python 2.
-if sys.version_info < (3,):
-    try:
-        import multiprocessing
-        from concurrent.futures import ThreadPoolExecutor as Pool
-
-        num_jobs = multiprocessing.cpu_count()
-
-        def parallel_build_extensions(self):
-            self.check_extensions_list(self.extensions)
-
-            with Pool(num_jobs) as pool:
-                pool.map(self.build_extension, self.extensions)
-
-        build_ext.build_extensions = parallel_build_extensions
-    except:
-        pass
 
 extra_link_args = []
 extra_compile_args = []
@@ -381,11 +327,6 @@ ext_modules = [gdal_module,
                osr_module,
                ogr_module]
 
-py_modules = ['gdal',
-              'ogr',
-              'osr',
-              'gdalconst']
-
 if os.path.exists('setup_vars.ini'):
     with open('setup_vars.ini') as f:
         lines = f.readlines()
@@ -397,11 +338,14 @@ if GNM_ENABLED:
 
 if HAVE_NUMPY:
     ext_modules.append(array_module)
-    py_modules.append('gdalnumeric')
 
-packages = ["osgeo", ]
+if HAVE_SETUPTOOLS:
+    packages = find_packages()
+else:
+    packages = ['osgeo', 'osgeo.utils', 'osgeo.utils.auxiliary']
+package_dir = {'': '.'}  # package sources are under the same dir as setup.py
 
-readme = str(open('README.rst', 'rb').read())
+readme = open('README.rst', 'rb').read().decode('utf-8')
 
 name = 'GDAL'
 version = gdal_version
@@ -419,7 +363,6 @@ classifiers = [
     'Intended Audience :: Science/Research',
     'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent',
-    'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 3',
     'Programming Language :: C',
     'Programming Language :: C++',
@@ -436,7 +379,6 @@ else:
 
 exclude_package_data = {'': ['GNUmakefile']}
 
-
 setup_kwargs = dict(
     name=name,
     version=gdal_version,
@@ -449,25 +391,22 @@ setup_kwargs = dict(
     description=description,
     license=license_type,
     classifiers=classifiers,
-    py_modules=py_modules,
     packages=packages,
+    package_dir=package_dir,
     url=url,
+    python_requires='>=3.6.0',
     data_files=data_files,
     ext_modules=ext_modules,
     scripts=glob('scripts/*.py'),
-    cmdclass={'build_ext': gdal_ext}
+    cmdclass={'build_ext': gdal_ext},
+    extras_require={'numpy': ['numpy > 1.0.0']},
 )
 
-# This section can be greatly simplified with python >= 3.5 using **
 if HAVE_SETUPTOOLS:
-    for k, v in extra.items():
-        setup_kwargs[k] = v
-
     setup_kwargs['zip_safe'] = False
     setup_kwargs['exclude_package_data'] = exclude_package_data
-    setup(**setup_kwargs)
 else:
     setup_kwargs['cmdclass']['build_py'] = build_py
     setup_kwargs['cmdclass']['build_scripts'] = build_scripts
 
-    setup(**setup_kwargs)
+setup(**setup_kwargs)

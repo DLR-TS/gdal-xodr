@@ -180,7 +180,7 @@ void *GDALCreateTPSTransformerInt( int nGCPCount, const GDAL_GCP *pasGCPList,
     psInfo->sTI.pfnCreateSimilar = GDALCreateSimilarTPSTransformer;
 
 /* -------------------------------------------------------------------- */
-/*      Attach all the points to the transformation.                    */
+/*      Attach (non-redundant) points to the transformation.            */
 /* -------------------------------------------------------------------- */
     std::map< std::pair<double, double>, int > oMapPixelLineToIdx;
     std::map< std::pair<double, double>, int > oMapXYToIdx;

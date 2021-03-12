@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ******************************************************************************
 #  $Id$
@@ -100,10 +100,7 @@ def write_hexstring_as_binary(hex_binary_content, out_f):
     for i in range(int(len(hex_binary_content) / 2)):
         val = hex_letter_to_number(hex_binary_content[2 * i]) * 16 + \
             hex_letter_to_number(hex_binary_content[2 * i + 1])
-        if sys.version_info >= (3, 0, 0):
-            out_f.write(chr(val).encode('latin1'))
-        else:
-            out_f.write(chr(val))
+        out_f.write(chr(val).encode('latin1'))
 
 
 def parse_field(xml_tree, out_f, src_jp2file):
@@ -440,11 +437,11 @@ def build_file(inname, outname):
     return ret
 
 
-def main():
+def main(argv):
     i = 1
     inname = None
     outname = None
-    while i < len(sys.argv):
+    while i < len(argv):
         if sys.argv[i][0] == '-':
             return Usage()
         elif inname is None:
@@ -465,4 +462,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv))

@@ -60,7 +60,7 @@ Getting Dataset Information
 
 As described in the :ref:`raster_data_model`, a :cpp:class:`GDALDataset` contains a list of raster bands, all pertaining to the same area, and having the same resolution. It also has metadata, a coordinate system, a georeferencing transform, size of raster and various other information.
 
-In the particular, but common, case of a "north up" image without any rotation or shearing, the georeferencing transform takes the following form :
+In the particular, but common, case of a "north up" image without any rotation or shearing, the georeferencing transform :ref:`geotransforms_tut` takes the following form :
 
 .. code-block:: c
 
@@ -336,7 +336,7 @@ In Python:
     if metadata.get(gdal.DCAP_CREATE) == "YES":
         print("Driver {} supports Create() method.".format(fileformat))
 
-    if metadata.get(gdal.DCAP_CREATE) == "YES":
+    if metadata.get(gdal.DCAP_CREATECOPY) == "YES":
         print("Driver {} supports CreateCopy() method.".format(fileformat))
 
 Note that a number of drivers are read-only and won't support Create() or CreateCopy().

@@ -2134,7 +2134,11 @@ static OGRGeometryH GCIOAPI_CALL _buildOGRGeometry_GCIO (
               {
                 OGRGeometryH hPolyRing = OGR_G_CreateGeometry(wkbPolygon);
                 int bRes;
-                OGR_G_AddGeometryDirectly(hPolyRing, ring);
+                if(OGR_G_AddGeometryDirectly(hPolyRing, ring) != OGRERR_NONE )
+                {
+                  OGR_G_DestroyGeometry(hPolyRing);
+                  goto onError;
+                }
                 bRes = OGR_G_Contains(outer,hPolyRing) ;
                 OGR_G_RemoveGeometry(hPolyRing, 0, FALSE);
                 OGR_G_DestroyGeometry(hPolyRing);
@@ -2234,7 +2238,7 @@ static OGRFeatureH GCIOAPI_CALL _buildOGRFeature_GCIO (
   OGRFeatureDefnH fd;
   OGRFeatureH f;
   OGRGeometryH g;
-  int bTokenBehaviour= CSLT_ALLOWEMPTYTOKENS;
+  int bTokenBehavior= CSLT_ALLOWEMPTYTOKENS;
 
   fd= NULL;
   f= NULL;
@@ -2276,12 +2280,12 @@ static OGRFeatureH GCIOAPI_CALL _buildOGRFeature_GCIO (
   /*         allow direct access !                        */
   if( GetMetaQuotedText_GCIO(Meta) )
   {
-    bTokenBehaviour|= CSLT_HONOURSTRINGS;
+    bTokenBehavior|= CSLT_HONOURSTRINGS;
   }
   CPLDebug("GEOCONCEPT","Cache=[%s] delim=[%s]", GetGCCache_GCIO(H), delim);
   if( !(papszFields= CSLTokenizeString2(GetGCCache_GCIO(H),
                                       delim,
-                                      bTokenBehaviour)) )
+                                      bTokenBehavior)) )
   {
     CPLError( CE_Failure, CPLE_AppDefined,
               "Line %ld, Geoconcept line syntax is wrong.\n",
@@ -3309,7 +3313,6 @@ static OGRErr GCIOAPI_CALL _readConfigFieldType_GCIO (
   char e[kExtraSize_GCIO] = {0};
   long id;
   GCTypeKind knd;
-  GCField* theField;
 
   bEOF= 0;
   n[0]= '\0';
@@ -3317,7 +3320,6 @@ static OGRErr GCIOAPI_CALL _readConfigFieldType_GCIO (
   e[0]= '\0';
   id= UNDEFINEDID_GCIO;
   knd= vUnknownItemType_GCIO;
-  theField= NULL;
   while( _get_GCIO(hGCT)!= (vsi_l_offset)EOF ) {
     /* TODO: Switch to C++ casts below. */
     if( (enum _tIO_MetadataType_GCIO)GetGCWhatIs_GCIO(hGCT) == vComType_GCIO )
@@ -3337,7 +3339,7 @@ static OGRErr GCIOAPI_CALL _readConfigFieldType_GCIO (
                     n[0]=='\0'? "Name": id==UNDEFINEDID_GCIO? "ID": "Kind");
           goto onError;
         }
-        if( (theField= AddTypeField_GCIO(hGCT,GetTypeName_GCIO(theClass),-1,n,id,knd,x,e))==NULL )
+        if( AddTypeField_GCIO(hGCT,GetTypeName_GCIO(theClass),-1,n,id,knd,x,e)==NULL )
         {
           goto onError;
         }
@@ -3488,7 +3490,6 @@ static OGRErr GCIOAPI_CALL _readConfigFieldSubType_GCIO (
   char e[kExtraSize_GCIO] = {0};
   long id;
   GCTypeKind knd;
-  GCField* theField;
 
   bEOF= 0;
   n[0]= '\0';
@@ -3496,7 +3497,6 @@ static OGRErr GCIOAPI_CALL _readConfigFieldSubType_GCIO (
   e[0]= '\0';
   id= UNDEFINEDID_GCIO;
   knd= vUnknownItemType_GCIO;
-  theField= NULL;
   while( _get_GCIO(hGCT)!= (vsi_l_offset)EOF ) {
     if( (enum _tIO_MetadataType_GCIO)GetGCWhatIs_GCIO(hGCT) == vComType_GCIO )
     {
@@ -3515,7 +3515,7 @@ static OGRErr GCIOAPI_CALL _readConfigFieldSubType_GCIO (
                     n[0]=='\0'? "Name": id==UNDEFINEDID_GCIO? "ID": "Kind");
           goto onError;
         }
-        if( (theField= AddSubTypeField_GCIO(hGCT,GetTypeName_GCIO(theClass),GetSubTypeName_GCIO(theSubType),-1,n,id,knd,x,e))==NULL )
+        if( AddSubTypeField_GCIO(hGCT,GetTypeName_GCIO(theClass),GetSubTypeName_GCIO(theSubType),-1,n,id,knd,x,e)==NULL )
         {
           goto onError;
         }
@@ -5379,12 +5379,11 @@ OGRFeatureH GCIOAPI_CALL ReadNextFeature_GCIO (
 {
   OGRFeatureH f;
   GCExportFileH* H;
-  GCExportFileMetadata* Meta;
   GCDim d;
 
   f= NULL;
   H= GetSubTypeGCHandle_GCIO(theSubType);
-  if( !(Meta= GetGCMeta_GCIO(H)) )
+  if( !(GetGCMeta_GCIO(H)) )
   {
     return NULL;
   }

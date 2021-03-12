@@ -6,6 +6,8 @@ WCS -- OGC Web Coverage Service
 
 .. shortname:: WCS
 
+.. build_dependencies:: libcurl
+
 The optional GDAL WCS driver allows use of a coverage in a WCS server as
 a raster dataset. GDAL acts as a client to the WCS server.
 
@@ -210,7 +212,7 @@ In the case the URL does not contain coverage name, the service
 description file is not used and thus in that case the options are not
 written into it. Open options are given separate to the dataset name,
 with GDAL utility programs they are given using the -oo switch
-(`-oo "NAME=VALUE"`). The -oo swicth expects only one option but more
+(`-oo "NAME=VALUE"`). The -oo switch expects only one option but more
 options can be given repeating the switch.
 
 In addition to DescribeCoverageExtra and GetCoverageExtra, which are
@@ -270,7 +272,7 @@ documents through the key. Please consider using the Extra open options.
 Time
 ~~~~
 
-Starting with GDAL 1.9.0, this driver includes experimental support for
+This driver includes experimental support for
 time based WCS 1.0.0 servers. On initial access the last offered time
 position will be identified as the DefaultTime. Each time position
 available for the coverage will be treated as a subdataset.

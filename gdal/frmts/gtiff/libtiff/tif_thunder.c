@@ -61,7 +61,7 @@ static const int threebitdeltas[8] = { 0, 1, 2, 3, 0, -3, -2, -1 };
 	  if (npixels++ & 1)                  \
 	    *op++ |= lastpixel;               \
 	  else                                \
-	    op[0] = (uint8) (lastpixel << 4); \
+	    op[0] = (uint8_t) (lastpixel << 4); \
         }                                     \
 }
 
@@ -83,7 +83,7 @@ ThunderSetupDecode(TIFF* tif)
 }
 
 static int
-ThunderDecode(TIFF* tif, uint8* op, tmsize_t maxpixels)
+ThunderDecode(TIFF* tif, uint8_t* op, tmsize_t maxpixels)
 {
 	static const char module[] = "ThunderDecode";
 	register unsigned char *bp;
@@ -114,7 +114,7 @@ ThunderDecode(TIFF* tif, uint8* op, tmsize_t maxpixels)
 			npixels += n;
 			if (npixels < maxpixels) {
 				for (; n > 0; n -= 2)
-					*op++ = (uint8) lastpixel;
+					*op++ = (uint8_t) lastpixel;
 			}
 			if (n == -1)
 				*--op &= 0xf0;
@@ -122,24 +122,24 @@ ThunderDecode(TIFF* tif, uint8* op, tmsize_t maxpixels)
 			break;
 		case THUNDER_2BITDELTAS:	/* 2-bit deltas */
 			if ((delta = ((n >> 4) & 3)) != DELTA2_SKIP)
-				SETPIXEL(op, lastpixel + twobitdeltas[delta]);
+				SETPIXEL(op, (unsigned)((int)lastpixel + twobitdeltas[delta]));
 			if ((delta = ((n >> 2) & 3)) != DELTA2_SKIP)
-				SETPIXEL(op, lastpixel + twobitdeltas[delta]);
+				SETPIXEL(op, (unsigned)((int)lastpixel + twobitdeltas[delta]));
 			if ((delta = (n & 3)) != DELTA2_SKIP)
-				SETPIXEL(op, lastpixel + twobitdeltas[delta]);
+				SETPIXEL(op, (unsigned)((int)lastpixel + twobitdeltas[delta]));
 			break;
 		case THUNDER_3BITDELTAS:	/* 3-bit deltas */
 			if ((delta = ((n >> 3) & 7)) != DELTA3_SKIP)
-				SETPIXEL(op, lastpixel + threebitdeltas[delta]);
+				SETPIXEL(op, (unsigned)((int)lastpixel + threebitdeltas[delta]));
 			if ((delta = (n & 7)) != DELTA3_SKIP)
-				SETPIXEL(op, lastpixel + threebitdeltas[delta]);
+				SETPIXEL(op, (unsigned)((int)lastpixel + threebitdeltas[delta]));
 			break;
 		case THUNDER_RAW:		/* raw data */
 			SETPIXEL(op, n);
 			break;
 		}
 	}
-	tif->tif_rawcp = (uint8*) bp;
+	tif->tif_rawcp = (uint8_t*) bp;
 	tif->tif_rawcc = cc;
 	if (npixels != maxpixels) {
 #if defined(__WIN32__) && (defined(_MSC_VER) || defined(__MINGW32__))
@@ -164,10 +164,10 @@ ThunderDecode(TIFF* tif, uint8* op, tmsize_t maxpixels)
 }
 
 static int
-ThunderDecodeRow(TIFF* tif, uint8* buf, tmsize_t occ, uint16 s)
+ThunderDecodeRow(TIFF* tif, uint8_t* buf, tmsize_t occ, uint16_t s)
 {
 	static const char module[] = "ThunderDecodeRow";
-	uint8* row = buf;
+	uint8_t* row = buf;
 	
 	(void) s;
 	if (occ % tif->tif_scanlinesize)

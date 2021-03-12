@@ -1078,8 +1078,11 @@ int ReadGrib2Record (VSILFILE *fp, sChar f_unit, double **Grib_Data,
         }
 
          IS->nd2x3 = nd2x3;
-         IS->iain = (sInt4 *) realloc ((void *) IS->iain,
-                                       IS->nd2x3 * sizeof (sInt4));
+         if( Grib_Data )
+         {
+            IS->iain = (sInt4 *) realloc ((void *) IS->iain,
+                                        IS->nd2x3 * sizeof (sInt4));
+         }
          IS->ib = (sInt4 *) realloc ((void *) IS->ib,
                                      IS->nd2x3 * sizeof (sInt4));
       }
@@ -1149,7 +1152,10 @@ int ReadGrib2Record (VSILFILE *fp, sChar f_unit, double **Grib_Data,
 
       /* Note we are getting data back either as a float or an int, but not
        * both, so we don't need to allocated room for both. */
-      unpk_g2ncep (&kfildo, (float *) (IS->iain), IS->iain, &(IS->nd2x3),
+      unpk_g2ncep (&kfildo,
+                   j == subgNum ? (float *) (IS->iain) : nullptr,
+                   j == subgNum ? IS->iain : nullptr,
+                  &(IS->nd2x3),
                   IS->idat, &(IS->nidat), IS->rdat, &(IS->nrdat), IS->is[0],
                   &(IS->ns[0]), IS->is[1], &(IS->ns[1]), IS->is[2],
                   &(IS->ns[2]), IS->is[3], &(IS->ns[3]), IS->is[4],
@@ -1287,7 +1293,7 @@ int ReadGrib2Record (VSILFILE *fp, sChar f_unit, double **Grib_Data,
    }
 #endif
 
-   if (strcmp (meta->element, "Wx") != 0) {
+   if (Grib_Data != nullptr && strcmp (meta->element, "Wx") != 0) {
       if (strcmp (meta->element, "WWA") != 0) {
          ParseGrid (fp, &(meta->gridAttrib), Grib_Data, grib_DataLen, Nx, Ny,
                     meta->gds.scan, IS->nd2x3, IS->iain, ibitmap, IS->ib, unitM, unitB, 0,
@@ -1312,7 +1318,7 @@ int ReadGrib2Record (VSILFILE *fp, sChar f_unit, double **Grib_Data,
             }
          }
       }
-   } else {
+   } else if( Grib_Data != nullptr ) {
       /* Handle weather grid.  ParseGrid looks up the values... If they are
        * "<Invalid>" it sets it to missing (or creates one).  If the table
        * entry is used it sets f_valid to 2. */

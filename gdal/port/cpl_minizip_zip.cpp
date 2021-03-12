@@ -140,7 +140,7 @@ typedef struct linkedlist_data_s
 typedef struct
 {
     z_stream stream;            /* zLib stream structure for inflate */
-    int  stream_initialised;    /* 1 is stream is initialised */
+    int  stream_initialised;    /* 1 is stream is initialized */
     uInt pos_in_buffered_data;  /* last written byte in buffered_data */
 
     ZPOS64_T pos_local_header;     /* offset of the local header of the file
@@ -637,9 +637,9 @@ static int LoadCentralDirectoryRecord(zip64_internal* pziinit)
   uLong uL;
 
   uLong number_disk;          /* number of the current dist, used for
-                              spaning ZIP, unsupported, always 0*/
+                              spanning ZIP, unsupported, always 0*/
   uLong number_disk_with_CD;  /* number the the disk with central dir, used
-                              for spaning ZIP, unsupported, always 0*/
+                              for spanning ZIP, unsupported, always 0*/
   ZPOS64_T number_entry;
   ZPOS64_T number_entry_CD;      /* total number of entries in
                                 the central dir

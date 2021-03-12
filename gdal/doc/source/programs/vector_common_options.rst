@@ -15,7 +15,7 @@ All GDAL OGR command line programs support the following common options.
     List all vector formats supported by this GDAL build (read-only and
     read-write) and exit. The format support is indicated as follows:
     ``ro`` is read-only driver; ``rw`` is read or write (i.e. supports
-    :c:func:`CreateCopy`); ``rw+`` is read, write and update (i.e. supports
+    :cpp:func:`CreateCopy`); ``rw+`` is read, write and update (i.e. supports
     Create). A ``v`` is appended for formats supporting virtual IO
     (``/vsimem``, ``/vsigzip``, ``/vsizip``, etc). A ``s`` is appended for
     formats supporting subdatasets.
@@ -38,7 +38,7 @@ All GDAL OGR command line programs support the following common options.
     setting them as environment variables. Some common configuration keywords
     are SHAPE_ENCODING (force shapefile driver to read DBF files with the given
     character encoding) and CPL_TEMPDIR (define the location of temporary files).
-    Individual drivers may be influenced by other configuration options.
+    Individual drivers may be influenced by other :ref:`configuration options <list_config_options>`.
 
 .. option:: --debug <value>
 

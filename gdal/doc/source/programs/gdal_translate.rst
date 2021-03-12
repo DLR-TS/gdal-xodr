@@ -19,9 +19,10 @@ Synopsis
     gdal_translate [--help-general]
         [-ot {Byte/Int16/UInt16/UInt32/Int32/Float32/Float64/
                 CInt16/CInt32/CFloat32/CFloat64}] [-strict]
-        [-of format] [-b band]* [-mask band] [-expand {gray|rgb|rgba}]
+        [-if format]* [-of format]
+        [-b band]* [-mask band] [-expand {gray|rgb|rgba}]
         [-outsize xsize[%]|0 ysize[%]|0] [-tr xres yres]
-        [-r {nearest,bilinear,cubic,cubicspline,lanczos,average,mode}]
+        [-r {nearest,bilinear,cubic,cubicspline,lanczos,average,rms,mode}]
         [-unscale] [-scale[_bn] [src_min src_max [dst_min dst_max]]]* [-exponent[_bn] exp_val]*
         [-srcwin xoff yoff xsize ysize] [-epo] [-eco]
         [-projwin ulx uly lrx lry] [-projwin_srs srs_def]
@@ -31,7 +32,7 @@ Synopsis
         |-colorinterp{_bn} {red|green|blue|alpha|gray|undefined}]
         |-colorinterp {red|green|blue|alpha|gray|undefined},...]
         [-mo "META-TAG=VALUE"]* [-q] [-sds]
-        [-co "NAME=VALUE"]* [-stats] [-norat]
+        [-co "NAME=VALUE"]* [-stats] [-norat] [-noxmp]
         [-oo NAME=VALUE]*
         src_dataset dst_dataset
 
@@ -50,6 +51,8 @@ resampling, and rescaling pixels in the process.
 
     Don't be forgiving of mismatches and lost data when translating to the
     output format.
+
+.. include:: options/if.rst
 
 .. include:: options/of.rst
 
@@ -92,9 +95,25 @@ resampling, and rescaling pixels in the process.
     Both must be positive values. This is mutually exclusive with
     :option:`-outsize` and :option:`-a_ullr`.
 
-.. option:: -r {nearest (default),bilinear,cubic,cubicspline,lanczos,average,mode}
+.. option:: -r {nearest (default),bilinear,cubic,cubicspline,lanczos,average,rms,mode}
 
     Select a resampling algorithm.
+
+    ``nearest`` applies a nearest neighbour (simple sampling) resampler
+
+    ``average`` computes the average of all non-NODATA contributing pixels. Starting with GDAL 3.1, this is a weighted average taking into account properly the weight of source pixels not contributing fully to the target pixel.
+
+    ``rms`` computes the root mean squared / quadratic mean of all non-NODATA contributing pixels (GDAL >= 3.3)
+
+    ``bilinear`` applies a bilinear convolution kernel.
+
+    ``cubic`` applies a cubic convolution kernel.
+
+    ``cubicspline`` applies a B-Spline convolution kernel.
+
+    ``lanczos`` applies a Lanczos windowed sinc convolution kernel.
+
+    ``mode`` selects the value which appears most often of all the sampled points.
 
 .. option:: -scale [src_min src_max [dst_min dst_max]]
 
@@ -155,7 +174,7 @@ resampling, and rescaling pixels in the process.
 
     (Error when Partially Outside) If this option is set, :option:`-srcwin` or
     :option:`-projwin` values that falls partially outside the source raster
-    extent will be considered as an error. The default behaviour is to accept
+    extent will be considered as an error. The default behavior is to accept
     such requests, when they were considered as an error before.
 
 .. option:: -eco
@@ -242,6 +261,12 @@ resampling, and rescaling pixels in the process.
 .. option:: -norat
 
     Do not copy source RAT into destination dataset.
+
+.. option:: -noxmp
+
+    Do not copy the XMP metadata in the source dataset to the output dataset when driver is able to copy it.
+
+    .. versionadded:: 3.2
 
 .. option:: -oo NAME=VALUE
 

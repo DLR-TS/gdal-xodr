@@ -6,6 +6,8 @@ PCIDSK -- PCI Geomatics Database File
 
 .. shortname:: PCIDSK
 
+.. built_in_by_default::
+
 PCIDSK database file used by PCI EASI/PACE software for image analysis.
 It is supported for reading, and writing by GDAL. All pixel data types,
 and data organizations (pixel interleaved, band interleaved, file
@@ -21,8 +23,7 @@ will be returned as GDAL style RPC metadata.
 Internal overview (pyramid) images will also be correctly read though
 newly requested overviews will be built externally as an .ovr file.
 
-Starting with GDAL 2.0, vector segments are also supported by the
-driver.
+Vector segments are also supported by the driver.
 
 Creation Options
 ----------------

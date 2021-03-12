@@ -47,41 +47,18 @@ def test_osr_epsg_1():
     assert srs.GetAuthorityCode(None) == '3003'
 
 ###############################################################################
-# Check that EPSG:4312 lookup has the towgs84 values set properly
-# from gcs.override.csv.
-
+# Check that EPSG:4312 w.r.t towgs84 values
 
 def test_osr_epsg_2():
 
     srs = osr.SpatialReference()
-    srs.ImportFromEPSG(4312)
+    with gdaltest.config_option('OSR_ADD_TOWGS84_ON_IMPORT_FROM_EPSG', 'YES'):
+        srs.ImportFromEPSG(4312)
 
-    if abs(float(srs.GetAttrValue('TOWGS84', 6)) -
-           2.4232) > 0.0005:
+    if float(srs.GetAttrValue('TOWGS84', 6)) != pytest.approx(2.4232, abs=0.0005):
         print(srs.ExportToPrettyWkt())
         pytest.fail('Wrong TOWGS84, override missed?')
 
-    
-###############################################################################
-# Check that various EPSG lookups based on Pulvoko 1942 have the
-# towgs84 values set properly (#3579)
-
-
-def test_osr_epsg_3():
-
-    for epsg in [3120, 2172, 2173, 2174, 2175, 3328]:
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(epsg)
-
-        expected_towgs84 = [33.4, -146.6, -76.3, -0.359, -0.053, 0.844, -0.84]
-
-        for i in range(6):
-            if abs(float(srs.GetAttrValue('TOWGS84', i)) -
-                   expected_towgs84[i]) > 0.0005:
-                print(srs.ExportToPrettyWkt())
-                pytest.fail('For EPSG:%d. Wrong TOWGS84, override missed?' % epsg)
-
-    
 ###############################################################################
 #   Check that EPSG:4326 is considered as lat/long
 
@@ -121,30 +98,25 @@ def test_osr_epsg_6():
         '# We do not expect a datum shift'
 
 ###############################################################################
-#   Check that EPSGA:2193 is considered as N/E
+#   Check working of EPSGTreatsAsNorthingEasting
 
-
-def test_osr_epsg_7():
-
-    srs = osr.SpatialReference()
-    srs.ImportFromEPSG(2193)
-
-    assert srs.EPSGTreatsAsNorthingEasting(), 'supposed to be treated as n/e'
-
-    assert srs.ExportToWkt().find('AXIS') != -1, 'should  have AXIS node'
-
-###############################################################################
-#   Check that EPSGA:2193 is considered as N/E
-
-
-def test_osr_epsg_8():
+@pytest.mark.parametrize('epsg_code,is_northing_easting',
+                         [(2193, True), # NZGD2000 / New Zealand Transverse Mercator 2000
+                          (32631, False), # WGS 84 / UTM zone 31N
+                          (32661, True), # WGS 84 / UPS North (N,E)
+                          (5041, False), # WGS 84 / UPS North (E,N)
+                          (32761, True), # WGS 84 / UPS South (N,E)
+                          (5042, False), # WGS 84 / UPS South (E,N)
+                          (3031, False), # WGS 84 / Antarctic Polar Stereographic
+                          (5482, True), # RSRGD2000 / RSPS2000
+                          ]
+                         )
+def test_osr_epsg_treats_as_northing_easting(epsg_code, is_northing_easting):
 
     srs = osr.SpatialReference()
-    srs.ImportFromEPSGA(2193)
+    srs.ImportFromEPSG(epsg_code)
+    assert srs.EPSGTreatsAsNorthingEasting() == is_northing_easting
 
-    assert srs.EPSGTreatsAsNorthingEasting(), 'supposed to be treated as n/e'
-
-    assert srs.ExportToWkt().find('AXIS') != -1, 'should  have AXIS node'
 
 ###############################################################################
 #   Check EPSG:3857
@@ -414,7 +386,7 @@ def test_osr_epsg_area_of_use():
     assert area.south_lat_degree == 41.15
     assert area.east_lon_degree == 10.38
     assert area.north_lat_degree == 51.56
-    assert area.name == 'France'
+    assert 'France' in area.name
 
 ###############################################################################
 
@@ -433,7 +405,31 @@ def test_osr_GetCRSInfoListFromDatabase():
             assert record.south_lat_degree == 41.15
             assert record.east_lon_degree == 10.38
             assert record.north_lat_degree == 51.56
-            assert record.area_name == 'France'
+            assert 'France' in record.area_name
             assert record.projection_method == 'Lambert Conic Conformal (2SP)'
             found = True
     assert found
+
+###############################################################################
+#   Test AutoIdentifyEPSG() on NAD83(CORS96)
+
+
+def test_osr_epsg_auto_identify_epsg_nad83_cors96():
+
+    srs = osr.SpatialReference()
+    srs.SetFromUserInput("""GEOGCRS["NAD83(CORS96)",
+    DATUM["NAD83 (Continuously Operating Reference Station 1996)",
+        ELLIPSOID["GRS 1980",6378137,298.257222101,
+            LENGTHUNIT["metre",1]]],
+    PRIMEM["Greenwich",0,
+        ANGLEUNIT["degree",0.0174532925199433]],
+    CS[ellipsoidal,2],
+        AXIS["geodetic latitude (Lat)",north,
+            ORDER[1],
+            ANGLEUNIT["degree",0.0174532925199433]],
+        AXIS["geodetic longitude (Lon)",east,
+            ORDER[2],
+            ANGLEUNIT["degree",0.0174532925199433]]]""")
+    srs.AutoIdentifyEPSG()
+    assert srs.GetAuthorityCode(None) == '6783'
+

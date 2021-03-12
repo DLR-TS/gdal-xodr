@@ -18,7 +18,7 @@
 * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 *
-* Copyright 2014-2015 Esri
+* Copyright (c) 2014-2021 Esri
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,6 +31,9 @@
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 * See the License for the specific language governing permissions and
 * limitations under the License.
+*
+* Author: Lucian Plesea
+* 
 */
 
 /*
@@ -44,14 +47,8 @@
 #include <cassert>
 
 CPL_C_START
-#ifdef INTERNAL_PNG
-#include "../png/libpng/png.h"
-#else
 #include <png.h>
-#endif
 CPL_C_END
-
-CPL_CVSID("$Id$")
 
 NAMESPACE_MRF_START
 
@@ -115,7 +112,7 @@ CPLErr PNG_Codec::DecompressPNG(buf_mgr &dst, buf_mgr &src)
 
     png_infop infop = png_create_info_struct(pngp);
     if (nullptr == infop) {
-        if (pngp) png_destroy_read_struct(&pngp, &infop, nullptr);
+        png_destroy_read_struct(&pngp, &infop, nullptr);
         CPLError(CE_Failure, CPLE_AppDefined, "MRF: Error creating PNG info");
         return CE_Failure;
     }
@@ -132,7 +129,6 @@ CPLErr PNG_Codec::DecompressPNG(buf_mgr &dst, buf_mgr &src)
     // Ready to read
     png_read_info(pngp, infop);
     GInt32 height = static_cast<GInt32>(png_get_image_height(pngp, infop));
-    GInt32 byte_count = png_get_bit_depth(pngp, infop) / 8;
     // Check the size
     if (dst.size < (png_get_rowbytes(pngp, infop)*height)) {
         CPLError(CE_Failure, CPLE_AppDefined,
@@ -147,18 +143,18 @@ CPLErr PNG_Codec::DecompressPNG(buf_mgr &dst, buf_mgr &src)
     for (int i = 0; i < height; i++)
         png_rowp[i] = (png_bytep)dst.buffer + i*rowbytes;
 
+#if defined(CPL_LSB)
+    if (png_get_bit_depth(pngp, infop) > 8) {
+        png_set_swap(pngp);
+        // Call update info if any png_set is used
+        png_read_update_info(pngp, infop);
+    }
+#endif
+
     // Finally, the read
     // This is the lower level, the png_read_end allows some transforms
     // Like palette to RGBA
     png_read_image(pngp, png_rowp);
-
-    if (byte_count != 1) { // Swap from net order if data is short
-        for (int i = 0; i < height; i++) {
-            unsigned short int*p = (unsigned short int *)png_rowp[i];
-            for (int j = 0; j < rowbytes / 2; j++, p++)
-                *p = net16(*p);
-        }
-    }
 
     //    ppmWrite("Test.ppm",(char *)data,ILSize(512,512,1,4,0));
     // Required
@@ -258,6 +254,11 @@ CPLErr PNG_Codec::CompressPNG(buf_mgr &dst, buf_mgr &src)
 
     png_write_info(pngp, infop);
 
+#if defined(CPL_LSB)
+    if (img.dt != GDT_Byte)
+        png_set_swap(pngp);
+#endif
+
     png_bytep *png_rowp = (png_bytep *)CPLMalloc(sizeof(png_bytep)*img.pagesize.y);
 
     if (setjmp(png_jmpbuf(pngp))) {
@@ -268,13 +269,8 @@ CPLErr PNG_Codec::CompressPNG(buf_mgr &dst, buf_mgr &src)
     }
 
     int rowbytes = static_cast<int>(png_get_rowbytes(pngp, infop));
-    for (int i = 0; i < img.pagesize.y; i++) {
+    for (int i = 0; i < img.pagesize.y; i++)
         png_rowp[i] = (png_bytep)(src.buffer + i*rowbytes);
-        if (img.dt != GDT_Byte) { // Swap to net order if data is short
-            unsigned short int*p = (unsigned short int *)png_rowp[i];
-            for (int j = 0; j < rowbytes / 2; j++, p++) *p = net16(*p);
-        }
-    }
 
     png_write_image(pngp, png_rowp);
     png_write_end(pngp, infop);
@@ -345,9 +341,9 @@ CPLErr PNG_Band::Compress(buf_mgr &dst, buf_mgr &src)
  * The presence of the PNGColors and PNGAlpha is used as a flag for PPNG only
  */
 
-PNG_Band::PNG_Band( GDALMRFDataset *pDS, const ILImage &image,
+PNG_Band::PNG_Band( MRFDataset *pDS, const ILImage &image,
                     int b, int level ) :
-    GDALMRFRasterBand(pDS, image, b, level),
+    MRFRasterBand(pDS, image, b, level),
     codec(image)
 {   // Check error conditions
     if (image.dt != GDT_Byte && image.dt != GDT_Int16 && image.dt != GDT_UInt16)

@@ -6,6 +6,8 @@ NITF -- National Imagery Transmission Format
 
 .. shortname:: NITF
 
+.. built_in_by_default::
+
 .. toctree::
    :maxdepth: 1
    :hidden:
@@ -89,8 +91,7 @@ Creation Options:
       creation options can be used. See the :ref:`raster.jpeg` driver.
       Multi-block images can be written.
    -  M3 is a variation of C3. The only difference is that a block map
-      is written, which allow for fast seeking to any block. (Starting
-      with GDAL 1.7.0.)
+      is written, which allow for fast seeking to any block.
    -  C8 means JPEG2000 compression (one block) and is available for
       CreateCopy() and/or Create() methods. JPEG2000 compression is only
       available if the JP2ECW, JP2KAK, JP2OpenJPEG or Jasper driver are
@@ -110,7 +111,7 @@ Creation Options:
          used. By default BLOCKXSIZE=BLOCKYSIZE=1024 will be used.
       -  Jasper JPEG2000 driver: only in the CreateCopy() case.
 
--  **NUMI=n** : (Starting with GDAL 1.7.0) Number of images. Default =
+-  **NUMI=n** : Number of images. Default =
    1. This option is only compatible with IC=NC (uncompressed images).
 -  **ICORDS=G/D/N/S**: Set to "G" to ensure that space will be reserved
    for geographic corner coordinates (in DMS) to be set later via
@@ -126,9 +127,9 @@ Creation Options:
 -  **IREP**: Set to "RGB/LUT" to reserve space for a color table for
    each output band. (Only needed for Create() method, not
    CreateCopy()).
--  **IREPBAND**: (GDAL >= 1.9.0) Comma separated list of band IREPBANDs
+-  **IREPBAND**: Comma separated list of band IREPBANDs
    in band order.
--  **ISUBCAT**: (GDAL >= 1.9.0) Comma separated list of band ISUBCATs in
+-  **ISUBCAT**: Comma separated list of band ISUBCATs in
    band order.
 -  **LUT_SIZE**: Set to control the size of pseudocolor tables for
    RGB/LUT bands. A value of 256 assumed if not present. (Only needed
@@ -145,10 +146,18 @@ Creation Options:
    tre-contents should be "backslash escaped" if it contains backslashes
    or zero bytes. The argument is the same format as returned in the TRE
    metadata domain when reading.
--  **FILE_TRE=tre-name=tre-contents**: (GDAL >= 1.8.0) Similar to above
+-  **FILE_TRE=tre-name=tre-contents**: Similar to above
    options, except that the TREs are written in the file header, instead
    of the image header.
--  **SDE_TRE=YES/NO**: (GDAL >= 1.8.0) Write GEOLOB and GEOPSB TREs to
+-  **DES=des-name=des-contents**: One or more DES creation options may
+   be provided to write arbitrary user defined DESs to the NITF file.
+   The des-name should be at most 25 characters, and the des-contents
+   should be "backslash escaped" if it contains backslashes or zero
+   bytes, as in CPLEscapeString(str, -1, CPLES_BackslashQuotable).
+   The des-contents must contain standard DES fields, starting
+   with DESVER (See MIL-STD-2500C).  DESs are not currently copied in
+   CreateCopy(), but may be explicitly added as with Create().
+-  **SDE_TRE=YES/NO**: Write GEOLOB and GEOPSB TREs to
    get more precise georeferencing. This is limited to geographic SRS,
    and to CreateCopy() for now.
 -  **RPC00B=YES/NO**: (GDAL >= 2.2.0) Write RPC00B TRE, from a source

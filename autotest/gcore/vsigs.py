@@ -453,9 +453,46 @@ def test_vsigs_write_retry():
         handler.add('PUT', '/test_write_retry/put_with_retry.bin', 502)
         handler.add('PUT', '/test_write_retry/put_with_retry.bin', custom_method=method)
 
-        with webserver.install_http_handler(handler):
-            assert gdal.VSIFWriteL('foo', 1, 3, f) == 3
-            gdal.VSIFCloseL(f)
+        with gdaltest.error_handler():
+            with webserver.install_http_handler(handler):
+                assert gdal.VSIFWriteL('foo', 1, 3, f) == 3
+                gdal.VSIFCloseL(f)
+
+###############################################################################
+# Test rename
+
+def test_vsigs_fake_rename():
+
+    if gdaltest.webserver_port == 0:
+        pytest.skip()
+
+    gdal.VSICurlClearCache()
+    handler = webserver.SequentialHandler()
+    handler.add('GET', '/test/source.txt', 206,
+                { 'Content-Length' : '3',
+                  'Content-Range': 'bytes 0-2/3' }, "foo")
+    handler.add('GET', '/test/target.txt', 404)
+    handler.add('GET', '/test/?delimiter=%2F&max-keys=100&prefix=target.txt%2F', 200)
+
+    def method(request):
+        if request.headers['Content-Length'] != '0':
+            sys.stderr.write('Did not get expected headers: %s\n' % str(request.headers))
+            request.send_response(400)
+            return
+        if request.headers['x-goog-copy-source'] != '/test/source.txt':
+            sys.stderr.write('Did not get expected headers: %s\n' % str(request.headers))
+            request.send_response(400)
+            return
+
+        request.send_response(200)
+        request.send_header('Content-Length', 0)
+        request.end_headers()
+
+    handler.add('PUT', '/test/target.txt', custom_method=method)
+    handler.add('DELETE', '/test/source.txt', 204)
+
+    with webserver.install_http_handler(handler):
+        assert gdal.Rename( '/vsigs/test/source.txt', '/vsigs/test/target.txt') == 0
 
 ###############################################################################
 # Read credentials with OAuth2 refresh_token
@@ -946,16 +983,13 @@ client_secret = CLIENT_SECRET
     gdal.SetConfigOption('GOA2_AUTH_URL_TOKEN', None)
     gdal.Unlink('/vsimem/.boto')
 
+
 ###############################################################################
 # Read credentials from simulated GCE instance
-
-
+@pytest.mark.skipif(sys.platform not in ('linux', 'win32'), reason='Incorrect platform')
 def test_vsigs_read_credentials_gce():
 
     if gdaltest.webserver_port == 0:
-        pytest.skip()
-
-    if sys.platform not in ('linux', 'linux2', 'win32'):
         pytest.skip()
 
     gdal.SetConfigOption('CPL_GS_CREDENTIALS_FILE', '')
@@ -1021,17 +1055,14 @@ def test_vsigs_read_credentials_gce():
     gdal.SetConfigOption('CPL_GCE_CREDENTIALS_URL', '')
     gdal.SetConfigOption('CPL_GCE_CHECK_LOCAL_FILES', None)
 
+
 ###############################################################################
 # Read credentials from simulated GCE instance with expiration of the
 # cached credentials
-
-
+@pytest.mark.skipif(sys.platform not in ('linux', 'win32'), reason='Incorrect platform')
 def test_vsigs_read_credentials_gce_expiration():
 
     if gdaltest.webserver_port == 0:
-        pytest.skip()
-
-    if sys.platform not in ('linux', 'linux2', 'win32'):
         pytest.skip()
 
     gdal.SetConfigOption('CPL_GS_CREDENTIALS_FILE', '')
@@ -1112,13 +1143,6 @@ def test_vsigs_extra_1():
     if not gdaltest.built_against_curl():
         pytest.skip()
 
-    # if gdal.GetConfigOption('GS_SECRET_ACCESS_KEY') is None:
-    #    print('Missing GS_SECRET_ACCESS_KEY')
-    #    pytest.skip()
-    # elif gdal.GetConfigOption('GS_ACCESS_KEY_ID') is None:
-    #    print('Missing GS_ACCESS_KEY_ID')
-    #    pytest.skip()
-
     gs_resource = gdal.GetConfigOption('GS_RESOURCE')
     if gs_resource is None:
         pytest.skip('Missing GS_RESOURCE')
@@ -1162,10 +1186,16 @@ def test_vsigs_extra_1():
         ret = gdal.Mkdir(subpath, 0)
         assert ret >= 0, ('Mkdir(%s) should not return an error' % subpath)
 
-        f = gdal.VSIFOpenL(subpath + '/test.txt', 'wb')
+        f = gdal.VSIFOpenExL(subpath + '/test.txt', 'wb', 0, ['Content-Type=foo', 'Content-Encoding=bar'])
         assert f is not None
         gdal.VSIFWriteL('hello', 1, 5, f)
         gdal.VSIFCloseL(f)
+
+        md = gdal.GetFileMetadata(subpath + '/test.txt', 'HEADERS')
+        assert 'Content-Type' in md
+        assert md['Content-Type'] == 'foo'
+        assert 'Content-Encoding' in md
+        assert md['Content-Encoding'] == 'bar'
 
         ret = gdal.Rmdir(subpath)
         assert ret != 0, \
@@ -1177,9 +1207,17 @@ def test_vsigs_extra_1():
         assert data == 'hello'
         gdal.VSIFCloseL(f)
 
-        ret = gdal.Unlink(subpath + '/test.txt')
+        assert gdal.Rename(subpath + '/test.txt', subpath + '/test2.txt') == 0
+
+        f = gdal.VSIFOpenL(subpath + '/test2.txt', 'rb')
+        assert f is not None
+        data = gdal.VSIFReadL(1, 5, f).decode('utf-8')
+        assert data == 'hello'
+        gdal.VSIFCloseL(f)
+
+        ret = gdal.Unlink(subpath + '/test2.txt')
         assert ret >= 0, \
-            ('Unlink(%s) should not return an error' % (subpath + '/test.txt'))
+            ('Unlink(%s) should not return an error' % (subpath + '/test2.txt'))
 
         ret = gdal.Rmdir(subpath)
         assert ret >= 0, ('Rmdir(%s) should not return an error' % subpath)

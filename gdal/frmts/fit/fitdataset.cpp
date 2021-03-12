@@ -50,7 +50,7 @@ using namespace gstEndian;
 
 class FITRasterBand;
 
-class FITDataset : public GDALPamDataset
+class FITDataset final: public GDALPamDataset
 {
     friend class FITRasterBand;
 
@@ -77,7 +77,7 @@ static GDALDataset *FITCreateCopy(const char * pszFilename,
 /* ==================================================================== */
 /************************************************************************/
 
-class FITRasterBand : public GDALPamRasterBand
+class FITRasterBand final: public GDALPamRasterBand
 {
     friend class FITDataset;
 
@@ -1020,6 +1020,8 @@ GDALDataset *FITDataset::Open( GDALOpenInfo * poOpenInfo )
 /* -------------------------------------------------------------------- */
 /*      Create band information objects.                                */
 /* -------------------------------------------------------------------- */
+    // Verified by above GDALCheckBandCount()
+    // coverity[tainted_data]
     for( int i = 0; i < (int)head->cSize; i++ )
     {
         FITRasterBand* poBand = new FITRasterBand( poDS, i+1, (int)head->cSize );
@@ -1148,9 +1150,21 @@ static GDALDataset *FITCreateCopy(const char * pszFilename,
         const char *str = CSLFetchNameValue(papszOptions,"PAGESIZE");
         int newBlockX, newBlockY;
         sscanf(str, "%i,%i", &newBlockX, &newBlockY);
-        if (newBlockX && newBlockY) {
+        if (newBlockX > 0 && newBlockY > 0) {
             blockX = newBlockX;
             blockY = newBlockY;
+            try
+            {
+                CPL_IGNORE_RET_VAL(
+                    CPLSM(blockX) * CPLSM(blockY) * CPLSM(nDTSize) * CPLSM(nBands));
+            }
+            catch( ... )
+            {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "Too big values in PAGESIZE");
+                CPL_IGNORE_RET_VAL(VSIFCloseL(fpImage));
+                return nullptr;
+            }
         }
         else {
             CPLError(CE_Failure, CPLE_OpenFailed,
@@ -1194,7 +1208,7 @@ static GDALDataset *FITCreateCopy(const char * pszFilename,
     unsigned long bytesPerPixel = nBands * nDTSize;
 
     size_t pageBytes = blockX * blockY * bytesPerPixel;
-    char *output = (char *) malloc(pageBytes);
+    char *output = (char *) calloc(1, pageBytes);
     if (! output)
     {
         CPLError(CE_Failure, CPLE_OutOfMemory,
@@ -1348,7 +1362,7 @@ void GDALRegister_FIT()
     poDriver->SetDescription( "FIT" );
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME, "FIT Image" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/fit.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

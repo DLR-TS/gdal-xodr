@@ -1,12 +1,14 @@
 .. _raster.hdf4:
 
 ================================================================================
-HDF4 --- Hierarchical Data Format Release 4 (HDF4)
+HDF4 -- Hierarchical Data Format Release 4 (HDF4)
 ================================================================================
 
 .. shortname:: HDF4
 
 .. shortname:: HDF4Image
+
+.. build_dependencies:: libdf
 
 There are two HDF formats, HDF4 (4.x and previous releases) and HDF5.
 These formats are completely different and NOT compatible. This driver
@@ -183,7 +185,7 @@ and some of these are supported by GDAL. Currently supported are
 -  SeaWiFS Level 3 Standard Mapped Image Products (**SEAWIFS_L3**)
 
 By default the hdf4 driver only reads the gcps from every 10th row and
-column from EOS_SWATH datasets. You can change this behaviour by setting
+column from EOS_SWATH datasets. You can change this behavior by setting
 the GEOL_AS_GCPS environment variable to PARTIAL (default), NONE, or
 FULL.
 
@@ -215,6 +217,25 @@ Metadata
 All HDF4 attributes are transparently translated as GDAL metadata. In
 the HDF file attributes may be assigned assigned to the whole file as
 well as to particular subdatasets.
+
+Open options
+------------
+
+The following open option is supported:
+
+- **LIST_SDS=AUTO/YES/NO**: (GDAL >= 3.2) Whether to report Scientific Data Sets (SDS).
+  By default, when a HDF file contains EOS_SWATH or EOS_GRID, SDS will not be
+  listed as GDAL subdatasets (as this would cause them to be reported twice).
+  Listing them can be forced by setting LIST_SDS to YES.
+
+
+Multidimensional API support
+----------------------------
+
+.. versionadded:: 3.1
+
+The HDF4 driver supports the :ref:`multidim_raster_data_model` for reading
+operations.
 
 Driver building
 ---------------

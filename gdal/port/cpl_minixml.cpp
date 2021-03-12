@@ -358,6 +358,7 @@ static XMLTokenType ReadToken( ParseContext *psContext, CPLErr& eLastErrorType )
              && psContext->pszInput[psContext->nInputOffset] == '>' )
     {
         chNext = ReadChar( psContext );
+        (void)chNext;
         CPLAssert( chNext == '>' );
 
         psContext->eTokenType = TSlashClose;
@@ -370,7 +371,7 @@ static XMLTokenType ReadToken( ParseContext *psContext, CPLErr& eLastErrorType )
              && psContext->pszInput[psContext->nInputOffset] == '>' )
     {
         chNext = ReadChar( psContext );
-
+        (void)chNext;
         CPLAssert( chNext == '>' );
 
         psContext->eTokenType = TQuestionClose;
@@ -1763,7 +1764,7 @@ int CPLRemoveXMLChild( CPLXMLNode *psParent, CPLXMLNode *psChild )
     CPLXMLNode *psThis = nullptr;
     for( psThis = psParent->psChild;
          psThis != nullptr;
-         psLast = psThis, psThis = psThis->psNext )
+         psThis = psThis->psNext )
     {
         if( psThis == psChild )
         {
@@ -1775,6 +1776,7 @@ int CPLRemoveXMLChild( CPLXMLNode *psParent, CPLXMLNode *psChild )
             psThis->psNext = nullptr;
             return TRUE;
         }
+        psLast = psThis;
     }
 
     return FALSE;

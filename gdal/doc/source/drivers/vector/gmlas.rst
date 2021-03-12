@@ -7,6 +7,8 @@ GMLAS - Geography Markup Language (GML) driven by application schemas
 
 .. shortname:: GMLAS
 
+.. build_dependencies:: Xerces
+
 This driver can read and write XML files of arbitrary structure,
 included those containing so called Complex Features, provided that they
 are accompanied by one or several XML schemas that describe the
@@ -269,7 +271,7 @@ To increase export performance on very large databases, creating
 attribute indexes on the fields pointed by the 'layer_pkid_name'
 attribute in '_ogr_layers_metadata' might help.
 
-ogr2ogr behaviour
+ogr2ogr behavior
 ~~~~~~~~~~~~~~~~~
 
 When using ogr2ogr / GDALVectorTranslate() to convert to XML/GML from a

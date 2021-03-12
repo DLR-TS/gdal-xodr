@@ -44,7 +44,7 @@ import pytest
 
 def test_aaigrid_1():
 
-    tst = gdaltest.GDALTest('aaigrid', 'pixel_per_line.asc', 1, 1123)
+    tst = gdaltest.GDALTest('aaigrid', 'aaigrid/pixel_per_line.asc', 1, 1123)
     return tst.testOpen()
 
 ###############################################################################
@@ -53,7 +53,7 @@ def test_aaigrid_1():
 
 def test_aaigrid_2():
 
-    ds = gdal.Open('data/pixel_per_line.asc')
+    ds = gdal.Open('data/aaigrid/pixel_per_line.asc')
 
     gt = ds.GetGeoTransform()
 
@@ -75,7 +75,7 @@ def test_aaigrid_2():
 
 def test_aaigrid_comma():
 
-    ds = gdal.Open('data/pixel_per_line_comma.asc')
+    ds = gdal.Open('data/aaigrid/pixel_per_line_comma.asc')
 
     gt = ds.GetGeoTransform()
 
@@ -107,7 +107,7 @@ def test_aaigrid_3():
 
 def test_aaigrid_4():
 
-    tst = gdaltest.GDALTest('aaigrid', 'pixel_per_line.asc', 1, 187,
+    tst = gdaltest.GDALTest('aaigrid', 'aaigrid/pixel_per_line.asc', 1, 187,
                             5, 5, 5, 5)
     return tst.testOpen()
 
@@ -121,7 +121,7 @@ def test_aaigrid_5():
     # - case_sensitive.ASC
     # - case_sensitive.PRJ
 
-    tst = gdaltest.GDALTest('aaigrid', 'case_sensitive.ASC', 1, 1123)
+    tst = gdaltest.GDALTest('aaigrid', 'aaigrid/case_sensitive.ASC', 1, 1123)
 
     prj = """PROJCS["unnamed",
     GEOGCS["NAD83",
@@ -153,7 +153,7 @@ def test_aaigrid_5():
 
 def test_aaigrid_6():
 
-    ds = gdal.Open('data/nodata_float.asc')
+    ds = gdal.Open('data/aaigrid/nodata_float.asc')
 
     b = ds.GetRasterBand(1)
     assert b.GetNoDataValue() == -99999, 'Grid NODATA value wrong or missing.'
@@ -166,7 +166,7 @@ def test_aaigrid_6():
 
 def test_aaigrid_6bis():
 
-    ds = gdal.Open('data/nodata_int.asc')
+    ds = gdal.Open('data/aaigrid/nodata_int.asc')
 
     b = ds.GetRasterBand(1)
     assert b.GetNoDataValue() == -99999, 'Grid NODATA value wrong or missing.'
@@ -179,7 +179,7 @@ def test_aaigrid_6bis():
 
 def test_aaigrid_7():
 
-    tst = gdaltest.GDALTest('AAIGRID', 'nonsquare.vrt', 1, 12481)
+    tst = gdaltest.GDALTest('AAIGRID', 'aaigrid/nonsquare.vrt', 1, 12481)
 
     return tst.testCreateCopy(check_gt=1)
 
@@ -199,14 +199,14 @@ def test_aaigrid_8():
 
 def test_aaigrid_9():
 
-    ds = gdal.Open('data/float32.bil')
+    ds = gdal.Open('data/ehdr/float32.bil')
     ds2 = gdal.GetDriverByName('AAIGRID').CreateCopy('tmp/aaigrid.tmp', ds, options=['DECIMAL_PRECISION=2'])
     got_minmax = ds2.GetRasterBand(1).ComputeRasterMinMax()
     ds2 = None
 
     gdal.GetDriverByName('AAIGRID').Delete('tmp/aaigrid.tmp')
 
-    if abs(got_minmax[0] - -0.84) < 1e-7:
+    if got_minmax[0] == pytest.approx(-0.84, abs=1e-7):
         return
     pytest.fail()
 
@@ -217,36 +217,36 @@ def test_aaigrid_9():
 def test_aaigrid_10():
 
     # By default detected as 32bit float
-    ds = gdal.Open('data/float64.asc')
+    ds = gdal.Open('data/aaigrid/float64.asc')
     assert ds.GetRasterBand(1).DataType == gdal.GDT_Float32, 'Data type is not Float32!'
 
     for i in range(2):
 
         try:
-            os.remove('data/float64.asc.aux.xml')
+            os.remove('data/aaigrid/float64.asc.aux.xml')
         except OSError:
             pass
 
         if i == 0:
             gdal.SetConfigOption('AAIGRID_DATATYPE', 'Float64')
-            ds = gdal.Open('data/float64.asc')
+            ds = gdal.Open('data/aaigrid/float64.asc')
             gdal.SetConfigOption('AAIGRID_DATATYPE', None)
         else:
-            ds = gdal.OpenEx('data/float64.asc', open_options=['DATATYPE=Float64'])
+            ds = gdal.OpenEx('data/aaigrid/float64.asc', open_options=['DATATYPE=Float64'])
 
         assert ds.GetRasterBand(1).DataType == gdal.GDT_Float64, 'Data type is not Float64!'
 
         nv = ds.GetRasterBand(1).GetNoDataValue()
-        assert abs(nv - -1.234567890123) <= 1e-16, 'did not get expected nodata value'
+        assert nv == pytest.approx(-1.234567890123, abs=1e-16), 'did not get expected nodata value'
 
         got_minmax = ds.GetRasterBand(1).ComputeRasterMinMax()
-        assert abs(got_minmax[0] - 1.234567890123) <= 1e-16, \
+        assert got_minmax[0] == pytest.approx(1.234567890123, abs=1e-16), \
             'did not get expected min value'
-        assert abs(got_minmax[1] - 1.234567890123) <= 1e-16, \
+        assert got_minmax[1] == pytest.approx(1.234567890123, abs=1e-16), \
             'did not get expected max value'
 
         try:
-            os.remove('data/float64.asc.aux.xml')
+            os.remove('data/aaigrid/float64.asc.aux.xml')
         except OSError:
             pass
 
@@ -257,14 +257,14 @@ def test_aaigrid_10():
 
 def test_aaigrid_11():
 
-    ds = gdal.Open('data/float32.bil')
+    ds = gdal.Open('data/ehdr/float32.bil')
     ds2 = gdal.GetDriverByName('AAIGRID').CreateCopy('tmp/aaigrid.tmp', ds, options=['SIGNIFICANT_DIGITS=2'])
     got_minmax = ds2.GetRasterBand(1).ComputeRasterMinMax()
     ds2 = None
 
     gdal.GetDriverByName('AAIGRID').Delete('tmp/aaigrid.tmp')
 
-    if abs(got_minmax[0] - -0.84) < 1e-7:
+    if got_minmax[0] == pytest.approx(-0.84, abs=1e-7):
         return
     pytest.fail()
 
@@ -274,7 +274,7 @@ def test_aaigrid_11():
 
 def test_aaigrid_12():
 
-    ds = gdal.Open('data/nodata_float.asc')
+    ds = gdal.Open('data/aaigrid/nodata_float.asc')
     ds2 = gdal.GetDriverByName('AAIGRID').CreateCopy('tmp/aaigrid.tmp', ds,
                                                      options=['DECIMAL_PRECISION=3'])
     del ds2
@@ -295,7 +295,7 @@ def test_aaigrid_12():
 
 def test_aaigrid_13():
 
-    ds = gdal.Open('data/nodata_float.asc')
+    ds = gdal.Open('data/aaigrid/nodata_float.asc')
     ds2 = gdal.GetDriverByName('AAIGRID').CreateCopy('tmp/aaigrid.tmp', ds,
                                                      options=['SIGNIFICANT_DIGITS=3'])
     del ds2

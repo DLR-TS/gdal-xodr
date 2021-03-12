@@ -99,6 +99,7 @@ class OGRGeoJSONBaseReader
     void SetFlattenNestedAttributes( bool bFlatten, char chSeparator );
     void SetStoreNativeData( bool bStoreNativeData );
     void SetArrayAsString( bool bArrayAsString );
+    void SetDateAsString( bool bDateAsString );
 
     bool GenerateFeatureDefn( OGRLayer* poLayer, json_object* poObj );
     void FinalizeLayerDefn( OGRLayer* poLayer, CPLString& osFIDColumn );
@@ -113,6 +114,7 @@ class OGRGeoJSONBaseReader
     char chNestedAttributeSeparator_ = 0;
     bool bStoreNativeData_ = false;
     bool bArrayAsString_ = false;
+    bool bDateAsString_ = false;
 
   private:
 
@@ -217,6 +219,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
     bool bFlattenNestedAttributes,
     char chNestedAttributeSeparator,
     bool bArrayAsString,
+    bool bDateAsString,
     std::set<int>& aoSetUndeterminedTypeFields );
 
 /************************************************************************/
@@ -292,11 +295,11 @@ private:
     bool ParseField( json_object* poObj );
     bool AddFeature( OGRFeature* poFeature );
 
-    OGRGeometry* ReadGeometry( json_object* poObj );
     OGRFeature* ReadFeature( json_object* poObj );
     OGRGeoJSONLayer* ReadFeatureCollection( json_object* poObj );
 };
 
+OGRGeometry* OGRESRIJSONReadGeometry( json_object* poObj );
 OGRSpatialReference* OGRESRIJSONReadSpatialReference( json_object* poObj );
 OGRwkbGeometryType OGRESRIJSONGetGeometryType( json_object* poObj );
 OGRPoint* OGRESRIJSONReadPoint( json_object* poObj);
@@ -314,7 +317,7 @@ class OGRTopoJSONReader
     OGRTopoJSONReader();
     ~OGRTopoJSONReader();
 
-    OGRErr Parse( const char* pszText );
+    OGRErr Parse( const char* pszText, bool bLooseIdentification );
     void ReadLayers( OGRGeoJSONDataSource* poDS );
 
   private:

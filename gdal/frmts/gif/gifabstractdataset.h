@@ -42,7 +42,7 @@ CPL_C_END
 /* ==================================================================== */
 /************************************************************************/
 
-class GIFAbstractDataset : public GDALPamDataset
+class GIFAbstractDataset CPL_NON_FINAL: public GDALPamDataset
 {
   protected:
     friend class    GIFAbstractRasterBand;
@@ -102,7 +102,7 @@ class GIFAbstractDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class GIFAbstractRasterBand : public GDALPamRasterBand
+class GIFAbstractRasterBand CPL_NON_FINAL: public GDALPamRasterBand
 {
   protected:
     SavedImage  *psImage;
@@ -116,7 +116,7 @@ class GIFAbstractRasterBand : public GDALPamRasterBand
   public:
     GIFAbstractRasterBand(GIFAbstractDataset *poDS, int nBand,
                           SavedImage *psSavedImage, int nBackground,
-                          int bAdvertizeInterlacedMDI );
+                          int bAdvertiseInterlacedMDI );
     ~GIFAbstractRasterBand() override;
 
     double GetNoDataValue( int *pbSuccess = nullptr ) override;

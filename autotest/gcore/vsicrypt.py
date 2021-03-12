@@ -29,14 +29,16 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+import ctypes
 import struct
-from osgeo import gdal
 
+from osgeo import gdal
 
 import gdaltest
 import pytest
 
 from gcore.testnonboundtoswig import setup as testnonboundtoswig_setup  # noqa
+testnonboundtoswig_setup; # to please pyflakes
 
 ###############################################################################
 # Use common test for /vsicrypt
@@ -232,7 +234,7 @@ def test_vsicrypt_2():
         fp = gdal.VSIFOpenL('/vsicrypt/key=dont_use_in_prod,file=/vsimem/file.bin', 'ab')
     assert fp is None
 
-    # Test creating with potentially not build-in alg:
+    # Test creating with potentially not built-in alg:
     with gdaltest.error_handler():
         fp = gdal.VSIFOpenL('/vsicrypt/alg=blowfish,key=DONT_USE_IN_PROD,file=/vsimem/file.bin', 'wb')
     if fp is not None:
@@ -393,6 +395,9 @@ def test_vsicrypt_4():
         test_content = gdal.VSIFReadL(1, 100000, test_f)
         ref_content = gdal.VSIFReadL(1, 100000, ref_f)
 
+        gdal.VSIFCloseL(test_f)
+        gdal.VSIFCloseL(ref_f)
+
         if test_content != ref_content:
             print(seed)
             print('Test content (%d):' % len(test_content))
@@ -461,11 +466,6 @@ def test_vsicrypt_5():
 
 
 def test_vsicrypt_6(testnonboundtoswig_setup):  # noqa
-
-    try:
-        import ctypes
-    except ImportError:
-        pytest.skip()
 
     testnonboundtoswig_setup.VSISetCryptKey.argtypes = [ctypes.c_char_p, ctypes.c_int]
     testnonboundtoswig_setup.VSISetCryptKey.restype = None

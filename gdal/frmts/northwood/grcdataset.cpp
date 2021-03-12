@@ -130,13 +130,13 @@ NWT_GRCRasterBand::NWT_GRCRasterBand( NWT_GRCDataset * poDSIn, int nBandIn )
          i < static_cast<int>( poGDS->pGrd->stClassDict->nNumClassifiedItems );
          i++ )
     {
-        oEntry.c1 = poGDS->pGrd->stClassDict->stClassifedItem[i]->r;
-        oEntry.c2 = poGDS->pGrd->stClassDict->stClassifedItem[i]->g;
-        oEntry.c3 = poGDS->pGrd->stClassDict->stClassifedItem[i]->b;
+        oEntry.c1 = poGDS->pGrd->stClassDict->stClassifiedItem[i]->r;
+        oEntry.c2 = poGDS->pGrd->stClassDict->stClassifiedItem[i]->g;
+        oEntry.c3 = poGDS->pGrd->stClassDict->stClassifiedItem[i]->b;
         oEntry.c4 = 255;            // alpha 255 = solid
 
         poGDS->poColorTable->SetColorEntry( poGDS->pGrd->
-                                          stClassDict->stClassifedItem[i]->
+                                          stClassDict->stClassifiedItem[i]->
                                           usPixVal, &oEntry );
     }
 
@@ -144,8 +144,8 @@ NWT_GRCRasterBand::NWT_GRCRasterBand( NWT_GRCDataset * poDSIn, int nBandIn )
     int maxValue = 0;
     for( int i=0; i < static_cast<int>( poGDS->pGrd->stClassDict->nNumClassifiedItems ); i++ )
     {
-        if( poGDS->pGrd->stClassDict->stClassifedItem[i]->usPixVal > maxValue )
-            maxValue = poGDS->pGrd->stClassDict->stClassifedItem[i]->usPixVal;
+        if( poGDS->pGrd->stClassDict->stClassifiedItem[i]->usPixVal > maxValue )
+            maxValue = poGDS->pGrd->stClassDict->stClassifiedItem[i]->usPixVal;
     }
 
     // load a value for the null value
@@ -161,13 +161,13 @@ NWT_GRCRasterBand::NWT_GRCRasterBand( NWT_GRCDataset * poDSIn, int nBandIn )
              i < static_cast<int>( poGDS->pGrd->stClassDict->nNumClassifiedItems );
              i++ )
         {
-            if( static_cast<int>( poGDS->pGrd->stClassDict->stClassifedItem[i]->usPixVal ) ==
+            if( static_cast<int>( poGDS->pGrd->stClassDict->stClassifiedItem[i]->usPixVal ) ==
                 val )
             {
                 poGDS->papszCategories =
                     CSLAddString( poGDS->papszCategories,
                                     poGDS->pGrd->stClassDict->
-                                    stClassifedItem[i]->szClassName );
+                                    stClassifiedItem[i]->szClassName );
                 break;
             }
         }
@@ -354,7 +354,7 @@ GDALDataset *NWT_GRCDataset::Open( GDALOpenInfo * poOpenInfo )
 
     poDS->pGrd->fp = poDS->fp;
 
-    if (!nwt_ParseHeader( poDS->pGrd, reinterpret_cast<char *>( poDS->abyHeader ) ) ||
+    if (!nwt_ParseHeader( poDS->pGrd, poDS->abyHeader ) ||
         !GDALCheckDatasetDimensions(poDS->pGrd->nXSide, poDS->pGrd->nYSide) ||
         poDS->pGrd->stClassDict == nullptr)
     {
@@ -411,7 +411,7 @@ void GDALRegister_NWT_GRC()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Northwood Classified Grid Format .grc/.tab");
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#northwood_grc" );
+                               "drivers/raster/nwtgrd.html#driver-capabilities-nwt-grc" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "grc" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

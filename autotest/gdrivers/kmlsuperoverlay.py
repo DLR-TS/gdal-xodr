@@ -72,10 +72,10 @@ def test_kmlsuperoverlay_3():
     if f:
         data = gdal.VSIFReadL(1, 10000, f).decode('ascii')
         gdal.VSIFCloseL(f)
-    assert '<north>33.903651' in data, data
-    assert '<south>33.625312' in data, data
-    assert '<east>-117.309784' in data, data
-    assert '<west>-117.639992' in data, data
+    assert '<north>33.903' in data, data
+    assert '<south>33.625' in data, data
+    assert '<east>-117.309' in data, data
+    assert '<west>-117.639' in data, data
 
     filelist = ['tmp/0/0/0.jpg',
                 'tmp/0/0/0.kml',
@@ -196,10 +196,7 @@ def test_kmlsuperoverlay_4():
 
 def test_kmlsuperoverlay_5():
 
-    try:
-        from xml.etree import ElementTree
-    except ImportError:
-        pytest.skip()
+    from xml.etree import ElementTree
 
     src_ds = gdal.Open("""<VRTDataset rasterXSize="512" rasterYSize="512">
   <SRS>PROJCS["WGS 84 / Mercator 41",
@@ -262,12 +259,12 @@ def test_kmlsuperoverlay_5():
 
 def test_kmlsuperoverlay_6():
 
-    ds = gdal.Open('data/kmlimage.kmz')
+    ds = gdal.Open('data/kml/kmlimage.kmz')
     assert ds.GetProjectionRef().find('WGS_1984') >= 0
     got_gt = ds.GetGeoTransform()
     ref_gt = [1.2554125761846773, 1.6640895429971981e-05, 0.0, 43.452120815728101, 0.0, -1.0762348187666334e-05]
     for i in range(6):
-        assert abs(got_gt[i] - ref_gt[i]) <= 1e-6
+        assert got_gt[i] == pytest.approx(ref_gt[i], abs=1e-6)
     for i in range(4):
         cs = ds.GetRasterBand(i + 1).Checksum()
         assert cs == 47673
@@ -282,12 +279,12 @@ def test_kmlsuperoverlay_6():
 
 def test_kmlsuperoverlay_7():
 
-    ds = gdal.Open('data/small_world.kml')
+    ds = gdal.Open('data/kml/small_world.kml')
     assert ds.GetProjectionRef().find('WGS_1984') >= 0
     got_gt = ds.GetGeoTransform()
     ref_gt = [-180.0, 0.9, 0.0, 90.0, 0.0, -0.9]
     for i in range(6):
-        assert abs(got_gt[i] - ref_gt[i]) <= 1e-6
+        assert got_gt[i] == pytest.approx(ref_gt[i], abs=1e-6)
 
     cs = ds.GetRasterBand(1).Checksum()
     assert cs == 30111
@@ -299,12 +296,12 @@ def test_kmlsuperoverlay_7():
 
 def test_kmlsuperoverlay_single_overlay_document_folder_pct():
 
-    ds = gdal.Open('data/small_world_in_document_folder_pct.kml')
+    ds = gdal.Open('data/kml/small_world_in_document_folder_pct.kml')
     assert ds.GetProjectionRef().find('WGS_1984') >= 0
     got_gt = ds.GetGeoTransform()
     ref_gt = [-180.0, 0.9, 0.0, 90.0, 0.0, -0.9]
     for i in range(6):
-        assert abs(got_gt[i] - ref_gt[i]) <= 1e-6
+        assert got_gt[i] == pytest.approx(ref_gt[i], abs=1e-6)
 
     assert ds.GetRasterBand(1).GetRasterColorInterpretation() == gdal.GCI_PaletteIndex
     assert ds.GetRasterBand(1).GetColorTable()

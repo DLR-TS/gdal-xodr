@@ -53,7 +53,7 @@ class MSGNRasterBand;
 /* ==================================================================== */
 /************************************************************************/
 
-class MSGNDataset : public GDALDataset
+class MSGNDataset final: public GDALDataset
 {
     friend class MSGNRasterBand;
 
@@ -82,7 +82,7 @@ class MSGNDataset : public GDALDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class MSGNRasterBand : public GDALRasterBand
+class MSGNRasterBand final: public GDALRasterBand
 {
     friend class MSGNDataset;
 
@@ -175,15 +175,15 @@ CPLErr MSGNRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
     int i_nBlockYOff = poDS->GetRasterYSize() - 1 - nBlockYOff;
 
     unsigned int data_length =  bytes_per_line + (unsigned int)sizeof(SUB_VISIRLINE);
-    unsigned int data_offset = 0;
+    vsi_l_offset data_offset = 0;
 
     if (open_mode != MODE_HRV) {
         data_offset = poGDS->msg_reader_core->get_f_data_offset() +
-            interline_spacing*i_nBlockYOff  + (band_in_file-1)*packet_size +
+            static_cast<vsi_l_offset>(interline_spacing)*i_nBlockYOff  + (band_in_file-1)*packet_size +
             (packet_size - data_length);
     } else {
         data_offset = poGDS->msg_reader_core->get_f_data_offset() +
-            interline_spacing*(int(i_nBlockYOff/3) + 1) -
+            static_cast<vsi_l_offset>(interline_spacing)*(int(i_nBlockYOff/3) + 1) -
             packet_size*(3 - (i_nBlockYOff % 3)) + (packet_size - data_length);
     }
 
@@ -220,11 +220,10 @@ CPLErr MSGNRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
     unsigned char *cptr = (unsigned char*)pszRecord +
         (data_length - bytes_per_line);
     int bitsLeft = 8;
-    unsigned short value = 0;
 
     if (open_mode != MODE_RAD) {
         for (int c=0; c < nBlockXSize; c++) {
-            value = 0;
+            unsigned short value = 0;
             for (int bit=0; bit < 10; bit++) {
                 value <<= 1;
                 if (*cptr & 128) {
@@ -242,7 +241,7 @@ CPLErr MSGNRasterBand::IReadBlock( CPL_UNUSED int nBlockXOff,
     } else {
         // radiance mode
         for (int c=0; c < nBlockXSize; c++) {
-            value = 0;
+            unsigned short value = 0;
             for (int bit=0; bit < 10; bit++) {
                 value <<= 1;
                 if (*cptr & 128) {
@@ -559,7 +558,7 @@ void GDALRegister_MSGN()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "EUMETSAT Archive native (.nat)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_msgn.html" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/msgn.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "nat" );
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

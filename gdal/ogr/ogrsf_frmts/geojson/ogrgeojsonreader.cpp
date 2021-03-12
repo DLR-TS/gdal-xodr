@@ -47,8 +47,6 @@ static
 OGRGeometry* OGRGeoJSONReadGeometry( json_object* poObj,
                                      OGRSpatialReference* poParentSRS );
 
-const size_t MAX_OBJECT_SIZE = 200 * 1024 * 1024;
-
 #if (!defined(JSON_C_VERSION_NUM)) || (JSON_C_VERSION_NUM < JSON_C_VER_013)
 const size_t ESTIMATE_BASE_OBJECT_SIZE = sizeof(struct json_object);
 #elif JSON_C_VERSION_NUM == JSON_C_VER_013 // no way to get the size
@@ -98,6 +96,7 @@ class OGRGeoJSONReaderStreamingParser: public CPLJSonStreamingParser
         std::vector<bool> m_abFirstMember;
         bool m_bStoreNativeData;
         CPLString m_osJson;
+        size_t m_nMaxObjectSize;
 
         std::vector<OGRFeature*> m_apoFeatures;
         size_t m_nCurFeatureIdx;
@@ -198,6 +197,15 @@ void OGRGeoJSONBaseReader::SetStoreNativeData( bool bStoreNativeData )
 void OGRGeoJSONBaseReader::SetArrayAsString( bool bArrayAsString )
 {
     bArrayAsString_ = bArrayAsString;
+}
+
+/************************************************************************/
+/*                           SetDateAsString                           */
+/************************************************************************/
+
+void OGRGeoJSONBaseReader::SetDateAsString( bool bDateAsString )
+{
+    bDateAsString_ = bDateAsString;
 }
 
 /************************************************************************/
@@ -314,6 +322,8 @@ OGRGeoJSONReaderStreamingParser::OGRGeoJSONReaderStreamingParser(
                 m_bStoreNativeData(bStoreNativeData),
                 m_nCurFeatureIdx(0)
 {
+    m_nMaxObjectSize = atoi(CPLGetConfigOption("OGR_GEOJSON_MAX_OBJ_SIZE", "200"))
+                * 1024 * 1024;
 }
 
 /************************************************************************/
@@ -401,7 +411,7 @@ void OGRGeoJSONReaderStreamingParser::AnalyzeFeature()
 
 void OGRGeoJSONReaderStreamingParser::StartObject()
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -448,7 +458,7 @@ void OGRGeoJSONReaderStreamingParser::StartObject()
 
 void OGRGeoJSONReaderStreamingParser::EndObject()
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -523,7 +533,7 @@ void OGRGeoJSONReaderStreamingParser::EndObject()
 void OGRGeoJSONReaderStreamingParser::StartObjectMember(const char* pszKey,
                                                         size_t nKeyLen)
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -576,7 +586,7 @@ void OGRGeoJSONReaderStreamingParser::StartObjectMember(const char* pszKey,
 
 void OGRGeoJSONReaderStreamingParser::StartArray()
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -628,7 +638,7 @@ void OGRGeoJSONReaderStreamingParser::StartArrayMember()
 
 void OGRGeoJSONReaderStreamingParser::EndArray()
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -657,7 +667,7 @@ void OGRGeoJSONReaderStreamingParser::EndArray()
 
 void OGRGeoJSONReaderStreamingParser::String(const char* pszValue, size_t nLen)
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -692,7 +702,7 @@ void OGRGeoJSONReaderStreamingParser::String(const char* pszValue, size_t nLen)
 
 void OGRGeoJSONReaderStreamingParser::Number(const char* pszValue, size_t nLen)
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -749,7 +759,7 @@ void OGRGeoJSONReaderStreamingParser::Number(const char* pszValue, size_t nLen)
 
 void OGRGeoJSONReaderStreamingParser::Boolean(bool bVal)
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -779,7 +789,7 @@ void OGRGeoJSONReaderStreamingParser::Boolean(bool bVal)
 
 void OGRGeoJSONReaderStreamingParser::Null()
 {
-    if( m_nCurObjMemEstimate > MAX_OBJECT_SIZE )
+    if( m_nCurObjMemEstimate > m_nMaxObjectSize )
     {
         TooComplex();
         return;
@@ -804,7 +814,7 @@ void OGRGeoJSONReaderStreamingParser::Null()
 void OGRGeoJSONReaderStreamingParser::TooComplex()
 {
     if( !ExceptionOccurred() )
-        Exception("GeoJSON object too complex");
+        Exception("GeoJSON object too complex, please see the OGR_GEOJSON_MAX_OBJ_SIZE environment option");
 }
 
 /************************************************************************/
@@ -1449,6 +1459,11 @@ OGRSpatialReference* OGRGeoJSONReadSpatialReference( json_object* poObj )
 
             const char* pszName = json_object_get_string( poNameURL );
 
+            // Mostly to emulate GDAL 2.x behavior
+            // See https://github.com/OSGeo/gdal/issues/2035
+            if( EQUAL(pszName, "urn:ogc:def:crs:OGC:1.3:CRS84") )
+                pszName = "EPSG:4326";
+
             poSRS = new OGRSpatialReference();
             poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
             if( OGRERR_NONE != poSRS->SetFromUserInput( pszName ) )
@@ -1647,6 +1662,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
     bool bFlattenNestedAttributes,
     char chNestedAttributeSeparator,
     bool bArrayAsString,
+    bool bDateAsString,
     std::set<int>& aoSetUndeterminedTypeFields )
 {
     if( bFlattenNestedAttributes &&
@@ -1669,6 +1685,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
                                                  true,
                                                  chNestedAttributeSeparator,
                                                  bArrayAsString,
+                                                 bDateAsString,
                                                  aoSetUndeterminedTypeFields);
             }
             else
@@ -1676,6 +1693,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
                 OGRGeoJSONReaderAddOrUpdateField(poDefn, osAttrName, it.val,
                                                  false, 0,
                                                  bArrayAsString,
+                                                 bDateAsString,
                                                  aoSetUndeterminedTypeFields);
             }
         }
@@ -1692,7 +1710,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
         fldDefn.SetSubType(eSubType);
         if( eSubType == OFSTBoolean )
             fldDefn.SetWidth(1);
-        if( fldDefn.GetType() == OFTString )
+        if( fldDefn.GetType() == OFTString && !bDateAsString )
         {
             fldDefn.SetType(GeoJSONStringPropertyToFieldType( poVal ));
         }
@@ -1713,7 +1731,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
                 GeoJSONPropertyToFieldType( poVal, eSubType, bArrayAsString );
             poFDefn->SetSubType(OFSTNone);
             poFDefn->SetType(eNewType);
-            if( poFDefn->GetType() == OFTString )
+            if( poFDefn->GetType() == OFTString && !bDateAsString )
             {
                 poFDefn->SetType(GeoJSONStringPropertyToFieldType( poVal ));
             }
@@ -1841,7 +1859,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
                     poFDefn->SetSubType(OFSTNone);
                 }
             }
-            else if( eNewType != OFTInteger )
+            else
             {
                 poFDefn->SetSubType(OFSTNone);
                 poFDefn->SetType(OFTString);
@@ -1893,7 +1911,7 @@ void OGRGeoJSONReaderAddOrUpdateField(
             OGRFieldSubType eSubType;
             OGRFieldType eNewType =
                 GeoJSONPropertyToFieldType( poVal, eSubType, bArrayAsString );
-            if( eNewType == OFTString )
+            if( eNewType == OFTString && !bDateAsString )
                 eNewType = GeoJSONStringPropertyToFieldType( poVal );
             if( eType != eNewType )
             {
@@ -2101,6 +2119,7 @@ bool OGRGeoJSONBaseReader::GenerateFeatureDefn( OGRLayer* poLayer,
                                              bFlattenNestedAttributes_,
                                              chNestedAttributeSeparator_,
                                              bArrayAsString_,
+                                             bDateAsString_,
                                              aoSetUndeterminedTypeFields_);
         }
 
@@ -2135,6 +2154,7 @@ bool OGRGeoJSONBaseReader::GenerateFeatureDefn( OGRLayer* poLayer,
                                                     bFlattenNestedAttributes_,
                                                     chNestedAttributeSeparator_,
                                                     bArrayAsString_,
+                                                    bDateAsString_,
                                                     aoSetUndeterminedTypeFields_);
                 }
             }
@@ -2413,9 +2433,9 @@ void OGRGeoJSONReaderSetField( OGRLayer* poLayer,
         const enum json_type eJSonType(json_object_get_type(poVal));
         if( eJSonType == json_type_array )
         {
-            const auto nLength = json_object_array_length(poVal);
+            auto nLength = json_object_array_length(poVal);
             char** papszVal = (char**)CPLMalloc(sizeof(char*) * (nLength+1));
-            auto i = decltype(nLength){0};
+            decltype(nLength) i = 0; // Used after for.
             for( ; i < nLength; i++ )
             {
                 json_object* poRow = json_object_array_get_idx(poVal, i);
@@ -2685,23 +2705,14 @@ lh_entry* OGRGeoJSONFindMemberEntryByName( json_object* poObj,
     if( nullptr == pszName || nullptr == poObj)
         return nullptr;
 
-    json_object* poTmp = poObj;
-
-    json_object_iter it;
-    it.key = nullptr;
-    it.val = nullptr;
-    it.entry = nullptr;
-    if( nullptr != json_object_get_object(poTmp) &&
-        nullptr != json_object_get_object(poTmp)->head )
+    if( nullptr != json_object_get_object(poObj) )
     {
-        it.entry = json_object_get_object(poTmp)->head;
-        while( it.entry != nullptr )
+        lh_entry* entry = json_object_get_object(poObj)->head;
+        while( entry != nullptr )
         {
-            it.key = (char*)it.entry->k;
-            it.val = (json_object*)it.entry->v;
-            if( EQUAL( it.key, pszName ) )
-                return it.entry;
-            it.entry = it.entry->next;
+            if( EQUAL( static_cast<const char*>(entry->k), pszName ) )
+                return entry;
+            entry = entry->next;
         }
     }
 

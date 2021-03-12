@@ -108,7 +108,7 @@ static const char* const apszBandDescription[] =
 
 class CTGRasterBand;
 
-class CTGDataset : public GDALPamDataset
+class CTGDataset final: public GDALPamDataset
 {
     friend class CTGRasterBand;
 
@@ -145,7 +145,7 @@ class CTGDataset : public GDALPamDataset
 /* ==================================================================== */
 /************************************************************************/
 
-class CTGRasterBand : public GDALPamRasterBand
+class CTGRasterBand final: public GDALPamRasterBand
 {
     friend class CTGDataset;
 
@@ -354,7 +354,7 @@ int CTGDataset::ReadImagery()
 
 int CTGDataset::Identify( GDALOpenInfo * poOpenInfo )
 {
-    CPLString osFilename(poOpenInfo->pszFilename);
+    CPLString osFilename; // let in that scope
 
     GDALOpenInfo* poOpenInfoToDelete = nullptr;
     /*  GZipped grid_cell.gz files are common, so automagically open them */
@@ -586,7 +586,7 @@ void GDALRegister_CTG()
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "USGS LULC Composite Theme Grid" );
     poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC,
-                               "frmt_various.html#CTG" );
+                               "drivers/raster/ctg.html" );
 
     poDriver->SetMetadataItem( GDAL_DCAP_VIRTUALIO, "YES" );
 

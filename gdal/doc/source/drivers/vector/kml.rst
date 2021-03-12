@@ -5,6 +5,8 @@ KML - Keyhole Markup Language
 
 .. shortname:: KML
 
+.. build_dependencies:: (read support needs libexpat) 
+
 Keyhole Markup Language (KML) is an XML-based language for managing the
 display of 3D geospatial data. KML has been accepted as an OGC standard,
 and is supported in one way or another on the major GeoBrowsers. Note
@@ -35,7 +37,7 @@ Supported geometry types are ``Point``, ``Linestring``, ``Polygon``,
 ``MultiPoint``, ``MultiLineString``, ``MultiPolygon`` and
 ``MultiGeometry``. There are limitations, for example: the nested nature
 of folders in a source KML file is lost; folder ``<description>`` tags
-will not carry through to output. Since GDAL 1.6.1, folders containing
+will not carry through to output. Folders containing
 multiple geometry types, like POINT and POLYGON, are supported.
 
 KML Writing
@@ -73,10 +75,7 @@ Expat library supports reading the following built-in encodings :
 -  UTF-8
 -  UTF-16
 -  ISO-8859-1
-
-OGR 1.8.0 adds supports for Windows-1252 encoding (for previous
-versions, altering the encoding mentioned in the XML header to
-ISO-8859-1 might work in some cases).
+-  Windows-1252
 
 The content returned by OGR will be encoded in UTF-8, after the
 conversion from the encoding mentioned in the file header is.
@@ -114,8 +113,6 @@ The following dataset creation options are supported:
 
 VSI Virtual File System API support
 -----------------------------------
-
-(Some features below might require OGR >= 1.9.0)
 
 The driver supports reading and writing to files managed by VSI Virtual
 File System API, which include "regular" files, as well as files in the

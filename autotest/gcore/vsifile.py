@@ -29,6 +29,7 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
+import os
 import sys
 import time
 from osgeo import gdal
@@ -69,7 +70,7 @@ def vsifile_generic(filename):
 
     statBuf = gdal.VSIStatL(filename, gdal.VSI_STAT_EXISTS_FLAG | gdal.VSI_STAT_NATURE_FLAG | gdal.VSI_STAT_SIZE_FLAG)
     assert statBuf.size == 7
-    assert abs(start_time - statBuf.mtime) <= 2
+    assert start_time == pytest.approx(statBuf.mtime, abs=2)
 
     fp = gdal.VSIFOpenL(filename, 'rb')
     buf = gdal.VSIFReadL(1, 7, fp)
@@ -740,7 +741,8 @@ def test_vsisync():
 
     if sys.platform != 'win32':
         with gdaltest.error_handler():
-            assert not gdal.Sync('/vsimem/test_sync/', '/i_do_not/exist')
+            # even root cannot write into /proc
+            assert not gdal.Sync('/vsimem/test_sync/', '/proc/i_do_not/exist')
 
     assert gdal.Sync('/vsimem/test_sync/', '/vsimem/out')
     assert gdal.ReadDir('/vsimem/out') == [ 'foo.txt', 'subdir' ]
@@ -846,3 +848,34 @@ def test_vsitar_verylongfilename():
     data = gdal.VSIFReadL(1, 3, f).decode('ascii')
     gdal.VSIFCloseL(f)
     assert data == 'bar'
+
+
+def test_unlink_batch():
+
+    gdal.FileFromMemBuffer('/vsimem/foo', 'foo')
+    gdal.FileFromMemBuffer('/vsimem/bar', 'bar')
+    assert gdal.UnlinkBatch(['/vsimem/foo', '/vsimem/bar'])
+    assert not gdal.VSIStatL('/vsimem/foo')
+    assert not gdal.VSIStatL('/vsimem/bar')
+
+    assert not gdal.UnlinkBatch([])
+
+    gdal.FileFromMemBuffer('/vsimem/foo', 'foo')
+    open('tmp/bar', 'wt').write('bar')
+    with gdaltest.error_handler():
+        assert not gdal.UnlinkBatch(['/vsimem/foo', 'tmp/bar'])
+    gdal.Unlink('/vsimem/foo')
+    gdal.Unlink('tmp/bar')
+
+
+###############################################################################
+# Test gdal.RmdirRecursive()
+
+def test_vsifile_rmdirrecursive():
+
+    gdal.Mkdir('tmp/rmdirrecursive', 493)
+    gdal.Mkdir('tmp/rmdirrecursive/subdir', 493)
+    open('tmp/rmdirrecursive/foo.bin', 'wb').close()
+    open('tmp/rmdirrecursive/subdir/bar.bin', 'wb').close()
+    assert gdal.RmdirRecursive('tmp/rmdirrecursive') == 0
+    assert not os.path.exists('tmp/rmdirrecursive')

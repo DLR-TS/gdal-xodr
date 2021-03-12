@@ -48,7 +48,7 @@ CPL_CVSID("$Id$")
 
 class GSBGRasterBand;
 
-class GSBGDataset : public GDALPamDataset
+class GSBGDataset final: public GDALPamDataset
 {
     friend class GSBGRasterBand;
 
@@ -71,7 +71,7 @@ class GSBGDataset : public GDALPamDataset
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
                                 GDALDataType eType,
-                                char **papszParmList );
+                                char **papszParamList );
     static GDALDataset *CreateCopy( const char *pszFilename,
                                     GDALDataset *poSrcDS,
                                     int bStrict, char **papszOptions,
@@ -94,7 +94,7 @@ const size_t GSBGDataset::nHEADER_SIZE = 56;
 /* ==================================================================== */
 /************************************************************************/
 
-class GSBGRasterBand : public GDALPamRasterBand
+class GSBGRasterBand final: public GDALPamRasterBand
 {
     friend class GSBGDataset;
 
@@ -854,7 +854,7 @@ GDALDataset *GSBGDataset::Create( const char * pszFilename,
                                   int nYSize,
                                   CPL_UNUSED int nBands,
                                   GDALDataType eType,
-                                  CPL_UNUSED char **papszParmList )
+                                  CPL_UNUSED char **papszParamList )
 {
     if( nXSize <= 0 || nYSize <= 0 )
     {
@@ -1116,7 +1116,7 @@ void GDALRegister_GSBG()
     poDriver->SetMetadataItem( GDAL_DCAP_RASTER, "YES" );
     poDriver->SetMetadataItem( GDAL_DMD_LONGNAME,
                                "Golden Software Binary Grid (.grd)" );
-    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "frmt_various.html#GSBG" );
+    poDriver->SetMetadataItem( GDAL_DMD_HELPTOPIC, "drivers/raster/gsbg.html" );
     poDriver->SetMetadataItem( GDAL_DMD_EXTENSION, "grd" );
     poDriver->SetMetadataItem( GDAL_DMD_CREATIONDATATYPES,
                                "Byte Int16 UInt16 Float32" );

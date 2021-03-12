@@ -72,7 +72,7 @@
 
 class OGRMySQLDataSource;
 
-class OGRMySQLLayer : public OGRLayer
+class OGRMySQLLayer CPL_NON_FINAL: public OGRLayer
 {
   protected:
     OGRFeatureDefn     *poFeatureDefn;
@@ -97,6 +97,7 @@ class OGRMySQLLayer : public OGRLayer
     char                *pszFIDColumn;
 
     MYSQL_RES           *hResultSet;
+    bool                m_bEOF = false;
 
     int                 FetchSRSId();
 
@@ -240,6 +241,10 @@ class OGRMySQLDataSource final: public OGRDataSource
     OGRSpatialReference *FetchSRS( int nSRSId );
 
     OGRErr              InitializeMetadataTables();
+    OGRErr              UpdateMetadataTables(const char *pszLayerName,
+                                             OGRwkbGeometryType eType,
+                                             const char *pszGeomColumnName,
+                                             const int nSRSId);
 
     int                 Open( const char *, char** papszOpenOptions, int bUpdate );
     int                 OpenTable( const char *, int bUpdate );

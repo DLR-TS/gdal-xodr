@@ -148,6 +148,7 @@ static const EXIFTagDesc exiftags [] = {
     { 0x212, TIFF_NOTYPE, 0, "EXIF_YCbCrSubSampling", COND_NOT_ALLOWED_EVEN_IN_JPEG_MARKER},
     { 0x213, TIFF_SHORT, 1, "EXIF_YCbCrPositioning", COND_MANDATORY},
     { 0x214, TIFF_RATIONAL, 6, "EXIF_ReferenceBlackWhite", COND_OPTIONAL},
+    { 0x2BC, TIFF_ASCII, 0, "EXIF_XmlPacket", COND_OPTIONAL}, // not in the EXIF standard. But found in some images
     { 0x828D, TIFF_NOTYPE, 0, "EXIF_CFA_Repeat_Pattern_Dim", COND_OPTIONAL},
     { 0x828E, TIFF_NOTYPE, 0, "EXIF_CFA_Pattern", COND_OPTIONAL},
     { 0x828F, TIFF_NOTYPE, 0, "EXIF_Battery_Level", COND_OPTIONAL},
@@ -421,7 +422,7 @@ static void EXIFPrintData(char* pszData, GUInt16 type,
 /*
  * Return size of TIFFDataType in bytes
  */
-static int EXIF_TIFFDataWidth(GDALEXIFTIFFDataType type)
+static int EXIF_TIFFDataWidth(int /* GDALEXIFTIFFDataType */ type)
 {
     switch(type)
     {
@@ -598,6 +599,8 @@ CPLErr EXIFExtractMetadata(char**& papszMetadata,
             continue;
         }
 
+        vsi_l_offset nTagValueOffset = poTIFFDirEntry->tdir_offset;
+
 /* -------------------------------------------------------------------- */
 /*      For UserComment we need to ignore the language binding and      */
 /*      just return the actual contents.                                */
@@ -609,7 +612,7 @@ CPLErr EXIFExtractMetadata(char**& papszMetadata,
             if( poTIFFDirEntry->tdir_count >= 8 )
             {
                 poTIFFDirEntry->tdir_count -= 8;
-                poTIFFDirEntry->tdir_offset += 8;
+                nTagValueOffset += 8;
             }
         }
 
@@ -619,33 +622,36 @@ CPLErr EXIFExtractMetadata(char**& papszMetadata,
         if( EQUAL(szName,"EXIF_ExifVersion")
             || EQUAL(szName,"EXIF_FlashPixVersion")
             || EQUAL(szName,"EXIF_MakerNote")
-            || EQUAL(szName,"GPSProcessingMethod") )
+            || EQUAL(szName,"GPSProcessingMethod")
+            || EQUAL(szName,"EXIF_XmlPacket") )
             poTIFFDirEntry->tdir_type = TIFF_ASCII;
 
 /* -------------------------------------------------------------------- */
 /*      Print tags                                                      */
 /* -------------------------------------------------------------------- */
-        const int nDataWidth =
-            EXIF_TIFFDataWidth(static_cast<GDALEXIFTIFFDataType>(poTIFFDirEntry->tdir_type));
-        const int space = poTIFFDirEntry->tdir_count * nDataWidth;
-
-        /* Previous multiplication could overflow, hence this additional check */
         if( poTIFFDirEntry->tdir_count > static_cast<GUInt32>(MAXSTRINGLENGTH) )
         {
             CPLError( CE_Warning, CPLE_AppDefined,
                       "Too many bytes in tag: %u, ignoring tag.",
                       poTIFFDirEntry->tdir_count );
+            continue;
         }
-        else if (nDataWidth == 0 || poTIFFDirEntry->tdir_type >= TIFF_IFD )
+
+        const int nDataWidth =
+            EXIF_TIFFDataWidth(poTIFFDirEntry->tdir_type);
+        if (nDataWidth == 0 || poTIFFDirEntry->tdir_type >= TIFF_IFD )
         {
             CPLError( CE_Warning, CPLE_AppDefined,
                       "Invalid or unhandled EXIF data type: %d, ignoring tag.",
                       poTIFFDirEntry->tdir_type );
+            continue;
         }
+
 /* -------------------------------------------------------------------- */
 /*      This is at most 4 byte data so we can read it from tdir_offset  */
 /* -------------------------------------------------------------------- */
-        else if (space >= 0 && space <= 4) {
+        const int space = poTIFFDirEntry->tdir_count * nDataWidth;
+        if (space >= 0 && space <= 4) {
 
             unsigned char data[4];
             memcpy(data, &poTIFFDirEntry->tdir_offset, 4);
@@ -692,7 +698,7 @@ CPLErr EXIFExtractMetadata(char**& papszMetadata,
             unsigned char *data = static_cast<unsigned char *>(VSIMalloc(space));
 
             if (data) {
-                CPL_IGNORE_RET_VAL(VSIFSeekL(fp,poTIFFDirEntry->tdir_offset+nTIFFHEADER,SEEK_SET));
+                CPL_IGNORE_RET_VAL(VSIFSeekL(fp,nTagValueOffset+nTIFFHEADER,SEEK_SET));
                 CPL_IGNORE_RET_VAL(VSIFReadL(data, 1, space, fp));
 
                 if (bSwabflag) {

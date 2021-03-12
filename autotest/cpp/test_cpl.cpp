@@ -44,6 +44,7 @@
 #include "cpl_http.h"
 #include "cpl_auto_close.h"
 #include "cpl_minixml.h"
+#include "cpl_worker_thread_pool.h"
 
 #include <fstream>
 #include <string>
@@ -2173,30 +2174,30 @@ namespace tut
                            std::string("default"));
             oObj.Add("const_char_star", nullptr);
             oObj.Add("const_char_star", "my_const_char_star");
-            ensure_equals( oObj.GetObj("const_char_star").GetType(), CPLJSONObject::String );
+            ensure( oObj.GetObj("const_char_star").GetType() == CPLJSONObject::Type::String );
             oObj.Add("int", 1);
             ensure_equals( oObj.GetInteger("int"), 1 );
             ensure_equals( oObj.GetInteger("inexisting_int", -987), -987 );
-            ensure_equals( oObj.GetObj("int").GetType(), CPLJSONObject::Integer );
+            ensure( oObj.GetObj("int").GetType() == CPLJSONObject::Type::Integer );
             oObj.Add("int64", GINT64_MAX);
             ensure_equals( oObj.GetLong("int64"), GINT64_MAX );
             ensure_equals( oObj.GetLong("inexisting_int64", GINT64_MIN), GINT64_MIN );
-            ensure_equals( oObj.GetObj("int64").GetType(), CPLJSONObject::Integer );
+            ensure( oObj.GetObj("int64").GetType() == CPLJSONObject::Type::Long );
             oObj.Add("double", 1.25);
             ensure_equals( oObj.GetDouble("double"), 1.25 );
             ensure_equals( oObj.GetDouble("inexisting_double", -987.0), -987.0 );
-            ensure_equals( oObj.GetObj("double").GetType(), CPLJSONObject::Double );
+            ensure( oObj.GetObj("double").GetType() == CPLJSONObject::Type::Double );
             oObj.Add("array", CPLJSONArray());
-            ensure_equals( oObj.GetObj("array").GetType(), CPLJSONObject::Array );
+            ensure( oObj.GetObj("array").GetType() == CPLJSONObject::Type::Array );
             oObj.Add("obj", CPLJSONObject());
-            ensure_equals( oObj.GetObj("obj").GetType(), CPLJSONObject::Object );
+            ensure( oObj.GetObj("obj").GetType() == CPLJSONObject::Type::Object );
             oObj.Add("bool", true);
             ensure_equals( oObj.GetBool("bool"), true );
             ensure_equals( oObj.GetBool("inexisting_bool", false), false );
-            ensure_equals( oObj.GetObj("bool").GetType(), CPLJSONObject::Boolean );
+            ensure( oObj.GetObj("bool").GetType() == CPLJSONObject::Type::Boolean );
             oObj.AddNull("null_field");
-            //ensure_equals( oObj.GetObj("null_field").GetType(), CPLJSONObject::Null );
-            ensure_equals( oObj.GetObj("inexisting").GetType(), CPLJSONObject::Unknown );
+            ensure( oObj.GetObj("null_field").GetType() == CPLJSONObject::Type::Null );
+            ensure( oObj.GetObj("inexisting").GetType() == CPLJSONObject::Type::Unknown );
             oObj.Set("string", std::string("my_string"));
             oObj.Set("const_char_star", nullptr);
             oObj.Set("const_char_star", "my_const_char_star");
@@ -2224,6 +2225,14 @@ namespace tut
             oArray.Add(GINT64_MAX);
             oArray.Add(true);
             ensure_equals(oArray.Size(), 7);
+
+            int nCount = 0;
+            for(const auto& obj: oArray)
+            {
+                ensure_equals(obj.GetInternalHandle(), oArray[nCount].GetInternalHandle());
+                nCount++;
+            }
+            ensure_equals(nCount, 7);
         }
         {
             CPLJSONDocument oDocument;
@@ -2812,4 +2821,272 @@ namespace tut
             ensure_equals( x.GetString(), std::string("[1, 2]") );
         }
     }
+
+    // Test CPLWorkerThreadPool
+    template<>
+    template<>
+    void object::test<40>()
+    {
+        CPLWorkerThreadPool oPool;
+        ensure(oPool.Setup(2, nullptr, nullptr));
+
+        const auto myJob = [](void* pData)
+        {
+            (*static_cast<int*>(pData))++;
+        };
+
+        {
+            std::vector<int> res(1000);
+            for( int i = 0; i < 1000; i++ )
+            {
+                res[i] = i;
+                oPool.SubmitJob(myJob, &res[i]);
+            }
+            oPool.WaitCompletion();
+            for( int i = 0; i < 1000; i++ )
+            {
+                ensure_equals(res[i], i + 1);
+            }
+        }
+
+        {
+            std::vector<int> res(1000);
+            std::vector<void*> resPtr(1000);
+            for( int i = 0; i < 1000; i++ )
+            {
+                res[i] = i;
+                resPtr[i] = &res[i];
+            }
+            oPool.SubmitJobs(myJob, resPtr);
+            oPool.WaitEvent();
+            oPool.WaitCompletion();
+            for( int i = 0; i < 1000; i++ )
+            {
+                ensure_equals(res[i], i + 1);
+            }
+        }
+
+        {
+            auto jobQueue1 = oPool.CreateJobQueue();
+            auto jobQueue2 = oPool.CreateJobQueue();
+
+            ensure_equals(jobQueue1->GetPool(), &oPool);
+
+            std::vector<int> res(1000);
+            for( int i = 0; i < 1000; i++ )
+            {
+                res[i] = i;
+                if( i % 2 )
+                    jobQueue1->SubmitJob(myJob, &res[i]);
+                else
+                    jobQueue2->SubmitJob(myJob, &res[i]);
+            }
+            jobQueue1->WaitCompletion();
+            jobQueue2->WaitCompletion();
+            for( int i = 0; i < 1000; i++ )
+            {
+                ensure_equals(res[i], i + 1);
+            }
+        }
+    }
+
+    // Test CPLHTTPFetch
+    template<>
+    template<>
+    void object::test<41>()
+    {
+#ifdef HAVE_CURL        
+        CPLStringList oOptions;
+        oOptions.AddNameVlue("FORM_ITEM_COUNT", "5");
+        oOptions.AddNameVlue("FORM_KEY_0", "qqq");
+        oOptions.AddNameVlue("FORM_VALUE_0", "www");
+        CPLHTTPResult *pResult = CPLHTTPFetch("http://example.com", oOptions);
+        ensure_equals(pResult->nStatus, 34);
+        CPLHTTPDestroyResult(pResult);
+        pResult = nullptr;
+        oOptions.Clear();
+
+        oOptions.AddNameVlue("FORM_FILE_PATH", "not_existed");
+        pResult = CPLHTTPFetch("http://example.com", oOptions);
+        ensure_equals(pResult->nStatus, 34);
+        CPLHTTPDestroyResult(pResult);
+
+#endif // HAVE_CURL        
+    }    
+
+    // Test CPLHTTPPushFetchCallback
+    template<>
+    template<>
+    void object::test<42>()
+    {
+        struct myCbkUserDataStruct
+        {
+            CPLString osURL{};
+            CSLConstList papszOptions = nullptr;
+            GDALProgressFunc pfnProgress = nullptr;
+            void *pProgressArg = nullptr;
+            CPLHTTPFetchWriteFunc pfnWrite = nullptr;
+            void *pWriteArg = nullptr;
+        };
+
+        const auto myCbk = [](const char *pszURL,
+                              CSLConstList papszOptions,
+                              GDALProgressFunc pfnProgress,
+                              void *pProgressArg,
+                              CPLHTTPFetchWriteFunc pfnWrite,
+                              void *pWriteArg,
+                              void* pUserData )
+        {
+            myCbkUserDataStruct* pCbkUserData = static_cast<myCbkUserDataStruct*>(pUserData);
+            pCbkUserData->osURL = pszURL;
+            pCbkUserData->papszOptions = papszOptions;
+            pCbkUserData->pfnProgress = pfnProgress;
+            pCbkUserData->pProgressArg = pProgressArg;
+            pCbkUserData->pfnWrite = pfnWrite;
+            pCbkUserData->pWriteArg = pWriteArg;
+            auto psResult = static_cast<CPLHTTPResult*>(CPLCalloc(sizeof(CPLHTTPResult), 1));
+            psResult->nStatus = 123;
+            return psResult;
+        };
+
+        myCbkUserDataStruct userData;
+        ensure( CPLHTTPPushFetchCallback(myCbk, &userData) );
+
+        int progressArg = 0;
+        const auto myWriteCbk = [](void *, size_t, size_t, void *) -> size_t { return 0; };
+        int writeCbkArg = 00;
+
+        CPLStringList aosOptions;
+        GDALProgressFunc pfnProgress = GDALTermProgress;
+        CPLHTTPFetchWriteFunc pfnWriteCbk = myWriteCbk;
+        CPLHTTPResult* pResult = CPLHTTPFetchEx("http://example.com",
+                                                aosOptions.List(),
+                                                pfnProgress,
+                                                &progressArg,
+                                                pfnWriteCbk,
+                                                &writeCbkArg);
+        ensure(pResult != nullptr);
+        ensure_equals(pResult->nStatus, 123);
+        CPLHTTPDestroyResult(pResult);
+
+        ensure( CPLHTTPPopFetchCallback() );
+        CPLPushErrorHandler(CPLQuietErrorHandler);
+        ensure( !CPLHTTPPopFetchCallback() );
+        CPLPopErrorHandler();
+
+        ensure_equals( userData.osURL, std::string("http://example.com") );
+        ensure_equals( userData.papszOptions, aosOptions.List() );
+        ensure_equals( userData.pfnProgress, pfnProgress );
+        ensure_equals( userData.pProgressArg, &progressArg );
+        ensure_equals( userData.pfnWrite, pfnWriteCbk );
+        ensure_equals( userData.pWriteArg, &writeCbkArg );
+    }
+
+    // Test CPLHTTPSetFetchCallback
+    template<>
+    template<>
+    void object::test<43>()
+    {
+        struct myCbkUserDataStruct
+        {
+            CPLString osURL{};
+            CSLConstList papszOptions = nullptr;
+            GDALProgressFunc pfnProgress = nullptr;
+            void *pProgressArg = nullptr;
+            CPLHTTPFetchWriteFunc pfnWrite = nullptr;
+            void *pWriteArg = nullptr;
+        };
+
+        const auto myCbk2 = [](const char *pszURL,
+                              CSLConstList papszOptions,
+                              GDALProgressFunc pfnProgress,
+                              void *pProgressArg,
+                              CPLHTTPFetchWriteFunc pfnWrite,
+                              void *pWriteArg,
+                              void* pUserData )
+        {
+            myCbkUserDataStruct* pCbkUserData = static_cast<myCbkUserDataStruct*>(pUserData);
+            pCbkUserData->osURL = pszURL;
+            pCbkUserData->papszOptions = papszOptions;
+            pCbkUserData->pfnProgress = pfnProgress;
+            pCbkUserData->pProgressArg = pProgressArg;
+            pCbkUserData->pfnWrite = pfnWrite;
+            pCbkUserData->pWriteArg = pWriteArg;
+            auto psResult = static_cast<CPLHTTPResult*>(CPLCalloc(sizeof(CPLHTTPResult), 1));
+            psResult->nStatus = 124;
+            return psResult;
+        };
+        myCbkUserDataStruct userData2;
+        CPLHTTPSetFetchCallback(myCbk2, &userData2);
+
+        int progressArg = 0;
+        const auto myWriteCbk = [](void *, size_t, size_t, void *) -> size_t { return 0; };
+        int writeCbkArg = 00;
+
+        CPLStringList aosOptions;
+        GDALProgressFunc pfnProgress = GDALTermProgress;
+        CPLHTTPFetchWriteFunc pfnWriteCbk = myWriteCbk;
+        CPLHTTPResult* pResult = CPLHTTPFetchEx("http://example.com",
+                                                aosOptions.List(),
+                                                pfnProgress,
+                                                &progressArg,
+                                                pfnWriteCbk,
+                                                &writeCbkArg);
+        ensure(pResult != nullptr);
+        ensure_equals(pResult->nStatus, 124);
+        CPLHTTPDestroyResult(pResult);
+
+        CPLHTTPSetFetchCallback(nullptr, nullptr);
+
+        ensure_equals( userData2.osURL, std::string("http://example.com") );
+        ensure_equals( userData2.papszOptions, aosOptions.List() );
+        ensure_equals( userData2.pfnProgress, pfnProgress );
+        ensure_equals( userData2.pProgressArg, &progressArg );
+        ensure_equals( userData2.pfnWrite, pfnWriteCbk );
+        ensure_equals( userData2.pWriteArg, &writeCbkArg );
+    }
+
+    // Test CPLLoadConfigOptionsFromFile() and CPLLoadConfigOptionsFromPredefinedFiles()
+    template<>
+    template<>
+    void object::test<44>()
+    {
+        CPLLoadConfigOptionsFromFile("/i/do/not/exist", false);
+
+        VSILFILE* fp = VSIFOpenL("/vsimem/.gdal/gdalrc", "wb");
+        VSIFPrintfL(fp, "[configoptions]\n");
+        VSIFPrintfL(fp, "# some comment\n");
+        VSIFPrintfL(fp, "FOO_CONFIGOPTION=BAR\n");
+        VSIFCloseL(fp);
+
+        // Try CPLLoadConfigOptionsFromFile()
+        CPLLoadConfigOptionsFromFile("/vsimem/.gdal/gdalrc", false);
+        ensure( EQUAL(CPLGetConfigOption("FOO_CONFIGOPTION", ""), "BAR") );
+        CPLSetConfigOption("FOO_CONFIGOPTION", nullptr);
+
+        // Try CPLLoadConfigOptionsFromPredefinedFiles() with GDAL_CONFIG_FILE set
+        CPLSetConfigOption("GDAL_CONFIG_FILE", "/vsimem/.gdal/gdalrc");
+        CPLLoadConfigOptionsFromPredefinedFiles();
+        ensure( EQUAL(CPLGetConfigOption("FOO_CONFIGOPTION", ""), "BAR") );
+        CPLSetConfigOption("FOO_CONFIGOPTION", nullptr);
+
+        // Try CPLLoadConfigOptionsFromPredefinedFiles() with $HOME/.gdal/gdalrc file
+#ifdef WIN32
+        const char* pszHOMEEnvVarName = "USERPROFILE";
+#else
+        const char* pszHOMEEnvVarName = "HOME";
+#endif
+        CPLString osOldVal(CPLGetConfigOption(pszHOMEEnvVarName, ""));
+        CPLSetConfigOption(pszHOMEEnvVarName, "/vsimem/");
+        CPLLoadConfigOptionsFromPredefinedFiles();
+        ensure( EQUAL(CPLGetConfigOption("FOO_CONFIGOPTION", ""), "BAR") );
+        CPLSetConfigOption("FOO_CONFIGOPTION", nullptr);
+        if( !osOldVal.empty() )
+            CPLSetConfigOption(pszHOMEEnvVarName, osOldVal.c_str());
+        else
+            CPLSetConfigOption(pszHOMEEnvVarName, nullptr);
+
+        VSIUnlink("/vsimem/.gdal/gdalrc");
+    }
+
 } // namespace tut

@@ -19,8 +19,9 @@ Synopsis
     gdal2tiles.py [-p profile] [-r resampling] [-s srs] [-z zoom]
                   [-e] [-a nodata] [-v] [-q] [-h] [-k] [-n] [-u url]
                   [-w webviewer] [-t title] [-c copyright]
-                  [--processes=NB_PROCESSES]
-                  [-g googlekey] [-b bingkey] input_file [output_dir]
+                  [--processes=NB_PROCESSES] [--xyz]
+                  --tilesize=PIXELS
+                  [-g googlekey] [-b bingkey] input_file [output_dir] [COMMON_OPTIONS]
 
 Description
 -----------
@@ -38,32 +39,56 @@ SuperOverlay), in case the supplied map uses EPSG:4326 projection.
 World files and embedded georeferencing is used during tile generation, but you
 can publish a picture without proper georeferencing too.
 
-.. program:: gdal_translate
+.. note::
+
+    Inputs with non-Byte data type (i.e. ``Int16``, ``UInt16``,...) will be clamped to
+    the ``Byte`` data type, causing wrong results. To avoid this it is necessary to
+    rescale input to the ``Byte`` data type using `gdal_translate` utility.
+
+.. note::
+
+    Config options of the input drivers may have an effect on the output of gdal2tiles. An example driver config option is GDAL_PDF_DPI, which can be found at :ref:`configoptions`
+
+
+.. program:: gdal2tiles
 
 .. option:: -p <PROFILE>, --profile=<PROFILE>
 
-  Tile cutting profile (mercator,geodetic,raster) - default 'mercator' (Google Maps compatible).
+  Tile cutting profile (mercator, geodetic, raster) - default 'mercator' (Google Maps compatible).
+
+  Starting with GDAL 3.2, additional profiles are available from tms_XXXX.json files
+  placed in GDAL data directory (provided all zoom levels use same origin, tile dimensions,
+  and resolution between consecutive zoom levels vary by a factor of two).
 
 .. option:: -r <RESAMPLING>, --resampling=<RESAMPLING>
 
-  Resampling method (average,near,bilinear,cubic,cubicspline,lanczos,antialias) - default 'average'.
+  Resampling method (average, near, bilinear, cubic, cubicspline, lanczos, antialias, mode, max, min, med, q1, q3) - default 'average'.
 
 .. option:: -s <SRS>, --s_srs=<SRS>
 
   The spatial reference system used for the source input data.
 
+.. option:: --xyz
+
+  Generate XYZ tiles (OSM Slippy Map standard) instead of TMS.
+  In the default mode (TMS), tiles at y=0 are the southern-most tiles, whereas
+  in XYZ mode (used by OGC WMTS too), tiles at y=0 are the northern-most tiles.
+
+  .. versionadded:: 3.1
+
 .. option:: -z <ZOOM>, --zoom=<ZOOM>
 
-  Zoom levels to render (format:'2-5' or '10').
+  Zoom levels to render (format:'2-5', '10-' or '10').
 
 .. option:: -e, --resume
 
   Resume mode. Generate only missing files.
-  
+
 .. option:: -a <NODATA>, --srcnodata=<NODATA>
 
-  NODATA transparency value to assign to the input data.
-  
+  Value in the input dataset considered as transparent. If the input dataset
+  had already an associate nodata value, it is overridden by the specified value.
+
 .. option:: -v, --verbose
 
   Generate verbose output of tile generation.
@@ -76,14 +101,20 @@ can publish a picture without proper georeferencing too.
 
 .. option:: --processes=<NB_PROCESSES>
 
-  Number of processes to use for tiling.
+  Number of parallel processes to use for tiling, to speed-up the computation.
 
   .. versionadded:: 2.3
+
+.. option:: --tilesize=<PIXELS>
+
+  Width and height in pixel of a tile. Default is 256.
+
+  .. versionadded:: 3.1
 
 .. option:: -h, --help
 
   Show help message and exit.
-  
+
 .. option:: --version
 
   Show program's version number and exit.
@@ -114,7 +145,7 @@ Options for generated HTML viewers a la Google Maps
 
 .. option:: -w <WEBVIEWER>, --webviewer=<WEBVIEWER>
 
-  Web viewer to generate (all,google,openlayers,leaflet,none) - default 'all'.
+  Web viewer to generate (all, google, openlayers, leaflet, mapml, none) - default 'all'.
 
 .. option:: -t <TITLE>, --title=<TITLE>
 
@@ -123,7 +154,7 @@ Options for generated HTML viewers a la Google Maps
 .. option:: -c <COPYRIGHT>, --copyright=<COPYRIGHT>
 
   Copyright for the map.
-  
+
 .. option:: -g <GOOGLEKEY>, --googlekey=<GOOGLEKEY>
 
   Google Maps API key from http://code.google.com/apis/maps/signup.html.
@@ -136,3 +167,44 @@ Options for generated HTML viewers a la Google Maps
 .. note::
 
     gdal2tiles.py is a Python script that needs to be run against Python GDAL binding.
+
+MapML options
++++++++++++++
+
+MapML support is new to GDAL 3.2. When --webviewer=mapml is specified,
+--xyz is implied, as well as --tmscompatible if --profile=geodetic.
+
+The following profiles are supported:
+
+- mercator: mapped to OSMTILE MapML tiling scheme
+- geodetic: mapped to WGS84 MapML tiling scheme
+- APSTILE: from the tms_MapML_APSTILE.json data file
+
+The generated MapML file in the output directory is ``mapml.mapl``
+
+Available options are:
+
+.. option:: --mapml-template=<filename>
+
+    Filename of a template mapml file where variables will
+    be substituted. If not specified, the generic
+    template_tiles.mapml file from GDAL data resources
+    will be used
+
+The --url option is also used to substitute ``${URL}`` in the template MapML file.
+
+Examples
+--------
+
+Basic example:
+
+.. code-block::
+
+  gdal2tiles.py --zoom=2-5 input.tif output_folder
+
+
+MapML generation:
+
+.. code-block::
+
+  gdal2tiles.py --zoom=16-18 -w mapml -p APSTILE --url "https://example.com" input.tif output_folder

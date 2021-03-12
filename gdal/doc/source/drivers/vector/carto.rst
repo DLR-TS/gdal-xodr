@@ -6,6 +6,8 @@ Carto
 
 .. shortname:: CARTO
 
+.. build_dependencies:: libcurl
+
 This driver can connect to the services implementing the Carto API. GDAL/OGR
 must be built with Curl support in order for the Carto driver to be compiled.
 
@@ -126,7 +128,7 @@ You can use the full power of PostgreSQL + PostGIS SQL capabilities.
 Open options
 ------------
 
-Starting with GDAL 2.0, the following open options are available:
+The following open options are available:
 
 -  **BATCH_INSERT**\ =YES/NO: Whether to group feature insertions in a
    batch. Defaults to YES. Only apply in creation or update mode.

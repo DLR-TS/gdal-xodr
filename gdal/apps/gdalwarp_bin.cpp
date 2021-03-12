@@ -29,7 +29,7 @@
  ****************************************************************************/
 
 #include "cpl_string.h"
-#include "cpl_error.h"
+#include "cpl_error_internal.h"
 #include "gdal_version.h"
 #include "commonutils.h"
 #include "gdal_utils_priv.h"
@@ -78,13 +78,14 @@ static void Usage(const char* pszErrorMsg = nullptr)
         "    [-r resampling_method] [-wm memory_in_mb] [-multi] [-q]\n"
         "    [-cutline datasource] [-cl layer] [-cwhere expression]\n"
         "    [-csql statement] [-cblend dist_in_pixels] [-crop_to_cutline]\n"
-        "    [-of format] [-co \"NAME=VALUE\"]* [-overwrite]\n"
+        "    [-if format]* [-of format] [-co \"NAME=VALUE\"]* [-overwrite]\n"
         "    [-nomd] [-cvmd meta_conflict_value] [-setci] [-oo NAME=VALUE]*\n"
         "    [-doo NAME=VALUE]*\n"
         "    srcfile* dstfile\n"
         "\n"
         "Available resampling methods:\n"
-        "    near (default), bilinear, cubic, cubicspline, lanczos, average, mode,  max, min, med, Q1, Q3.\n" );
+        "    near (default), bilinear, cubic, cubicspline, lanczos, average, rms,\n"
+        "    mode,  max, min, med, Q1, Q3, sum.\n" );
 
     if( pszErrorMsg != nullptr )
         fprintf(stderr, "\nFAILURE: %s\n", pszErrorMsg);
@@ -114,6 +115,7 @@ static void GDALWarpAppOptionsForBinaryFree( GDALWarpAppOptionsForBinary* psOpti
         CSLDestroy(psOptionsForBinary->papszOpenOptions);
         CSLDestroy(psOptionsForBinary->papszDestOpenOptions);
         CSLDestroy(psOptionsForBinary->papszCreateOptions);
+        CSLDestroy(psOptionsForBinary->papszAllowInputDrivers);
         CPLFree(psOptionsForBinary);
     }
 }
@@ -141,31 +143,6 @@ static int CPL_STDCALL WarpTermProgress( double dfProgress,
         iSrc ++;
     }
     return GDALTermProgress(dfProgress * gnSrcCount - iSrc, nullptr, nullptr);
-}
-
-/************************************************************************/
-/*                      ErrorHandlerAccumulator()                       */
-/************************************************************************/
-
-class ErrorStruct
-{
-  public:
-    CPLErr type;
-    CPLErrorNum no;
-    CPLString msg;
-
-    ErrorStruct() : type(CE_None), no(CPLE_None) {}
-    ErrorStruct(CPLErr eErrIn, CPLErrorNum noIn, const char* msgIn) :
-        type(eErrIn), no(noIn), msg(msgIn) {}
-};
-
-static void CPL_STDCALL ErrorHandlerAccumulator( CPLErr eErr, CPLErrorNum no,
-                                                 const char* msg )
-{
-    std::vector<ErrorStruct>* paoErrors =
-        static_cast<std::vector<ErrorStruct> *>(
-            CPLGetErrorHandlerUserData());
-    paoErrors->push_back(ErrorStruct(eErr, no, msg));
 }
 
 /************************************************************************/
@@ -253,7 +230,8 @@ MAIN_START(argc, argv)
     {
         nSrcCount++;
         pahSrcDS = static_cast<GDALDatasetH *>(CPLRealloc(pahSrcDS, sizeof(GDALDatasetH) * nSrcCount));
-        pahSrcDS[nSrcCount-1] = GDALOpenEx( psOptionsForBinary->papszSrcFiles[i], GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR, nullptr,
+        pahSrcDS[nSrcCount-1] = GDALOpenEx( psOptionsForBinary->papszSrcFiles[i], GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR,
+                                            psOptionsForBinary->papszAllowInputDrivers,
                                             psOptionsForBinary->papszOpenOptions, nullptr );
 
         if( pahSrcDS[nSrcCount-1] == nullptr )
@@ -293,11 +271,11 @@ MAIN_START(argc, argv)
     }
     else
     {
-        std::vector<ErrorStruct> aoErrors;
-        CPLPushErrorHandlerEx( ErrorHandlerAccumulator, &aoErrors );
+        std::vector<CPLErrorHandlerAccumulatorStruct> aoErrors;
+        CPLInstallErrorHandlerAccumulator(aoErrors);
         hDstDS = GDALOpenEx( psOptionsForBinary->pszDstFilename, GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR | GDAL_OF_UPDATE,
                              nullptr, psOptionsForBinary->papszDestOpenOptions, nullptr );
-        CPLPopErrorHandler();
+        CPLUninstallErrorHandlerAccumulator();
         if( hDstDS != nullptr )
         {
             for( size_t i = 0; i < aoErrors.size(); i++ )

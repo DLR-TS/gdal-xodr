@@ -5,6 +5,8 @@ OGDI Vectors
 
 .. shortname:: OGDI
 
+.. build_dependencies:: OGDI library
+
 OGDI vector support is optional in OGR, and is normally only configured
 if OGDI is installed on the build system. If available OGDI vectors are
 supported for read access for the following family types:
@@ -25,7 +27,7 @@ layers has an OGR name based on the OGDI name plus an underscore and the
 family name. For instance a layer might be called
 **watrcrsl@hydro(*)_line** if coming out of the VRF driver.
 
-From GDAL/OGR 1.8.0, setting the *OGR_OGDI_LAUNDER_LAYER_NAMES*
+Setting the *OGR_OGDI_LAUNDER_LAYER_NAMES*
 configuration option (or environment variable) to YES causes the layer
 names to be simplified. For example : *watrcrsl_hydro* instead of
 'watrcrsl@hydro(*)_line'

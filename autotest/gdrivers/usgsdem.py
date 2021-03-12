@@ -42,7 +42,7 @@ import pytest
 
 def test_usgsdem_1():
 
-    tst = gdaltest.GDALTest('USGSDEM', '022gdeme_truncated', 1, 1583)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/022gdeme_truncated', 1, 1583)
     srs = osr.SpatialReference()
     srs.SetWellKnownGeogCS('NAD27')
     return tst.testOpen(check_prj=srs.ExportToWkt(),
@@ -54,7 +54,7 @@ def test_usgsdem_1():
 
 def test_usgsdem_2():
 
-    tst = gdaltest.GDALTest('USGSDEM', '114p01_0100_deme_truncated.dem', 1, 53864)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/114p01_0100_deme_truncated.dem', 1, 53864)
     srs = osr.SpatialReference()
     srs.SetWellKnownGeogCS('NAD27')
     return tst.testOpen(check_prj=srs.ExportToWkt(),
@@ -66,7 +66,7 @@ def test_usgsdem_2():
 
 def test_usgsdem_3():
 
-    tst = gdaltest.GDALTest('USGSDEM', '39079G6_truncated.dem', 1, 61424)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/39079G6_truncated.dem', 1, 61424)
     srs = osr.SpatialReference()
     srs.SetWellKnownGeogCS('WGS72')
     srs.SetUTM(17)
@@ -79,7 +79,7 @@ def test_usgsdem_3():
 
 def test_usgsdem_4():
 
-    tst = gdaltest.GDALTest('USGSDEM', '39079G6_truncated.dem', 1, 61424,
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/39079G6_truncated.dem', 1, 61424,
                             options=['RESAMPLE=Nearest'])
     return tst.testCreateCopy(check_gt=1, check_srs=1, vsimem=1)
 
@@ -103,7 +103,7 @@ def test_usgsdem_5():
     gt1 = ds.GetGeoTransform()
     gt2 = ds2.GetGeoTransform()
     for i in range(6):
-        if abs(gt1[i] - gt2[i]) > 1e-5:
+        if gt1[i] != pytest.approx(gt2[i], abs=1e-5):
             print('')
             print('old = ', gt1)
             print('new = ', gt2)
@@ -167,7 +167,7 @@ def test_usgsdem_7():
     expected_gt = (-80.000104166666674, 0.000208333333333, 0, 44.000104166666667, 0, -0.000208333333333)
     got_gt = ds2.GetGeoTransform()
     for i in range(6):
-        if abs(expected_gt[i] - got_gt[i]) > 1e-5:
+        if expected_gt[i] != pytest.approx(got_gt[i], abs=1e-5):
             print('')
             print('expected = ', expected_gt)
             print('got = ', got_gt)
@@ -186,7 +186,7 @@ def test_usgsdem_7():
 
 def test_usgsdem_8():
 
-    tst = gdaltest.GDALTest('USGSDEM', '39109h1_truncated.dem', 1, 39443)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/39109h1_truncated.dem', 1, 39443)
     srs = osr.SpatialReference()
     srs.SetWellKnownGeogCS('NAD27')
     srs.SetUTM(12)
@@ -200,7 +200,7 @@ def test_usgsdem_8():
 
 def test_usgsdem_9():
 
-    tst = gdaltest.GDALTest('USGSDEM', '4619old_truncated.dem', 1, 10659)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/4619old_truncated.dem', 1, 10659)
     srs = osr.SpatialReference()
     srs.SetWellKnownGeogCS('NAD27')
     return tst.testOpen(check_prj=srs.ExportToWkt(),
@@ -212,7 +212,7 @@ def test_usgsdem_9():
 
 def test_usgsdem_with_extra_values_at_end_of_profile():
 
-    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem_with_extra_values_at_end_of_profile.dem', 1, 56679)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/usgsdem_with_extra_values_at_end_of_profile.dem', 1, 56679)
     return tst.testOpen()
 
 ###############################################################################
@@ -221,8 +221,23 @@ def test_usgsdem_with_extra_values_at_end_of_profile():
 
 def test_usgsdem_with_spaces_after_byte_864():
 
-    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem_with_spaces_after_byte_864.dem', 1, 61078)
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/usgsdem_with_spaces_after_byte_864.dem', 1, 61078)
     return tst.testOpen()
+
+###############################################################################
+# Test truncated version of https://s3.amazonaws.com/data.tnris.org/8ea19b45-7a66-4e95-9833-f9e89611d106/resources/fema06-140cm-coastal_2995441_dem.zip
+# downloaded from https://data.tnris.org/collection/8ea19b45-7a66-4e95-9833-f9e89611d106
+
+
+def test_usgsdem_with_header_of_918_bytes():
+
+    tst = gdaltest.GDALTest('USGSDEM', 'usgsdem/fema06-140cm_2995441b_truncated.dem', 1, 0)
+    srs = osr.SpatialReference()
+    srs.SetWellKnownGeogCS('NAD83')
+    srs.SetUTM(15)
+    with gdaltest.error_handler():
+        return tst.testOpen(check_prj=srs.ExportToWkt(),
+                            check_gt=(248500.0, 1.4, 0.0, 3252508.7, 0.0, -1.4))
 
 ###############################################################################
 # Cleanup

@@ -6,6 +6,8 @@ SRP -- Standard Product Format (ASRP/USRP) (.gen)
 
 .. shortname:: SRP
 
+.. built_in_by_default::
+
 The ASRP and USRP raster products (as defined by DGIWG) are variations
 on a common standard product format and are supported for reading by
 GDAL. ASRP and USRP datasets are made of several files - typically a
@@ -16,7 +18,7 @@ ASRP (in a geographic coordinate system) and USRP (in a UTM/UPS
 coordinate system) products are single band images with a palette and
 georeferencing.
 
-Starting with GDAL 1.11, the Transmission Header File (.THF) can also be
+the Transmission Header File (.THF) can also be
 used as an input to GDAL. If the THF references more than one image,
 GDAL will report the images it is composed of as subdatasets. If the THF
 references just one image, GDAL will open it directly.

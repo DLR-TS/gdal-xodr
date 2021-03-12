@@ -131,7 +131,7 @@ static void Usage(const char* pszAdditionalMsg, int bShort)
            "      -dsco NAME=VALUE: network creation option set as pair=value\n"
            "   import src_dataset_name: import external layer where src_dataset_name is a dataset name to copy from\n"
            "      -l layer_name: layer name in dataset. If unset, 0 layer is copied\n"
-           "   connect gfid_src gfid_tgt gfid_con: make a topological connection, where the gfid_src and gfid_tgt are vertexes and gfid_con is edge (gfid_con can be -1, so the virtual connection will be created)\n"
+           "   connect gfid_src gfid_tgt gfid_con: make a topological connection, where the gfid_src and gfid_tgt are vertices and gfid_con is edge (gfid_con can be -1, so the virtual connection will be created)\n"
            "      -c cost -ic inv_cost -dir dir: manually assign the following values: the cost (weight), inverse cost and direction of the edge (optional)\n"
            "   disconnect gfid_src gfid_tgt gfid_con: removes the connection from the graph\n"
            "   rule rule_str: creates a rule in the network by the given rule_str string\n"
@@ -244,12 +244,14 @@ MAIN_START(nArgc, papszArgv)
         else if( EQUAL(papszArgv[iArg],"-f") || EQUAL(papszArgv[iArg],"-of") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             pszFormat = papszArgv[++iArg];
         }
 
         else if( EQUAL(papszArgv[iArg],"-dsco") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             papszDSCO = CSLAddString(papszDSCO, papszArgv[++iArg] );
         }
 
@@ -261,6 +263,7 @@ MAIN_START(nArgc, papszArgv)
         else if( EQUAL(papszArgv[iArg],"-t_srs") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             pszSRS = papszArgv[++iArg];
         }
 
@@ -268,12 +271,14 @@ MAIN_START(nArgc, papszArgv)
         {
             stOper = op_import;
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             pszInputDataset = papszArgv[++iArg];
         }
 
         else if( EQUAL(papszArgv[iArg],"-l") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             pszInputLayer = papszArgv[++iArg];
         }
 
@@ -281,24 +286,30 @@ MAIN_START(nArgc, papszArgv)
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(3);
             stOper = op_connect;
+            // coverity[tainted_data]
             nSrcFID = atoi(papszArgv[++iArg]);
+            // coverity[tainted_data]
             nTgtFID = atoi(papszArgv[++iArg]);
+            // coverity[tainted_data]
             nConFID = atoi(papszArgv[++iArg]);
         }
 
         else if( EQUAL(papszArgv[iArg],"-c") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             dfDirCost = CPLAtofM(papszArgv[++iArg]);
         }
         else if( EQUAL(papszArgv[iArg],"-ic") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             dfInvCost = CPLAtofM(papszArgv[++iArg]);
         }
         else if( EQUAL(papszArgv[iArg],"-dir") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             eDir = atoi(papszArgv[++iArg]);
         }
 
@@ -306,8 +317,11 @@ MAIN_START(nArgc, papszArgv)
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(3);
             stOper = op_disconnect;
+            // coverity[tainted_data]
             nSrcFID = atoi(papszArgv[++iArg]);
+            // coverity[tainted_data]
             nTgtFID = atoi(papszArgv[++iArg]);
+            // coverity[tainted_data]
             nConFID = atoi(papszArgv[++iArg]);
         }
 
@@ -315,6 +329,7 @@ MAIN_START(nArgc, papszArgv)
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
             stOper = op_autoconnect;
+            // coverity[tainted_data]
             dfTolerance = CPLAtofM(papszArgv[++iArg]);
         }
 
@@ -322,6 +337,7 @@ MAIN_START(nArgc, papszArgv)
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
             stOper = op_rule;
+            // coverity[tainted_data]
             pszRuleStr = papszArgv[++iArg];
         }
 
@@ -338,12 +354,14 @@ MAIN_START(nArgc, papszArgv)
         else if( EQUAL(papszArgv[iArg],"-bl") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             anFIDsToBlock.push_back(atoi(papszArgv[++iArg]));
         }
 
         else if( EQUAL(papszArgv[iArg],"-unbl") )
         {
             CHECK_HAS_ENOUGH_ADDITIONAL_ARGS(1);
+            // coverity[tainted_data]
             anFIDsToUnblock.push_back(atoi(papszArgv[++iArg]));
         }
 
@@ -517,28 +535,30 @@ MAIN_START(nArgc, papszArgv)
         {
             Usage( CPLSPrintf("%s driver not available", pszFormat) );
         }
-
-        char** papszMD = poDriver->GetMetadata();
-
-        if( !CPLFetchBool( papszMD, GDAL_DCAP_GNM, false ) )
-            Usage("not a GNM driver");
-
-        poDS = cpl::down_cast<GNMNetwork*>(poDriver->Create( pszPath, 0, 0, 0, GDT_Unknown,
-                                              papszDSCO ));
-
-        if (nullptr == poDS)
-        {
-            fprintf(stderr, "\nFAILURE: Failed to create network in a new dataset at "
-                    "%s and with driver %s\n", CPLFormFilename(pszPath,
-                    pszNetworkName, nullptr) ,pszFormat);
-            nRet = 1;
-        }
         else
         {
-            if (bQuiet == FALSE)
-                printf("\nNetwork created successfully in a "
-                   "new dataset at %s\n", CPLFormFilename(pszPath,
-                    pszNetworkName, nullptr));
+            char** papszMD = poDriver->GetMetadata();
+
+            if( !CPLFetchBool( papszMD, GDAL_DCAP_GNM, false ) )
+                Usage("not a GNM driver");
+
+            poDS = cpl::down_cast<GNMNetwork*>(poDriver->Create( pszPath, 0, 0, 0, GDT_Unknown,
+                                                papszDSCO ));
+
+            if (nullptr == poDS)
+            {
+                fprintf(stderr, "\nFAILURE: Failed to create network in a new dataset at "
+                        "%s and with driver %s\n", CPLFormFilename(pszPath,
+                        pszNetworkName, nullptr) ,pszFormat);
+                nRet = 1;
+            }
+            else
+            {
+                if (bQuiet == FALSE)
+                    printf("\nNetwork created successfully in a "
+                    "new dataset at %s\n", CPLFormFilename(pszPath,
+                        pszNetworkName, nullptr));
+            }
         }
     }
     else if(stOper == op_import)

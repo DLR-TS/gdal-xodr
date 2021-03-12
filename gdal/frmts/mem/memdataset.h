@@ -52,7 +52,7 @@ CPL_C_END
 
 class MEMRasterBand;
 
-class CPL_DLL MEMDataset : public GDALDataset
+class CPL_DLL MEMDataset CPL_NON_FINAL: public GDALDataset
 {
     CPL_DISALLOW_COPY_ASSIGN(MEMDataset)
 
@@ -134,7 +134,7 @@ class CPL_DLL MEMDataset : public GDALDataset
     static GDALDataset *Open( GDALOpenInfo * );
     static GDALDataset *Create( const char * pszFilename,
                                 int nXSize, int nYSize, int nBands,
-                                GDALDataType eType, char ** papszParmList );
+                                GDALDataType eType, char ** papszParamList );
     static GDALDataset *CreateMultiDimensional( const char * pszFilename,
                                                 CSLConstList papszRootGroupOptions,
                                                 CSLConstList papszOptions );
@@ -144,7 +144,7 @@ class CPL_DLL MEMDataset : public GDALDataset
 /*                            MEMRasterBand                             */
 /************************************************************************/
 
-class CPL_DLL MEMRasterBand : public GDALPamRasterBand
+class CPL_DLL MEMRasterBand CPL_NON_FINAL: public GDALPamRasterBand
 {
   private:
                 MEMRasterBand( GByte *pabyDataIn, GDALDataType eTypeIn,
