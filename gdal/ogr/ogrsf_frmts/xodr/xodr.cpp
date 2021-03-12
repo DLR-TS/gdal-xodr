@@ -1936,7 +1936,7 @@ bool XODR::signalPresent(const road& xodrRoad) const {
 //Object//
 
 bool XODR::objectPresent(const road& xodrRoad) const {
-	if (xodrRoad.objects() == false) {
+	if (!xodrRoad.objects().present()) {
 		return false;
 	}
 	
@@ -1954,7 +1954,7 @@ bool XODR::objectPresent(const road& xodrRoad) const {
 }
 
 bool XODR::objectPolygonPresent(const road& xodrRoad) const {
-	if (xodrRoad.objects() == false) {
+	if (!xodrRoad.objects().present()) {
 		return false;
 	}
 
@@ -1975,7 +1975,7 @@ bool XODR::objectPolygonPresent(const road& xodrRoad) const {
 
 
 bool XODR::objectLinePresent(const road& xodrRoad) const {
-	if (xodrRoad.objects() == false) {
+	if (!xodrRoad.objects().present()) {
 		return false;
 	}
 
