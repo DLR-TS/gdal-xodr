@@ -8,7 +8,7 @@ CPPFLAGS	:=	$(GDAL_INCLUDE) $(XSD_INCLUDE) $(ODRSPIRAL_INCLUDE) $(XODR_INCLUDE) 
 default:	$(O_OBJ:.o=.$(OBJ_EXT))
 
 clean:
-	rm -f *.o $(O_OBJ) $(PLUGIN_SO)
+	rm -f *.o *.lo $(O_OBJ) $(PLUGIN_SO)
 
 $(O_OBJ):	ogr_xodr.h
 
